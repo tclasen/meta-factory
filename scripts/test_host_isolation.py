@@ -44,7 +44,7 @@ def main():
     summary = {
         "started": utc_now(), "outcome": "running", "sandbox": sandbox,
         "workspace": str(workspace), "host_fixture": str(temporary),
-        "checks": [], "cleanup": [],
+        "checks": [], "diagnostics": [], "cleanup": [],
         "manual_cleanup": ["sbx stop " + sandbox, "sbx rm " + sandbox],
         "limitations": [
             "Sampled mount and proxied HTTPS checks, not proof against every escape or egress path.",
@@ -93,11 +93,17 @@ sys.exit(0 if result['mounted_readable'] and not result['host_canary_visible'] a
         inside("k3s-image", ["docker", "image", "inspect", "--format",
                             "{{json .RepoDigests}}", K3S_IMAGE])
         inside("k3s-start", ["docker", "run", "--detach", "--privileged",
-                            "--name", "factory-k3s", K3S_IMAGE, "server",
+                            "--name", "factory-k3s", "--entrypoint", "/bin/sh", K3S_IMAGE,
+                            "-ec", 'test -e /dev/kmsg || mknod /dev/kmsg c 1 11; exec /bin/k3s "$@"',
+                            "factory-k3s", "server",
                             "--disable", "traefik", "--disable", "servicelb",
                             "--disable", "metrics-server"], 120)
         inside("k3s-ready", ["sh", "-c", """
 for attempt in $(seq 1 36); do
+  if [ "$(docker inspect --format '{{.State.Running}}' factory-k3s)" != true ]; then
+    echo 'Kubernetes container exited before readiness' >&2
+    exit 1
+  fi
   if docker exec factory-k3s kubectl wait --for=condition=Ready node --all --timeout=5s; then
     exit 0
   fi
@@ -132,7 +138,11 @@ exit 1
     finally:
         if attempted_create:
             # Logs can contain cluster credentials; collect Kubernetes events, not server logs.
-            summary["cleanup"].append(collect(evidence, "cluster-events", [
+            summary["diagnostics"].append(collect(evidence, "cluster-state", [
+                "sbx", "exec", sandbox, "docker", "inspect", "--format",
+                "{{json .State}}", "factory-k3s",
+            ], 30))
+            summary["diagnostics"].append(collect(evidence, "cluster-events", [
                 "sbx", "exec", sandbox, "docker", "exec", "factory-k3s",
                 "kubectl", "get", "events", "--all-namespaces",
             ], 30))

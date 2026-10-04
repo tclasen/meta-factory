@@ -59,6 +59,12 @@ class IsolationScriptTest(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertFalse(summary["cleanup_ok"])
 
+    def test_diagnostic_failure_is_not_cleanup_failure(self):
+        status, summary, calls = self.exercise("cluster-events")
+        self.assertEqual(status, 0)
+        self.assertTrue(summary["cleanup_ok"])
+        self.assertEqual(summary["diagnostics"][-1]["outcome"], "failed")
+
     def test_success_scopes_denial_to_created_sandbox(self):
         status, summary, calls = self.exercise(None)
         self.assertEqual(status, 0)

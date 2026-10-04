@@ -109,6 +109,19 @@ protected grader access, or exhaustive host isolation. The host inspection on
 allow-all. Its local `policy init` cannot set a per-sandbox default; cloud-only
 flags must not be used to infer local capability.
 
+The first isolation attempt (2026-10-04 02:48 UTC) passed the mounted-file and
+host/evidence-canary checks. Kubernetes exited before readiness; the workload
+and network-denial checks were not reached. Cluster removal and sandbox stop
+succeeded. The original summary incorrectly counted failed event collection as
+a cleanup failure; diagnostics and cleanup are now reported separately.
+
+Local reproduction inside the agent's sbx identified missing `/dev/kmsg` as the
+kubelet startup failure. The container entrypoint now creates that Linux kernel
+device node when absent, inside the privileged nested container, before starting
+k3s. Readiness also stops early when the container exits, and diagnostics record
+container state without dumping configuration or server credentials. This
+correction still needs validation in the disposable host-launched sandbox.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
