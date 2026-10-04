@@ -120,7 +120,29 @@ kubelet startup failure. The container entrypoint now creates that Linux kernel
 device node when absent, inside the privileged nested container, before starting
 k3s. Readiness also stops early when the container exits, and diagnostics record
 container state without dumping configuration or server credentials. This
-correction still needs validation in the disposable host-launched sandbox.
+correction passed in the disposable host-launched sandbox on the next attempt.
+
+The 2026-10-04 02:55 UTC rerun at commit
+`effdd3581695c2a1081cfe5a38280f70b24efb80` passed the planned checks in 44.10 seconds,
+including cleanup. Reviewed evidence remains local in
+`.factory-planning/isolation-preflight-logs/run-zwbdrvyz/`:
+
+- The mounted canary was readable; the outside host canary and evidence directory
+  were not visible at their host paths.
+- The Kubernetes node became Ready and the BusyBox job completed, printing
+  `factory-kubernetes-ok`. A transient Flannel startup warning preceded successful
+  pod creation; this does not establish broader cluster networking or readiness.
+- The registry HTTPS request returned 200 before the sandbox-only wildcard deny
+  and 403 afterward. Policy checks reported explicit local denial for the registry
+  and `example.com`. Their exit code 1 is expected denial, although the generic
+  command collector labels it `failed`; the JSON decision supplies the meaning.
+- Cluster removal and sandbox stop both succeeded. The stopped sandbox and host
+  fixture were retained as documented.
+
+This establishes the sampled feasibility checks above. A usable default-deny
+allowlist, direct TCP/UDP and pod egress tests, and protected grader access remain
+unverified. Global policy was not changed; these results are not full REQ-021
+acceptance or benchmark/promotion evidence.
 
 ### Prepare the bounded model task
 
