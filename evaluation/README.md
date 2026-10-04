@@ -180,3 +180,40 @@ query diagnostics are excluded from host logs; the underlying query exit status
 is retained. These observations are neither registry attestations nor archived
 image layers. The adapter has local fixtures; live image-inventory integration
 is still pending.
+
+### Scoped workload faults
+
+`workloads.workload_operation` executes a trusted probe inside the grading sandbox
+against an operator-selected namespace and Deployment or StatefulSet. Inspection
+records UID, resource version, desired replicas, observed generation and Pods
+linked through exact controller UIDs. Raw Pod/container environment and kubectl
+error text remain inside the probe; query exit codes are preserved.
+
+Scaling uses a JSON Patch with UID, resource-version and original-replica tests.
+It waits at most 120 seconds for the controller to observe the change and for
+owned Pods to disappear (zero replicas) or become ready (restoration). A replaced
+workload, concurrent replica change, rejected patch or timeout remains incomplete.
+A failed operation can still have changed replicas. Persist the original
+observation before suspension, inspect the same UID in `finally`, and restore
+its original count; never overwrite an independently changed workload. The caller
+must run this inside a lifetime-guarded disposable grading sandbox and stop that
+sandbox if scoped restoration cannot be verified.
+
+This adapter does not infer application roles, support arbitrary operators or
+standalone Pods, or prove storage outage merely from scaling. It requires
+independent role mapping and service-level fault/recovery probes. HPA/operator
+interference makes the attempt incomplete. StatefulSet ownership has synthetic
+fixtures; live coverage must be reported separately from Deployment testing.
+
+Focused validation:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_workloads.py -v
+```
+
+The sandbox-local synthetic run `local-cluster-grading-logs/run-ay0r88oj`
+verified one Deployment at 1 → 0 → 1 replicas, no owned Pods during suspension,
+continued API service availability, restored worker readiness/connectivity, and
+verified cluster removal. This used the local fixture transport, not Mac sbx
+transport. It does not yet validate storage failures, durable worker jobs, live
+StatefulSets, or restoration after controller death.
