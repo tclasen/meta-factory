@@ -280,6 +280,10 @@ sbx stop my-project-factory
 ```
 
 The sandbox commands are documentation-backed recipes, not yet live-tested in
-this repository. For template development and validation details, see
+this repository. Use the [runtime preflight](docs/runtime-preflight.md) to prepare
+a disposable project and validate one bounded Luna Medium task on the target Mac,
+including factory skill use, fixed acceptance checks, and hook activation.
+Live preflight results remain pending. For template development and validation
+details, see
 [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).

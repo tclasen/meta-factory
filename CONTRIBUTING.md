@@ -39,6 +39,15 @@ stable release, promotion, or downstream PR has been performed.
 Local validation used Python 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
 macOS execution and older supported Python versions have not yet been exercised.
 
+The [runtime preflight](docs/runtime-preflight.md) supplies a disposable smoke
+fixture and operator runbook. `scripts/prepare_smoke.py DESTINATION --ref REVISION`
+pins a trusted template revision and prepares an initially failing Python project;
+it never launches sbx or a model. Preparation tests cover destination refusal,
+revision pinning, the expected failure and known correction, and hook enforcement.
+The deliberately failing source fixture under `tests/fixtures/runtime-smoke/`
+is copied into isolated projects; it is not part of top-level test discovery.
+Live Luna Medium validation on the target Mac remains pending.
+
 The README sandbox recipes were checked against current Docker and OpenAI
 documentation. `sbx` is not installed in the editing environment; the recipes
 have not been exercised against a live sandbox here. Validate runtime versions,
