@@ -77,7 +77,39 @@ enforcement, host-file boundaries, and Kubernetes/grader access still require
 dedicated tests based on the installed sbx capabilities. Policy output can
 contain internal destination names; logs remain local and ignored by Git.
 
-### Prepare the bounded workflow fixture
+### Run the disposable isolation preflight
+
+For the separate mount/Kubernetes/network preflight after host inspection, run:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 scripts/test_host_isolation.py
+```
+
+This creates one uniquely named sandbox with 4 CPUs and 8 GiB RAM, mounting only
+a temporary fixture. It checks that an outside host canary and the evidence
+directory are invisible, starts `rancher/k3s:v1.34.1-k3s1` in privileged nested
+Docker, and waits for a `busybox:1.37.0` Kubernetes job. It records resolved image
+identities, then applies a wildcard deny **only to that sandbox** and checks a
+previously successful HTTPS registry request for HTTP 403. No model is launched.
+
+Commands have individual timeouts; allow up to roughly 25 minutes if image
+downloads or startup are slow. Results and cleanup statuses are in
+`.factory-planning/isolation-preflight-logs/run-*/summary.json`. On failure,
+the script stops dependent checks, attempts to remove the nested cluster and
+stop the sandbox, and returns nonzero. Retain logs even if a command fails.
+The summary supplies the sandbox name, host fixture path, and manual stop/removal
+commands if cleanup needs attention. The stopped sandbox and host fixture remain
+available for inspection; the script does not reset global policy.
+
+These are sampled feasibility checks, not complete REQ-021 acceptance. They do
+not establish a usable default-deny allowlist, direct TCP/UDP escape resistance,
+protected grader access, or exhaustive host isolation. The host inspection on
+2026-10-04 found sbx 0.46.0, 128 GiB RAM, about 601 GiB free disk, and global
+allow-all. Its local `policy init` cannot set a per-sandbox default; cloud-only
+flags must not be used to infer local capability.
+
+### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
 terminal, replace the checkout path and run:
