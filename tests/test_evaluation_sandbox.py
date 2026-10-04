@@ -60,6 +60,23 @@ class SandboxTest(unittest.TestCase):
         self.assertFalse(stopped_from_listing(text, "missing"))
         self.assertFalse(stopped_from_listing("unknown format", "ours"))
 
+    def test_internal_file_and_directory_links_preserved_without_traversal(self):
+        (self.project / 'assets').mkdir()
+        (self.project / 'assets/file').write_text('content')
+        (self.project / 'alias').symlink_to('assets/file')
+        (self.project / 'directory-alias').symlink_to('assets', target_is_directory=True)
+        result = self.capture()
+        self.assertEqual(set(result['files']), {'assets/file', 'alias', 'directory-alias'})
+        self.assertEqual(result['files']['alias']['kind'], 'symlink')
+        self.assertTrue((self.root / 'capture/directory-alias').is_symlink())
+        self.assertEqual(os.readlink(self.root / 'capture/alias'), 'assets/file')
+
+    def test_lexical_escape_via_external_alias_back_into_source_is_rejected(self):
+        (self.project / 'file').write_text('content')
+        (self.root / 'external').symlink_to(self.project, target_is_directory=True)
+        (self.project / 'alias').symlink_to('../external/file')
+        with self.assertRaises(ValueError): self.capture()
+
     def test_scoped_create_plan_and_no_exec_after_stop(self):
         spec = self.root / "spec"; spec.mkdir()
         control = self.root / "control"; control.mkdir()

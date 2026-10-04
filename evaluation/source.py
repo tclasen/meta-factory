@@ -30,8 +30,8 @@ def capture_source(attempt, source, destination, specification, *, port,
 
     Ignored artifacts and tracked deletions have explicit retained inventories.
     Git runs only in a separate readonly shell sandbox, never on the host or in
-    the stopped builder. Linked worktrees, selected symlinks and hardlinks remain
-    capture-incomplete until independently supported. Missing build inputs become
+    the stopped builder. Linked worktrees, escaping/absolute links, Git metadata
+    directory links and hardlinks remain capture-incomplete. Missing build inputs become
     visible during redeployment; this is not proof of build reproducibility.
     """
     if termination_verified is not True:

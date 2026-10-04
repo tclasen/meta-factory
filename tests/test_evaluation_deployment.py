@@ -67,6 +67,21 @@ class DeploymentTest(unittest.TestCase):
         (self.capture/'ops/bootstrap.sh').write_text('modified')
         with self.assertRaises(ValueError):verify_capture(self.capture, self.inventory)
 
+    def test_link_identity_and_relocation_verified(self):
+        source = self.root / 'linked-source'; source.mkdir()
+        (source / 'real').write_text('content')
+        (source / 'alias').symlink_to('real')
+        captured = self.root / 'linked-capture'
+        inventory = capture_tree(source, captured, termination_verified=True)
+        verify_capture(captured, inventory)
+        relocated = self.root / 'linked-relocated'
+        copied = capture_tree(captured, relocated, termination_verified=True)
+        self.assertEqual(inventory['files'], copied['files'])
+        self.assertEqual((relocated / 'alias').read_text(), 'content')
+        (captured / 'alias').unlink()
+        (captured / 'alias').write_text('real')
+        with self.assertRaises(ValueError): verify_capture(captured, inventory)
+
     def test_bootstrap_only_inside_sbx_and_unapproved_suite_never_accepts(self):
         with Attempt(self.root/'logs', {}) as attempt:
             result = self.run_grade(attempt)

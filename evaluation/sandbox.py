@@ -3,6 +3,7 @@
 import hashlib
 import os
 from pathlib import Path
+import posixpath
 import stat
 import uuid
 
@@ -91,14 +92,33 @@ class Sandbox:
         return self.stopped
 
 
-def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 1024**3, max_files=100000, selected_files=None):
-    """Copy regular source files only; never execute Git/build/hooks on the host.
+def symlink_record(source, path):
+    """Relative links may survive relocation only if they stay within the source."""
+    target = os.readlink(path)
+    if os.path.isabs(target):
+        raise ValueError("Absolute symlink cannot safely relocate")
+    lexical = posixpath.normpath(str(path.parent.relative_to(source) / target))
+    if lexical == '..' or lexical.startswith('../'):
+        raise ValueError("Symlink lexically escapes captured project")
+    try:
+        resolved = (path.parent / target).resolve()
+    except RuntimeError as error:
+        raise ValueError("Cyclic source symlink") from error
+    if resolved != source and source not in resolved.parents:
+        raise ValueError("Symlink escapes captured project")
+    encoded = target.encode('utf-8')
+    return {'kind': 'symlink', 'target': target, 'sha256': hashlib.sha256(encoded).hexdigest(),
+            'size': len(encoded), 'executable': False}
 
-    Symlinks/special files/hardlinks are capture-incomplete, not application failure.
+
+def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 1024**3, max_files=100000, selected_files=None):
+    """Copy source bytes and safe relative links; never execute Git/build/hooks.
+
+    Escaping links/special files/hardlinks are capture-incomplete, not application failure.
     Caller must include all source, Git metadata and required build assets; no
     implicit ignore rules silently omit application inputs. An explicit source
-    selection may omit inventoried generated artifacts; selected symlinks remain
-    unsupported and produce capture-incomplete, never application failure.
+    selection may omit inventoried generated artifacts. Relative source symlinks
+    are preserved as links and never traversed by the host copier.
     """
     if termination_verified is not True:
         raise ValueError("Remote termination must be verified before capture")
@@ -119,29 +139,47 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                     or ".." in path.parts or str(path) != name):
                 raise ValueError("Invalid selected source path")
             full = source / path
-            if any(p.is_symlink() for p in (full, *full.parents) if p != source and source in p.parents):
-                raise ValueError("Symlink in selected source path")
-            if not full.is_file():
+            if any(p.is_symlink() for p in full.parents if p != source and source in p.parents):
+                raise ValueError("Symlink parent in selected source path")
+            if full.is_symlink():
+                symlink_record(source, full)
+            elif not full.is_file():
                 raise ValueError("Selected source file missing or non-regular")
             selected_directories.update(str(parent) for parent in path.parents)
     destination.mkdir(mode=0o700)
     inventory = {}
     total = 0
+    def copy_link(path, relative):
+        nonlocal total
+        before = path.lstat()
+        record = symlink_record(source, path)
+        if len(inventory) >= max_files or total + record['size'] > max_bytes:
+            raise ValueError("Capture size limit exceeded")
+        os.symlink(record['target'], destination / relative)
+        after = path.lstat()
+        if (before.st_ino, before.st_mtime_ns, before.st_size) != (after.st_ino, after.st_mtime_ns, after.st_size):
+            raise ValueError("Symlink changed during capture")
+        inventory[str(relative)] = record
+        total += record['size']
     try:
         for root, directories, files in os.walk(source, followlinks=False):
             relative = Path(root).relative_to(source)
             if selected is not None:
                 directories[:] = [name for name in directories
-                                  if str(relative / name) in selected_directories]
+                                  if str(relative / name) in selected_directories or str(relative / name) in selected]
                 files = [name for name in files if str(relative / name) in selected]
             for name in directories:
                 path = Path(root) / name
                 if path.is_symlink():
-                    raise ValueError("Symlink directory in capture")
-                (destination / relative / name).mkdir(mode=0o700)
+                    copy_link(path, relative / name)
+                else:
+                    (destination / relative / name).mkdir(mode=0o700)
             for name in files:
                 path = Path(root) / name
                 before = path.lstat()
+                if stat.S_ISLNK(before.st_mode):
+                    copy_link(path, relative / name)
+                    continue
                 if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
                     raise ValueError("Non-regular or hardlinked file in capture")
                 if len(inventory) >= max_files or total + before.st_size > max_bytes:

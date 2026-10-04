@@ -119,8 +119,10 @@ sandbox with a readonly project mount. It selects tracked and nonignored untrack
 files, records tracked deletions and ignored artifacts explicitly, and preserves
 regular Git metadata. Thus ignored virtual environments and dependency directories
 do not block source capture merely because they contain symlinks. Git does not run
-against application repositories on the host. Selected symlinks, linked worktrees,
-submodules and hardlinks are still unsupported capture inputs; these produce
+against application repositories on the host. Relative source symlinks that stay
+inside the project are preserved without host traversal, and their identities are
+checked during redeployment. Absolute or escaping links, linked worktrees,
+submodules and hardlinks remain unsupported; these produce
 incomplete infrastructure evidence, not an application-failure verdict. A source
 inventory alone does not prove reproducible deployment or capture container images.
 The inspector uses a separate disposable writable primary workspace because

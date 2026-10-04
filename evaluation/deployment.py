@@ -5,7 +5,7 @@ import time
 
 from .evidence import atomic_json, collect, positive
 from .grading import run_suite, sha256
-from .sandbox import Sandbox, capture_tree, disjoint
+from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
 from .watchdog import Guard
 
 
@@ -15,13 +15,20 @@ def verify_capture(source, inventory):
         raise ValueError('A completed source inventory is required')
     actual = set()
     for path in source.rglob('*'):
-        if path.is_symlink() or (not path.is_dir() and not path.is_file()):
+        if path.is_symlink():
+            relative = str(path.relative_to(source))
+            actual.add(relative)
+            if symlink_record(source, path) != inventory['files'].get(relative):
+                raise ValueError('Captured link changed')
+            continue
+        if not path.is_dir() and not path.is_file():
             raise ValueError('Unsafe captured artifact')
         if path.is_file():
             relative = str(path.relative_to(source))
             actual.add(relative)
             expected = inventory['files'].get(relative)
-            if (not expected or sha256(path) != expected['sha256'] or path.stat().st_size != expected['size']
+            if (not expected or expected.get('kind', 'file') != 'file'
+                    or sha256(path) != expected['sha256'] or path.stat().st_size != expected['size']
                     or bool(path.stat().st_mode & 0o111) != expected['executable']):
                 raise ValueError('Captured artifact changed')
     if actual != set(inventory['files']):
