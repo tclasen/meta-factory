@@ -82,3 +82,19 @@ failure. No `run` command or boolean bypass is exposed while long-run containmen
 protected-suite coverage/review and host integration remain incomplete. The network
 checker rejects wildcard/global allow-all and unreviewed effective destinations;
 that check alone is not live enforcement evidence.
+
+
+`watchdog.py` is an independent stop-only process. It arms before protected work,
+monitors its actual parent and a bounded wall/monotonic deadline, and stops only
+its declared evaluator sandbox. Release also performs a fresh stop/status check;
+parent claims cannot disable cleanup verification. It survives controller process-
+group death, but not host shutdown or daemon failure. Those remain explicit
+recovery/incomplete outcomes, not claims of protection while the host is offline.
+No cloud TTL is used: sbx 0.46.0 documents `--ttl` as cloud-only.
+
+The first live Mac adapter preflight (`evaluation-host-logs/run-r3k3oe1f`, local
+operator evidence, 2026-10-04) passed after event review: exact pinned schema,
+one requested Luna/medium stage call, completed turn, blank runtime stderr,
+canary capture, shell grading sandbox, and verified stops for both resources.
+No shell/delegation calls occurred in the model trace. It did not exercise natural
+compaction, controller death, default deny, or full application grading.
