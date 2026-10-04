@@ -6,6 +6,7 @@ This workspace contains an experimental Copier template for repository-contained
 
 - `template/` and `copier.yml`: managed factory resources and Copier configuration.
 - `tests/`: isolated generation, integration, and update fixtures.
+- `scripts/adopt.py`: focused render/preflight/adoption helper; no central factory CLI.
 - `README.md`: component ownership, setup, and usage.
 
 - `.factory-planning/SPEC.md`: product scope, requirements, and open questions.

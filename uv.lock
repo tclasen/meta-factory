@@ -64,12 +64,16 @@ source = { virtual = "." }
 [package.dev-dependencies]
 dev = [
     { name = "copier" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
 
 [package.metadata.requires-dev]
-dev = [{ name = "copier", specifier = "==9.14.0" }]
+dev = [
+    { name = "copier", specifier = "==9.14.0" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+]
 
 [[package]]
 name = "funcy"

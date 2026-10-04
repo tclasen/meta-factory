@@ -78,6 +78,9 @@ class TemplateTest(unittest.TestCase):
             {"verification_commands": [[]]}, {"disable_required_checks": True},
         ]:
             with self.subTest(change=change):
+                (self.target / ".factory/project/config.json").write_text(json.dumps({
+                    "schema_version": 1, "verification_commands": [], "pre_commit_commands": [],
+                }))
                 self.config(**change)
                 self.assertEqual(self.check("config").returncode, 2)
 
