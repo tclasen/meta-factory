@@ -123,3 +123,8 @@ against application repositories on the host. Selected symlinks, linked worktree
 submodules and hardlinks are still unsupported capture inputs; these produce
 incomplete infrastructure evidence, not an application-failure verdict. A source
 inventory alone does not prove reproducible deployment or capture container images.
+The inspector uses a separate disposable writable primary workspace because
+sbx 0.46.0 rejects a readonly primary mount; its retained path is logged for cleanup.
+This constraint was observed in Mac preflight `evaluation-deployment-logs/run-zndm65hl`:
+the source fixture stopped successfully, inspector creation was rejected before
+resource creation, and redeployment/grading remained untested in that attempt.

@@ -28,17 +28,25 @@ def stopped_from_listing(text, name):
 
 
 class Sandbox:
-    def __init__(self, attempt, project, specification, controller, *, port, role="builder", project_readonly=False):
+    def __init__(self, attempt, project, specification, controller, *, port, role="builder",
+                 project_readonly=False, primary_workspace=None):
         if role not in ("builder", "grader") or isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
             raise ValueError("Invalid sandbox role/port")
         self.project_readonly = bool(project_readonly)
         self.project, self.specification = disjoint(project, specification)
-        for mount in (self.project, self.specification):
+        self.primary_workspace = Path(primary_workspace).resolve() if primary_workspace else None
+        if self.project_readonly != (self.primary_workspace is not None):
+            raise ValueError("Readonly projects require a separate writable primary workspace")
+        mounts = [self.project, self.specification]
+        if self.primary_workspace is not None:
+            disjoint(self.primary_workspace, self.project, self.specification)
+            mounts.append(self.primary_workspace)
+        for mount in mounts:
             for protected in (attempt.directory, controller):
                 disjoint(mount, protected)
-        if not self.project.is_dir() or not self.specification.is_dir():
+        if not all(mount.is_dir() for mount in mounts):
             raise ValueError("Workspace and specification directories must exist")
-        if any(":" in str(p) for p in (self.project, self.specification)):
+        if any(":" in str(p) for p in mounts):
             raise ValueError("Mount paths cannot contain sbx mode separators")
         self.attempt, self.port, self.role = attempt, port, role
         self.name = f"factory-eval-{role}-{uuid.uuid4().hex[:16]}"
@@ -46,9 +54,11 @@ class Sandbox:
         self.stopped = False
 
     def create_argv(self):
+        mounts = ([str(self.primary_workspace)] if self.primary_workspace else [])
+        mounts += [str(self.project) + (":ro" if self.project_readonly else ""), str(self.specification) + ":ro"]
         return ["sbx", "create", "--name", self.name, "--cpus", "8", "--memory", "16g",
                 "--skills", "off", "--publish", f"127.0.0.1:{self.port}:8080",
-                "codex" if self.role == "builder" else "shell", str(self.project) + (":ro" if self.project_readonly else ""), str(self.specification) + ":ro"]
+                "codex" if self.role == "builder" else "shell", *mounts]
 
     def create(self):
         if self.creation_attempted:
@@ -56,6 +66,8 @@ class Sandbox:
         self.creation_attempted = True
         atomic_json(self.attempt.directory / f"{self.role}-resource.json", {
             "name": self.name, "project": str(self.project), "specification": str(self.specification),
+            "primary_workspace": str(self.primary_workspace) if self.primary_workspace else None,
+            "project_readonly": self.project_readonly,
             "port": self.port, "manual_stop": ["sbx", "stop", self.name], "cleanup": "pending"})
         return collect(self.attempt, f"{self.role}-create", self.create_argv(), cwd=self.project, timeout=300)
 

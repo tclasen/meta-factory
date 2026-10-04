@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import tempfile
 
 from .evidence import atomic_json, collect
 from .sandbox import Sandbox, capture_tree
@@ -40,8 +41,12 @@ def capture_source(attempt, source, destination, specification, *, port,
     if git.is_symlink() or not git.is_dir():
         raise ValueError('Capture requires an ordinary repository, not a linked worktree')
     repository = Path(__file__).resolve().parents[1]
+    # sbx 0.46.0 requires a writable primary workspace; retain this empty scratch
+    # workspace for diagnosis and mount the actual project separately readonly.
+    scratch = Path(tempfile.mkdtemp(prefix='factory-source-inventory-')).resolve()
+    atomic_json(attempt.directory / 'inventory-workspace.json', {'retained_scratch': str(scratch)})
     box = sandbox_factory(attempt, source, specification, repository, port=port,
-                          role='grader', project_readonly=True)
+                          role='grader', project_readonly=True, primary_workspace=scratch)
     guard = None
     selection = None
     cleanup = {'remote_termination_verified': False}
