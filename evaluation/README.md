@@ -98,3 +98,18 @@ one requested Luna/medium stage call, completed turn, blank runtime stderr,
 canary capture, shell grading sandbox, and verified stops for both resources.
 No shell/delegation calls occurred in the model trace. It did not exercise natural
 compaction, controller death, default deny, or full application grading.
+
+
+`deployment.py` verifies captured source identities, copies them into a new isolated
+project, runs `ops/bootstrap.sh` only through the shell grading sandbox, and invokes
+the external suite against the operator-selected loopback origin. A separate guard
+bounds the sandbox lifetime; failure paths retain evidence and attempt verified
+cleanup. The grading budget includes source verification/copy, provisioning and
+bootstrap, not just test execution. This adapter is fixture-tested; its full live
+redeployment path still needs the synthetic host preflight.
+
+The Mac watchdog preflight (`evaluation-failure-logs/run-znnxk7d0`, local evidence,
+2026-10-04) passed both deadline and local-controller SIGKILL cases: exact named
+sandboxes stopped, heartbeat files ceased changing, and stop status was verified.
+Transport exits 143 and -9 were retained as expected failure evidence. No model
+calls, host reboot, daemon failure or network policy changes were part of that test.
