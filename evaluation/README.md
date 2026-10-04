@@ -43,3 +43,12 @@ codex app-server generate-json-schema --experimental --out /tmp/factory-codex-sc
 Deterministic fake-server fixtures cover the adapter; live stage tools, natural
 compaction and remote termination still require bounded host preflight. Reported
 model configuration and runtime telemetry are not provider-side attestation.
+
+
+`sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
+workspace/specification mounts overlapping operator evidence or controller files.
+It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
+restart the sandbox). Source capture reads regular files without executing Git,
+hooks or build scripts on the host; bounds and unsafe paths fail capture rather
+than manufacture an application failure. Live sbx behavior still needs Mac
+preflight. No global policy mutation or resource deletion is implemented here.
