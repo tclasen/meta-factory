@@ -32,12 +32,14 @@ for the full extension contract.
 Fixtures exercise generation, adoption, hook composition, explicit overrides,
 and updates between two temporary template tags, including conflicts. They check
 Codex's documented discovery paths and instruction links, not an actual Codex
-session or the effectiveness of the workflows. Live model discovery and workflow
-evaluation remain runtime preflight and evaluation-harness work. No benchmark,
-stable release, promotion, or downstream PR has been performed.
+session or the effectiveness of the workflows. A separate live smoke test has
+now exercised discovery and one bounded workflow; it is not comparative workflow
+evaluation. No benchmark, stable release, promotion, or downstream PR has been
+performed.
 
 Local validation used Python 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
-macOS execution and older supported Python versions have not yet been exercised.
+The preparation helper has also run on macOS with Python 3.13.16. The full fixture
+suite on macOS and other supported Python versions remains unverified.
 
 The [runtime preflight](docs/runtime-preflight.md) supplies a disposable smoke
 fixture and operator runbook. `scripts/prepare_smoke.py DESTINATION --ref REVISION`
@@ -46,9 +48,13 @@ it never launches sbx or a model. Preparation tests cover destination refusal,
 revision pinning, the expected failure and known correction, and hook enforcement.
 The deliberately failing source fixture under `tests/fixtures/runtime-smoke/`
 is copied into isolated projects; it is not part of top-level test discovery.
-Live Luna Medium validation on the target Mac remains pending.
+The target Mac completed a qualified Luna Medium smoke run with sbx 0.46.0 and
+Codex 0.160.0. See the runbook's observed results for timings, configuration
+warnings, and evidence limits. The next MCP repair and scoped network-denial
+checks remain pending live execution; global policy remains unchanged.
 
 The README sandbox recipes were checked against current Docker and OpenAI
-documentation. `sbx` is not installed in the editing environment; the recipes
-have not been exercised against a live sandbox here. Validate runtime versions,
-authentication, and network policy on the target host before unattended use.
+documentation. `sbx` is not installed in the editing environment; the owner ran
+the live smoke checks on the target Mac. The tested non-interactive launch uses
+`sbx exec`; the full initialization recipes and run-forever loop remain unverified.
+Validate authentication and effective network policy before unattended use.

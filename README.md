@@ -187,10 +187,28 @@ sbx exec "$FACTORY_SANDBOX" codex --version
 sbx exec "$FACTORY_SANDBOX" python3 --version
 sbx exec "$FACTORY_SANDBOX" git --version
 sbx exec "$FACTORY_SANDBOX" docker version
+```
+
+The bundled Codex CLI can lag behind the model catalog. The runtime smoke test
+used **Codex 0.160.0** after updating the image's 0.149.1 installation. For that
+tested version, install it inside the sandbox before launching Codex:
+
+```sh
+sbx exec "$FACTORY_SANDBOX" npm install --global @openai/codex@0.160.0
+sbx exec "$FACTORY_SANDBOX" codex --version
+```
+
+Stop if installation fails or the active version is not 0.160.0; do not continue
+using the old binary. See the [preflight findings](docs/runtime-preflight.md#observed-results)
+for the remaining Docker MCP configuration warnings and network-policy limits.
+
+Open a sandbox shell and run your project's documented dependency setup:
+
+```sh
 sbx exec -it "$FACTORY_SANDBOX" bash
 ```
 
-In that sandbox shell, run your project's documented dependency setup, then:
+Then, inside that shell:
 
 ```sh
 python3 .factory/core/tools/integrate.py --check
@@ -211,13 +229,14 @@ small run-once function:
 ```sh
 FACTORY_SANDBOX=my-project-factory
 factory_run_once() {
-  sbx run --name "$FACTORY_SANDBOX" -- \
-    exec --dangerously-bypass-approvals-and-sandbox "$@"
+  sbx exec -w "$FACTORY_PROJECT" "$FACTORY_SANDBOX" \
+    codex exec --cd "$FACTORY_PROJECT" \
+    --dangerously-bypass-approvals-and-sandbox "$@"
 }
 ```
 
-Arguments after `--` select `codex exec` inside the sandbox. The bypass flag is
-appropriate here because `sbx` provides the external isolation; do not use this
+This launches `codex exec` through sbx's non-interactive command transport. The
+bypass flag is appropriate here because `sbx` provides the external isolation; do not use this
 recipe to run Codex directly on the host. See [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive).
 To select a model, pass `--model MODEL_ID` to the function using an identifier
 available to your account; otherwise it uses the sandbox's Codex configuration.
@@ -279,11 +298,12 @@ terminal:
 sbx stop my-project-factory
 ```
 
-The sandbox commands are documentation-backed recipes, not yet live-tested in
-this repository. Use the [runtime preflight](docs/runtime-preflight.md) to prepare
+The `sbx exec` launch path has passed a bounded factory smoke task on the target
+Mac; the full setup recipes and run-forever loop have not been validated end to
+end. Use the [runtime preflight](docs/runtime-preflight.md) to prepare
 a disposable project and validate one bounded Luna Medium task on the target Mac,
 including factory skill use, fixed acceptance checks, and hook activation.
-Live preflight results remain pending. For template development and validation
-details, see
-[CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
+The latest recorded smoke result is qualified; see the preflight findings for
+configuration warnings and network limits. For template development and validation
+details, see [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).

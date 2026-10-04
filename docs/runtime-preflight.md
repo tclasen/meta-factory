@@ -6,11 +6,44 @@ the factory-runtime portions of Q-001 and Q-003 and exercises D-039 through
 D-044. It does not validate Kubernetes, long-horizon behavior, benchmark quality,
 or the full isolation requirements of REQ-021. It cannot authorize promotion.
 
-**Live status: pending.** Preparation and acceptance fixtures are tested locally;
-the sbx procedure has not been run in this repository's Linux editing environment.
-The official model documentation names Luna but does not establish CLI access
-for your account. If Luna or Medium is unavailable, record a blocker; do not
+**Live status: qualified smoke pass on the target Mac.** The observed configuration
+is sbx 0.46.0, Codex 0.160.0, and requested `gpt-6-luna`/`medium` through Docker's
+`sandboxd` provider. Catalog discovery and the task passed; MCP configuration
+warnings and network-policy limits remain. See [observed results](#observed-results).
+If Luna or Medium is unavailable on a later run, record a blocker; do not
 substitute another model or reasoning setting.
+
+## Observed results
+
+The owner executed these smoke attempts on 2026-10-04 (UTC), using template
+commit `012166dd3a78d4ef3d2bb0ee989ce1c0d4ca9ec7`. Raw logs remain local under
+`.factory-planning/runtime-smoke-logs/`; they are not committed or benchmark evidence.
+
+| Attempt | Observation |
+| --- | --- |
+| 01:42 UTC | Preparation passed; `sbx run` attachment failed after about 30 seconds with `inspect exec: context deadline exceeded`. No task events captured. |
+| 01:45 UTC | `sbx exec` completed the task in 56.76 seconds on Codex 0.149.1; acceptance passed, but Luna metadata was missing. |
+| 01:55 UTC | Model discovery stopped before inference: the old CLI catalog lacked `gpt-6-luna`. |
+| 02:01 UTC | Updating Codex from 0.149.1 to 0.160.0 made Luna/Medium discoverable. Task time was 33.91 seconds; all four tests, guidance integration, staged hook, and file/history checks passed. |
+
+The final attempt read and applied all four factory skills and changed only
+`value.lower()` to `value.strip().lower()`. Cleanup stopped each sandbox. The
+host reported macOS 27.0.1 on arm64, preparation used uv-managed Python 3.13.16,
+and the sandbox reported Python 3.14.4 and Git 2.53.0.
+
+Codex 0.160.0 reported that Docker's generated MCP gateway `headers` and `type`
+keys were ignored. The proposed compatibility correction maps `headers` to
+`http_headers` and removes the legacy `type` for a recognized HTTP URL transport,
+preserving values and all other settings. This correction is prepared in the
+local runner but has not yet been validated on the Mac. Never log header values
+or overwrite an unfamiliar configuration without review.
+
+The effective global network policy was allow-all. The next authorized smoke
+checks explicit deny rules only on its disposable sandbox, leaving global policy
+unchanged. This is not default-deny validation or full REQ-021 acceptance.
+Runtime catalog/configuration evidence does not independently attest the provider's
+served model identity. These observations do not establish benchmark performance,
+natural compaction, Kubernetes isolation, or stable promotion.
 
 ## 1. Prepare a disposable project
 
@@ -73,6 +106,8 @@ sbx create --name "$FACTORY_SANDBOX" codex "$FACTORY_PROJECT"
 sbx policy ls "$FACTORY_SANDBOX" --wide > "$FACTORY_EVIDENCE/network-policy.txt"
 FACTORY_WORKSPACE="$FACTORY_PROJECT"
 sbx exec "$FACTORY_SANDBOX" git -C "$FACTORY_WORKSPACE" rev-parse --show-toplevel
+sbx exec "$FACTORY_SANDBOX" codex --version > "$FACTORY_EVIDENCE/codex-version-before.txt" 2>&1
+sbx exec "$FACTORY_SANDBOX" npm install --global @openai/codex@0.160.0
 sbx exec "$FACTORY_SANDBOX" codex --version > "$FACTORY_EVIDENCE/codex-version.txt" 2>&1
 sbx exec "$FACTORY_SANDBOX" codex exec --help > "$FACTORY_EVIDENCE/codex-exec-help.txt" 2>&1
 sbx exec "$FACTORY_SANDBOX" python3 --version > "$FACTORY_EVIDENCE/python-version.txt" 2>&1
@@ -89,6 +124,8 @@ template checkout or evidence directory to solve a path error. Record any change
 Inspect the saved CLI help for support of the execution flags below.
 Require Python 3.11 or newer. Review each captured version and integration result;
 redirection into an evidence file does not itself indicate success.
+Require Codex 0.160.0 for this smoke version. Keep CLI installation outside the
+timed model task and preserve its output. An update failure is a setup blocker.
 
 Inspect effective policy, including kit rules, before launching the agent. This
 task needs only model/authentication access, with no package registries, GitHub,
@@ -129,8 +166,8 @@ date -u +%Y-%m-%dT%H:%M:%SZ > "$FACTORY_EVIDENCE/start.txt"
 printf '%s\n' 'model=gpt-6-luna' 'model_reasoning_effort=medium' \
   'limit_seconds=600 (operator enforced)' > "$FACTORY_EVIDENCE/requested-runtime.txt"
 FACTORY_SMOKE_PROMPT=$(cat "$FACTORY_PROJECT/SMOKE_TASK.md")
-if sbx run --name "$FACTORY_SANDBOX" -- \
-  exec --cd "$FACTORY_WORKSPACE" --dangerously-bypass-approvals-and-sandbox \
+if sbx exec -w "$FACTORY_WORKSPACE" "$FACTORY_SANDBOX" \
+  codex exec --cd "$FACTORY_WORKSPACE" --dangerously-bypass-approvals-and-sandbox \
   --model gpt-6-luna --config 'model_reasoning_effort="medium"' --json \
   "$FACTORY_SMOKE_PROMPT" \
   > "$FACTORY_EVIDENCE/events.jsonl" 2> "$FACTORY_EVIDENCE/runtime.stderr"; then
