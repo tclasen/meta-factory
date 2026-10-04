@@ -106,7 +106,7 @@ the external suite against the operator-selected loopback origin. A separate gua
 bounds the sandbox lifetime; failure paths retain evidence and attempt verified
 cleanup. The grading budget includes source verification/copy, provisioning and
 bootstrap, not just test execution. This adapter is fixture-tested; its full live
-redeployment path still needs the synthetic host preflight.
+redeployment path passed the synthetic Mac preflight described below.
 
 The Mac watchdog preflight (`evaluation-failure-logs/run-znnxk7d0`, local evidence,
 2026-10-04) passed both deadline and local-controller SIGKILL cases: exact named
@@ -128,3 +128,25 @@ sbx 0.46.0 rejects a readonly primary mount; its retained path is logged for cle
 This constraint was observed in Mac preflight `evaluation-deployment-logs/run-zndm65hl`:
 the source fixture stopped successfully, inspector creation was rejected before
 resource creation, and redeployment/grading remained untested in that attempt.
+
+The corrected Mac attempt `evaluation-deployment-logs/run-0p3cha5v` passed source
+inventory (including ignored symlink and tracked deletion), capture, fresh shell
+deployment, protected external HTTP grading and all three verified sandbox stops.
+The synthetic unapproved suite correctly produced no accepted packages. This does
+not validate Kubernetes deployment, container-image capture or application acceptance.
+
+### Cleanup after controller or host interruption
+
+After the original controller has exited and the host sbx daemon is available,
+run on the Mac, replacing `RUN` with the original protected attempt directory:
+
+```sh
+uv run --isolated --locked python -m evaluation.recovery --attempt RUN
+```
+
+Recovery logs to a new `.factory-planning/evaluation-recovery-logs/run-*/` directory.
+It validates exact recorded resource names against original creation events, stops
+only those resources, verifies their stopped/absent status, and preserves original
+evidence. A missing or unavailable daemon cannot establish cleanup. It never resumes
+the builder or restarts a sandbox. This explicit recovery command does not provide
+deadline enforcement during host reboot or daemon failure; that launch gate remains.
