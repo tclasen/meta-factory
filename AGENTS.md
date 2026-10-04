@@ -38,6 +38,22 @@ Follow existing Markdown conventions: descriptive headings, short paragraphs, fe
 
 Use standard-library `unittest` for template behavior fixtures. No coverage threshold is configured. Evaluation checks must trace to disclosed requirements. Keep authoritative grading independent of builder-written tests, protect holdout cases, and obtain human review before freezing acceptance suites. Fixture tests are not promotion evidence. Report pilot and inconclusive results with their evidence limits.
 
+### Collaborative sandbox and host testing
+
+The agent runs inside Docker `sbx`. The owner authorizes modifying the agent's own working environment, including installing tools and adjusting sandbox-local configuration, to develop and iterate on the setup and its tests. Use this access directly when possible; a missing host-management command inside the sandbox does not establish that it is missing on the Mac. Repository edits still follow the Git workflow below.
+
+When a check needs the host Mac, provide a complete, reviewable script and its exact invocation for the owner to run. Save the script in the shared workspace. Scripts must:
+
+- Write logs to a unique per-attempt directory under `.factory-planning/`, using the host checkout path so the agent can read them through the shared mount. Print that directory at startup and completion.
+- Capture stdout, stderr, UTC start/end times, relevant tool versions, tested revisions, each check's exit status, and an overall outcome, including on failure. Preserve the original command status when logging through a pipeline; never treat successful logging as a successful check.
+- State the intended changes and checks, use explicit resource names, bound potentially hanging operations, and retain failed attempts for inspection. Record cleanup outcomes and leave enough information to clean up resources after interruption.
+- Keep credentials and secret values out of logs; avoid shell tracing and wholesale environment/configuration dumps. Keep evidence outside builder-mounted test projects and out of Git.
+- Scope changes to the test resources. Do not silently reset global host policy, alter unrelated sandboxes, or remove unrelated data.
+
+After the owner runs a script, read the resulting files directly, explain what passed or failed and what remains unverified, then adjust the setup or provide the next script. Continue this workflow until the owner is satisfied with the setup. Do not ask for pasted terminal output when the shared logs are available. Host-only execution remains with the owner unless host access is explicitly provided.
+
+This authorization covers iterative setup and preflight testing, including sandbox-local provisioning. It does not authorize purchases, benchmark or confirmatory experiment execution, stable promotion, or implementation of the separate evaluation harness. Preflight results retain their evidence limits.
+
 ## Commit & Pull Request Guidelines
 
 Work in the smallest independently verifiable units possible. Complete this workflow for each unit before starting the next:
@@ -53,4 +69,4 @@ If Git is unavailable or the directory is not a repository, report the blocker; 
 
 ## Planning & Configuration Boundaries
 
-Keep `.factory-planning/` local; adding it to Git requires the owner's approval. The owner authorized implementation of the component/template plan (D-039 through D-044). Experiment execution, provisioning, purchasing, stable promotion, and implementing the separate evaluation harness remain outside this task. Keep unresolved recommendations distinct from confirmed requirements.
+Keep `.factory-planning/` local; adding it to Git requires the owner's approval. The owner authorized implementation of the component/template plan (D-039 through D-044) and collaborative setup/preflight testing as described above. Provisioning beyond that testing, benchmark or confirmatory experiment execution, purchasing, stable promotion, and implementing the separate evaluation harness remain outside this task. Keep unresolved recommendations distinct from confirmed requirements.
