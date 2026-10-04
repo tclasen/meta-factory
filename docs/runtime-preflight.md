@@ -350,6 +350,43 @@ synthetic response. Cluster removal and sandbox stop succeeded. This establishes
 the tested read-only input and external HTTP transport paths; it does not make
 the synthetic checker an authoritative or protected benchmark grader.
 
+### Bounded consecutive-session smoke
+
+The local operator script `.factory-planning/run-session-smoke.py` extends the
+earlier live workflow smoke to task-state handoff. It remains local, like the
+existing runtime discovery and MCP compatibility helpers; it is not a released
+template tool. Run on the owner Mac:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 .factory-planning/run-session-smoke.py
+```
+
+It generates a disposable project pinned to the current template commit and
+adds one task to `TASKS.md`. Exactly two fresh `gpt-6-luna` / medium sessions run
+under Codex 0.160.0. The first must fix the known whitespace defect, verify the
+four fixed tests, and mark the task done. The second must report `NO_READY_TASK`
+without changing files. Git history/configuration/hooks and tracked/nonignored
+files outside the two authorized edits are checked against external snapshots.
+Ignored caches are not covered by that comparison. Runtime events
+must show distinct thread IDs and completed turns; event review still checks
+skill use and unexpected activity. Requested configuration is not provider-side
+model attestation.
+
+Each model invocation is limited to ten minutes. The runner stops on failure,
+retains evidence in `.factory-planning/session-smoke-logs/`, and attempts to stop
+its dedicated sandbox. It installs the pinned CLI and applies the previously
+tested MCP correction in that sandbox, using existing host authentication; no
+global policy changes occur. Raw event logs remain local. Preparation, known
+correction acceptance, and unchanged-file snapshot checks passed locally before
+the host run. Live consecutive-session behavior remains pending until reviewed.
+
+This is a bounded native workflow test, not the continuous-conversation
+experimental protocol. The official
+[non-interactive documentation](https://developers.openai.com/codex/noninteractive)
+confirms `codex exec --json` event output and distinguishes a fresh invocation
+from `codex exec resume`; the actual pinned runtime behavior is checked live.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
