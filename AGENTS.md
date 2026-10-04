@@ -52,6 +52,8 @@ When a check needs the host Mac, provide a complete, reviewable script and its e
 
 After the owner runs a script, read the resulting files directly, explain what passed or failed and what remains unverified, then adjust the setup or provide the next script. Continue this workflow until the owner is satisfied with the setup. Do not ask for pasted terminal output when the shared logs are available. Host-only execution remains with the owner unless host access is explicitly provided.
 
+Continue authorized work autonomously until the current effort's tasks are complete. Do not stop after a successful intermediate check to ask whether to continue. When blocked on host-only execution, provide the next logging script and exact invocation; after the owner reports completion, read its logs and resume independently. Keep the existing scope and evidence boundaries in force.
+
 This authorization covers iterative setup and preflight testing, including sandbox-local provisioning. It does not authorize purchases, benchmark or confirmatory experiment execution, stable promotion, or implementation of the separate evaluation harness. Preflight results retain their evidence limits.
 
 ## Commit & Pull Request Guidelines
