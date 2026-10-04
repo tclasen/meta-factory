@@ -341,6 +341,15 @@ suite. Root write rejection alone does not prove resistance to remounts or every
 privileged escape. The sampled setup checks do not settle evaluation-harness
 architecture, evaluator permissions, or benchmark acceptance gates.
 
+The Mac boundary run on 2026-10-04 at 03:42 UTC
+(`boundary-preflight-logs/run-4fd1zzev`, local evidence) passed all sampled checks.
+Specification writes by both the sandbox user and root returned `EROFS` (errno
+30), and the host canary was unchanged. The evidence path was not visible.
+Internal service DNS and host loopback HTTP both returned 200 with the exact
+synthetic response. Cluster removal and sandbox stop succeeded. This establishes
+the tested read-only input and external HTTP transport paths; it does not make
+the synthetic checker an authoritative or protected benchmark grader.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
