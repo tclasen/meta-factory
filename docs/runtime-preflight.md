@@ -219,7 +219,7 @@ removes just that global rule, keeping kit-specific allowances intact, and tests
 registry success plus denial of example.com. It never resets the policy database.
 
 Restoration runs before sandbox cleanup, including on failure. A separate process
-attempts restoration after 150 seconds if the main process is interrupted; this
+attempts restoration after 240 seconds if the main process is interrupted; this
 cannot protect against host shutdown or a broken sbx daemon. Restoration recreates
 equivalent global TCP allow-all behavior with a new rule ID/provenance, unless
 the old allowance is already intact. Rules are logged afterward for verification.
@@ -238,6 +238,32 @@ behavior under the new default. Unmatched requests may trigger an approval reque
 do not approve one during the test. The HTTP timeout records that as a failed or
 inconclusive attempt. Review the JSON policy decisions and network observations
 together before interpreting the result.
+
+The first global-default test at `0bbab80` passed on 2026-10-04 at 03:17 UTC
+(`allowlist-preflight-logs/run-aiw5r7w6`, local evidence). Registry and example.com
+both returned 200 beforehand. Removing global TCP allow-all left the kit's
+registry allowance effective (HTTP 200) and produced implicit default denial for
+example.com (HTTP 403). Equivalent global TCP allow-all was restored under a new
+rule ID, confirmed by the final rule snapshot; the test sandbox stopped. The
+global restriction lasted about two seconds. This validates the basic usable
+allowlist mechanism, not the suitability of every kit destination.
+
+To extend that same temporary-global-policy test to sandbox direct HTTPS and
+Kubernetes pods, use:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 scripts/test_host_allowlist.py --allow-temporary-global-policy-change --pods
+```
+
+This uses a 4-CPU/8-GiB sandbox. Cluster and probe images are downloaded and the
+pod is made ready before policy removal. With the tested `ndots:1` setting, both
+registry and example.com are probed from sandbox and pod, with and without proxy
+configuration, before and during default deny. UDP DNS observations are also
+retained with their existing baseline limitations. Global policy is restored
+before cluster removal and sandbox stop. Allow about 25 minutes at timeout
+ceilings; the restricted-policy phase has the independent 240-second restoration
+watchdog. Collection success is not a verdict on all recorded network paths.
 
 ### Prepare the bounded model task
 

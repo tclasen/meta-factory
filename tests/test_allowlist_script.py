@@ -30,14 +30,14 @@ class AllowlistScriptTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.global_allow_rule(snapshot)
 
-    def test_failure_after_removal_restores_before_stopping_sandbox(self):
+    def exercise(self, fail_label, pods=False):
         calls = []
 
         def collect(directory, label, command, timeout):
             calls.append((label, command))
             if label in ("policy-before", "policy-recheck", "policy-after"):
                 (directory / f"{label}.stdout.log").write_text(json.dumps(BASELINE))
-            return {"check": label, "outcome": "failed" if label == "allowed-during" else "ok"}
+            return {"check": label, "outcome": "failed" if label == fail_label else "ok"}
 
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(MODULE, "REPO", Path(temporary)), \
@@ -45,14 +45,36 @@ class AllowlistScriptTest(unittest.TestCase):
                  patch.object(MODULE, "collect", side_effect=collect), \
                  patch.object(MODULE.subprocess, "Popen"), \
                  contextlib.redirect_stdout(io.StringIO()):
-                result = MODULE.main(["--allow-temporary-global-policy-change"])
+                result = MODULE.main(["--allow-temporary-global-policy-change"] + (["--pods"] if pods else []))
             summary = json.loads(next(Path(temporary).glob(
                 ".factory-planning/allowlist-preflight-logs/run-*/summary.json")).read_text())
+        return result, summary, calls
+
+    def test_failure_after_removal_restores_before_stopping_sandbox(self):
+        result, summary, calls = self.exercise("allowed-during")
         self.assertEqual(result, 1)
         self.assertTrue(summary["restored"])
         names = [name for name, _ in calls]
         self.assertLess(names.index("restore-global-allow"), names.index("sandbox-stop"))
         self.assertIn(("restore-global-allow", MODULE.RESTORE), calls)
+
+    def test_pod_failure_restores_policy_before_cluster_removal(self):
+        result, summary, calls = self.exercise("pod-example-restricted", pods=True)
+        self.assertEqual(result, 1)
+        self.assertTrue(summary["restored"])
+        names = [name for name, _ in calls]
+        self.assertLess(names.index("restore-global-allow"), names.index("cluster-remove"))
+        self.assertLess(names.index("pod-ready"), names.index("remove-global-allow"))
+
+    def test_pod_observations_are_not_declared_isolation_success(self):
+        result, summary, calls = self.exercise(None, pods=True)
+        self.assertEqual(result, 0)
+        self.assertEqual(summary["outcome"], "observations_collected_pending_review")
+        names = [name for name, _ in calls]
+        for source in ("sandbox", "pod"):
+            for target in ("registry", "example"):
+                for phase in ("baseline", "restricted"):
+                    self.assertIn(f"{source}-{target}-{phase}", names)
 
     def test_failed_restore_keeps_marker_for_watchdog(self):
         with tempfile.TemporaryDirectory() as temporary:

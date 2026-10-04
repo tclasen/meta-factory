@@ -14,7 +14,7 @@ import time
 import uuid
 
 from inspect_host import REPO, collect, utc_now
-from test_host_isolation import PROBE
+from test_host_isolation import K3S_IMAGE, PROBE
 
 
 RESTORE = ["sbx", "policy", "allow", "network", "--protocol", "tcp", "**"]
@@ -59,13 +59,14 @@ def restore(directory, label):
 
 def watchdog(directory):
     # Independent process survives an interrupted/killed parent; no credentials needed.
-    time.sleep(150)
+    time.sleep(240)
     return 0 if restore(directory, "watchdog-restore") else 1
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-temporary-global-policy-change", action="store_true")
+    parser.add_argument("--pods", action="store_true", help="Include paired sandbox and Kubernetes pod probes")
     parser.add_argument("--watchdog", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if platform.system() != "Darwin":
@@ -79,9 +80,9 @@ def main(argv=None):
     directory = Path(tempfile.mkdtemp(prefix="run-", dir=base))
     sandbox = "factory-allowlist-" + uuid.uuid4().hex[:12]
     summary = {"started": utc_now(), "sandbox": sandbox, "outcome": "running",
-               "checks": [], "cleanup": [], "restored": False,
+               "checks": [], "cleanup": [], "restored": False, "pods": args.pods,
                "manual_restore": "sbx policy allow network --protocol tcp '**'",
-               "limitations": "Restores TCP allow-all behavior, not the original rule ID/provenance. No pod or UDP test."}
+               "limitations": "Restores TCP allow-all behavior, not the original rule ID/provenance. Sampled egress only."}
     print(f"Logs: {directory}\nSandbox: {sandbox}", flush=True)
     print("Temporarily removes GLOBAL TCP allow-all; other sandboxes may lose unlisted egress.", flush=True)
     print("Restores equivalent TCP allow-all afterward, with a new rule ID. No policy reset.", flush=True)
@@ -98,6 +99,18 @@ def main(argv=None):
         code = PROBE.replace("https://registry.npmjs.org/", url)
         run(label, ["sbx", "exec", sandbox, "python3", "-c", code, str(expected)], 30)
 
+    def inside(label, command, timeout=60):
+        run(label, ["sbx", "exec", sandbox, *command], timeout)
+
+    def paired(stage):
+        source = (Path(__file__).resolve().parent / "egress_probe.py").read_text()
+        for destination in ("registry.npmjs.org", "example.com"):
+            code = source.replace("registry.npmjs.org", destination)
+            label = destination.split(".")[0] + "-" + stage
+            inside("sandbox-" + label, ["python3", "-c", code])
+            inside("pod-" + label, ["docker", "exec", "factory-k3s", "kubectl", "exec",
+                                   "factory-egress", "--", "python3", "-c", code])
+
     try:
         run("revision", ["git", "rev-parse", "HEAD"])
         run("worktree", ["git", "status", "--porcelain"])
@@ -105,10 +118,36 @@ def main(argv=None):
         run("policy-before", ["sbx", "policy", "ls", "--type", "network", "--json"])
         rule_id = global_allow_rule(json.loads((directory / "policy-before.stdout.log").read_text()))
         attempted_create = True
-        run("create", ["sbx", "create", "--name", sandbox, "--cpus", "2", "--memory", "2g",
+        run("create", ["sbx", "create", "--name", sandbox, "--cpus", "4" if args.pods else "2",
+                       "--memory", "8g" if args.pods else "2g",
                        "--skills", "off", "codex"], 300)
         request("allowed-baseline", "https://registry.npmjs.org/", 200)
         request("unlisted-baseline", "https://example.com/", 200)
+        if args.pods:
+            inside("k3s-start", ["docker", "run", "--detach", "--privileged", "--name", "factory-k3s",
+                                "--entrypoint", "/bin/sh", K3S_IMAGE, "-ec",
+                                'test -e /dev/kmsg || mknod /dev/kmsg c 1 11; exec /bin/k3s "$@"',
+                                "factory-k3s", "server", "--disable", "traefik",
+                                "--disable", "servicelb", "--disable", "metrics-server"], 300)
+            inside("cluster-ready", ["sh", "-c", """
+for attempt in $(seq 1 36); do
+  [ "$(docker inspect --format '{{.State.Running}}' factory-k3s)" = true ] || exit 1
+  if docker exec factory-k3s kubectl wait --for=condition=Ready node --all --timeout=5s &&
+     docker exec factory-k3s kubectl get serviceaccount default; then exit 0; fi
+  sleep 5
+done
+exit 1
+"""], 390)
+            inside("pod-create", ["docker", "exec", "factory-k3s", "kubectl", "run", "factory-egress",
+                                  "--image=python:3.14-alpine", "--restart=Never", "--overrides",
+                                  json.dumps({"spec": {"dnsConfig": {"options": [{"name": "ndots", "value": "1"}]}}}),
+                                  "--command", "--", "sleep", "1200"])
+            inside("pod-ready", ["docker", "exec", "factory-k3s", "kubectl", "wait",
+                                 "--for=condition=Ready", "pod/factory-egress", "--timeout=180s"], 200)
+            inside("k3s-image", ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", K3S_IMAGE])
+            inside("pod-image", ["docker", "exec", "factory-k3s", "kubectl", "get", "pod", "factory-egress",
+                                 "-o", "jsonpath={.status.containerStatuses[*].imageID}"])
+            paired("baseline")
         # Refuse intervening global edits before arming restoration.
         run("policy-recheck", ["sbx", "policy", "ls", "--type", "network", "--json"])
         if global_allow_rule(json.loads((directory / "policy-recheck.stdout.log").read_text())) != rule_id:
@@ -123,9 +162,13 @@ def main(argv=None):
             run(label, ["sbx", "policy", "check", "network", "--sandbox", sandbox, "--json", target], required=False)
         request("allowed-during", "https://registry.npmjs.org/", 200)
         request("unlisted-during", "https://example.com/", 403)
+        if args.pods:
+            paired("restricted")
         if not (directory / "restoration-needed").exists():
             raise RuntimeError("Watchdog restored policy during observations; attempt is inconclusive")
         summary["outcome"] = "checks_passed_pending_review"
+        if args.pods:
+            summary["outcome"] = "observations_collected_pending_review"
     except KeyboardInterrupt:
         summary["outcome"] = "interrupted"
     except Exception as error:
@@ -133,6 +176,10 @@ def main(argv=None):
     finally:
         summary["restored"] = restore(directory, "restore-global-allow")
         if attempted_create:
+            if args.pods:
+                summary["cleanup"].append(collect(directory, "cluster-remove", [
+                    "sbx", "exec", sandbox, "docker", "rm", "--force", "--volumes", "factory-k3s",
+                ], 30))
             summary["cleanup"].append(collect(directory, "sandbox-stop", ["sbx", "stop", sandbox], 60))
         summary["cleanup"].append(collect(directory, "policy-after", ["sbx", "policy", "ls", "--type", "network", "--json"], 30))
         try:
@@ -144,7 +191,9 @@ def main(argv=None):
         print(f"Outcome: {summary['outcome']}\nRestored: {summary['restored']}\nLogs: {directory}", flush=True)
         if not summary["restored"]:
             print("RESTORATION FAILED. Run: " + summary["manual_restore"], flush=True)
-    return 0 if summary["outcome"] == "checks_passed_pending_review" and summary["restored"] and all(
+    return 0 if summary["outcome"] in (
+        "checks_passed_pending_review", "observations_collected_pending_review",
+    ) and summary["restored"] and all(
         item["outcome"] == "ok" for item in summary["cleanup"]
     ) else 1
 
