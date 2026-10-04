@@ -19,6 +19,16 @@ class ServicesTest(unittest.TestCase):
             self.assertEqual(classify(1, message), 'inconclusive')
         self.assertEqual(classify(0, 'wget: connection refused'), 'inconclusive')
 
+    def test_gnu_wget_connect_diagnostics_and_ambiguous_failures(self):
+        for reason in ('Connection refused', 'Connection timed out', 'No route to host', 'Network is unreachable'):
+            message = '--2026-10-04-- http://127.0.0.1:9000/\nConnecting to 127.0.0.1:9000... failed: ' + reason + '.\n'
+            self.assertEqual(classify(4, message), 'unreachable')
+            self.assertEqual(classify(0, message), 'inconclusive')
+            self.assertEqual(classify(4, message + '  HTTP/1.1 503 Unavailable\n'), 'reachable')
+        for message in ('failed: Connection refused.', 'Connecting to 127.0.0.1:9000... failed: unknown.',
+                        'Connecting to 127.0.0.1:9000... connected.\nRead error: Connection timed out.'):
+            self.assertEqual(classify(4, message), 'inconclusive')
+
     def test_failed_controls_cannot_establish_outage(self):
         for values in (['unreachable'], ['reachable', 'unreachable', 'unreachable', 'unreachable', 'inconclusive'],
                        ['reachable', 'reachable']):

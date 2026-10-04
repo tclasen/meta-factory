@@ -11,6 +11,11 @@ from urllib.parse import urlsplit
 
 HTTP_STATUS = re.compile(r'^\s*HTTP/\d(?:\.\d)?\s+[1-5]\d\d(?:\s|$)', re.MULTILINE)
 NETWORK_FAILURE = re.compile(r'wget:.*(?:connection refused|timed out|no route to host|network is unreachable)', re.IGNORECASE)
+GNU_CONNECT_FAILURE = re.compile(
+    r'^Connecting to [^\r\n]+\.\.\. failed: '
+    r'(?:Connection refused|Connection timed out|No route to host|Network is unreachable)\.$',
+    re.MULTILINE,
+)
 
 
 def endpoint(value):
@@ -28,7 +33,7 @@ def classify(returncode, stderr):
     # Tool startup, exec and unrelated protocol failures cannot prove an outage.
     if HTTP_STATUS.search(stderr):
         return 'reachable'
-    if returncode != 0 and NETWORK_FAILURE.search(stderr):
+    if returncode != 0 and (NETWORK_FAILURE.search(stderr) or GNU_CONNECT_FAILURE.search(stderr)):
         return 'unreachable'
     return 'inconclusive'
 
@@ -70,6 +75,7 @@ def main():
         def check(url):
             # Fixed trusted program; untrusted response bodies are discarded.
             script = ('unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy; '
+                      'export LC_ALL=C; '
                       'exec wget -T 3 -S -O /dev/null "$1"')
             remaining = deadline - time.monotonic()
             if remaining <= 0:
