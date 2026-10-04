@@ -387,6 +387,23 @@ experimental protocol. The official
 confirms `codex exec --json` event output and distinguishes a fresh invocation
 from `codex exec resume`; the actual pinned runtime behavior is checked live.
 
+The 2026-10-04 04:49 UTC run (`session-smoke-logs/run-5yo3puux`, local evidence)
+passed after event review. Session one read all four workflow skills, applied the
+whitespace fix, passed all four tests, reviewed the diff, and updated only the
+task status. It took 37.32 seconds. Session two used a distinct thread, found the
+task already done, reported `NO_READY_TASK`, and changed no tracked/nonignored
+files or checked Git metadata; it took 18.51 seconds. Independent verification,
+integration, and sandbox cleanup passed. No delegation or runtime failure was
+observed in the traces.
+
+The second session also noticed a stale reference to deleted `SMOKE_TASK.md` in
+the original smoke policy. The local preparation now replaces that policy with
+the bounded queue policy, rather than appending it. The successful observed run
+used the explicit override despite the stale reference; this correction removes
+the ambiguity for future runs. This is live evidence for one task followed by an
+empty queue, not for arbitrary task queues, interruption during inference, or
+the continuous-conversation experiment.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
