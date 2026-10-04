@@ -215,5 +215,14 @@ The sandbox-local synthetic run `local-cluster-grading-logs/run-ay0r88oj`
 verified one Deployment at 1 → 0 → 1 replicas, no owned Pods during suspension,
 continued API service availability, restored worker readiness/connectivity, and
 verified cluster removal. This used the local fixture transport, not Mac sbx
-transport. It does not yet validate storage failures, durable worker jobs, live
-StatefulSets, or restoration after controller death.
+transport. It does not validate S3 storage failures, durable worker jobs, or restoration
+after controller death.
+
+The subsequent local run `local-cluster-grading-logs/run-a433yxlz` also verified
+a StatefulSet at 1 → 0 → 1 replicas. A separate synthetic HTTP dependency was
+reachable before suspension, refused three connections while its owned Pods were
+absent, and became reachable after restoration. Independent API positive controls
+passed before and after the outage; final cluster removal was verified. The
+StatefulSet used a disposable HTTP server, not an S3 service or persistent volume.
+Object-write atomicity, orphan cleanup, durable data and job recovery remain
+unverified by this fixture.
