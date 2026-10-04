@@ -152,3 +152,22 @@ only those resources, verifies their stopped/absent status, and preserves origin
 evidence. A missing or unavailable daemon cannot establish cleanup. It never resumes
 the builder or restarts a sandbox. This explicit recovery command does not provide
 deadline enforcement during host reboot or daemon failure; that launch gate remains.
+
+### Sandbox-local Kubernetes preflight
+
+The synthetic cluster check `local-cluster-grading-logs/run-bkg84rkg` passed on
+the agent's sbx Docker daemon (29.7.2, kernel 7.0.14): live Pod/ReplicaSet/Deployment
+ownership, application Pod security, private services, paired allowed/denied
+ingress and egress probes, and verified removal of the named cluster container.
+It used k3s v1.34.1-k3s1 with Canal v3.30.3, flannel and the native k3s policy
+controller disabled, upstream CNI directories, and private node cgroup/mount setup.
+This is synthetic local evidence, not Mac publication, benchmark allocation,
+application grading, or an approved operator egress policy.
+
+The native k3s policy controller failed enforcement in the same environment.
+An isolated netfilter probe accepted ipset/set matches but rejected NFLOG; the
+controller's NFLOG rules caused its entire iptables update to fail. Retained
+failure logs identify the limitation. Do not infer enforcement from NetworkPolicy
+objects or healthy application connectivity; both permitted and denied connections
+must be observed. The tested alternative remains a preparation candidate pending
+complete toolchain identity capture and final protocol review.
