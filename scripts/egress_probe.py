@@ -20,7 +20,11 @@ def probe():
             results[name] = {"http_status": error.code}
         except Exception as error:
             # Proxy configuration and exception text may contain credentials.
-            results[name] = {"error_type": type(error).__name__}
+            reason = getattr(error, "reason", error)
+            results[name] = {"error_type": type(error).__name__,
+                             "reason_type": type(reason).__name__,
+                             "errno": getattr(reason, "errno", None),
+                             "tls_verify_code": getattr(reason, "verify_code", None)}
     transaction = secrets.token_bytes(2)
     question = b"".join(bytes([len(label)]) + label for label in b"registry.npmjs.org".split(b"."))
     packet = transaction + struct.pack("!HHHHH", 0x100, 1, 0, 0, 0) + question + b"\0\0\1\0\1"

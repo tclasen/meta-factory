@@ -87,6 +87,8 @@ def main(argv=None):
         run("profile-help", ["sbx", "policy", "profile", "--help"], required=False)
         if args.egress:
             run("profiles", ["sbx", "policy", "profile", "ls"], required=False)
+            run("policy-remove-help", ["sbx", "policy", "rm", "network", "--help"], required=False)
+            run("global-network-policy", ["sbx", "policy", "ls", "--type", "network", "--json"], required=False)
         attempted_create = True
         run("create", ["sbx", "create", "--name", sandbox, "--cpus", "4",
                        "--memory", "8g", "--skills", "off", "codex", str(workspace)], 300)
@@ -139,6 +141,9 @@ exit 1
         if args.egress:
             inside("egress-pod-create", ["docker", "exec", "factory-k3s", "kubectl", "run",
                                         "factory-egress", "--image=python:3.14-alpine",
+                                        "--overrides", json.dumps({"spec": {"dnsConfig": {
+                                            "options": [{"name": "ndots", "value": "1"}],
+                                        }}}),
                                         "--restart=Never", "--command", "--", "sleep", "1200"])
             inside("egress-pod-ready", ["docker", "exec", "factory-k3s", "kubectl", "wait",
                                        "--for=condition=Ready", "pod/factory-egress", "--timeout=180s"], 200)

@@ -170,6 +170,26 @@ have unrelated causes. The UDP check covers one resolver and IPv4 path only.
 Proxy-disabled requests may still traverse transparent sandbox interception.
 No global policy is modified, and no cloud resources or model calls are made.
 
+The 2026-10-04 03:01 UTC extended attempt at `ba6f68f` collected all observations
+and cleaned up successfully (`run-kzyvca81`, local evidence). Adding an exact
+registry allow rule did not override the explicit wildcard deny: policy remained
+denied and the sandbox's proxied HTTPS request remained HTTP 403. Sandbox HTTPS
+with proxies disabled returned 200 before denial and a connection error after it.
+No governance profiles were available. This rule combination cannot supply the
+desired usable allowlist; changing global defaults remains outside this script.
+
+Pod HTTPS failed even before denial, making that comparison inconclusive. Local
+reproduction identified a DNS lookup failure with the Alpine pod's default
+`ndots:5`; an absolute external name resolved, and setting the probe pod's
+`dnsConfig` to `ndots:1` restored both HTTPS probes to HTTP 200. Extended runs now
+set that option explicitly and record nested error types/numeric codes without
+logging potentially sensitive exception text. This is a probe configuration,
+not validation of general cluster DNS or a platform-wide DNS change. UDP DNS to
+the public resolver was refused at every stage, so it does not demonstrate a
+policy transition. The corrected pod baseline still needs the host-side paired
+run. The script additionally collects read-only policy-removal help and global
+network-rule metadata for planning a separate allowlist solution.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
