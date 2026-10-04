@@ -7,14 +7,16 @@ This workspace contains an experimental Copier template for repository-contained
 - `template/` and `copier.yml`: managed factory resources and Copier configuration.
 - `tests/`: isolated generation, integration, and update fixtures.
 - `scripts/adopt.py`: focused render/preflight/adoption helper; no central factory CLI.
-- `README.md`: component ownership, setup, and usage.
+- `README.md`: project initialization/updates, customization, sandbox setup, and run modes.
+- `CONTRIBUTING.md`: development setup, checks, and validation limits.
+- `docs/`: architecture and integration details.
 
 - `.factory-planning/SPEC.md`: product scope, requirements, and open questions.
 - `.factory-planning/DECISIONS.md`: confirmed decisions and unresolved choices.
 - `.factory-planning/EVALUATION.md`: experimental protocol and evidence rules.
 - `.gitignore`: excludes `/.factory-planning/` from version control.
 
-Read these records before proposing implementation. Preserve identifiers such as `REQ-001` and `D-001` when referencing them. The planned TypeScript/React and Python/FastAPI stack belongs to the benchmark application; the factory implementation language remains undecided.
+Read these records before proposing implementation. Preserve identifiers such as `REQ-001` and `D-001` when referencing them. The planned TypeScript/React and Python/FastAPI stack belongs to the benchmark application; the separate evaluation harness's implementation language remains undecided.
 
 ## Build, Test, and Development Commands
 

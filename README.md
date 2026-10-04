@@ -1,165 +1,285 @@
 # Knowledge-work factory
 
-An experimental Copier template containing instructions, policies, skills, and
-focused tools for an existing Codex agent. The factory is not an application,
-central CLI, or service. A separate evaluation harness remains to be designed.
+Initialize a project with this Copier template, customize its instructions and
+checks, then run Codex against it inside Docker `sbx`.
 
-## Component contract
+## 1. Initialize or update a project with Copier
 
-| Location in an adopting repository | Ownership |
-| --- | --- |
-| `.factory/core/` | Template-managed instructions, references, shared tools, and hooks. |
-| `.factory/project/` | Project-owned configuration and policy extensions. |
-| `.agents/skills/factory-*/` | Template-managed, natively discoverable workflow skills. |
-| Root `AGENTS.md` | Project-owned, except a marked factory integration section. |
-
-The initial workflow covers planning, implementation, verification, and review.
-Keep always-loaded guidance small; load skills and references when needed. Use
-scripts for deterministic checks rather than turning the factory into a program.
-
-Projects customize named extension points. Updates preserve project extensions
-and unrelated instructions, skills, and hooks. Conflicting edits and unsupported
-integrations require review. Required checks cannot be silently disabled by prose;
-changes to policy must be explicit. Protected evaluation and release gates remain
-outside the builder's authority and are not included in generated repositories.
-
-Git hooks compose with existing hooks. Codex hooks are added only when a concrete
-requirement needs one and the selected Codex version supports it. Instructions
-guide agents; local hooks are bypassable checks, not a security boundary.
-
-This contract implements REQ-001, REQ-005, and REQ-006 and records the component
-boundary decisions D-039 through D-044. Local planning records remain untracked.
-Fixture results do not constitute benchmark evidence or stable catalog promotion.
-This repository will consume its own template only after a stable release exists.
-
-## Discovery references
-
-- [Codex project instructions](https://developers.openai.com/codex/guides/agents-md)
-- [Codex repository skills](https://developers.openai.com/codex/skills)
-
-Factory skills use the native `.agents/skills` directory. Existing project and
-user instructions still follow Codex's own instruction hierarchy; the factory
-does not claim to override that hierarchy.
-
-## Development
-
-Install [uv](https://docs.astral.sh/uv/) and Python 3.11 or newer, then run:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11+
+(locally or through uv), and Git. Set the template checkout and the project path
+in your host shell, replacing the example paths:
 
 ```sh
-uv sync --locked
-uv run --locked python -m unittest discover -s tests -v
-git diff --check
+FACTORY_TEMPLATE=/absolute/path/to/factory
+FACTORY_PROJECT=/absolute/path/to/my-project
+FACTORY_REF=$(git -C "$FACTORY_TEMPLATE" rev-parse HEAD)
 ```
 
-There is no application build or development server. `pyproject.toml` and
-`uv.lock` pin template development tools (Copier 9.14.0); they do not define
-a factory application or select the future harness's language. Focused scripts
-use Python's standard library. Use four-space indentation, descriptive snake-case
-names, and standard-library `unittest` for behavior fixtures. Keep skills concise
-and maintain their YAML `name` and `description` fields.
+This pins the template to a commit. There is no stable release yet; select a
+reviewed release tag or commit when updating. Keep the template checkout available:
+Copier records its location in the project's `.factory-answers.yml`.
 
-The template's verification commands are deliberately unconfigured. Projects
-select their actual commands in `.factory/project/config.json`; an empty list
-does not count as passing verification. See the generated customization reference
-for the full extension contract.
+### Initialize a new project
 
-## Generate or adopt a repository
-
-Run these commands from this template checkout after `uv sync --locked`:
+Use a destination that does not already exist:
 
 ```sh
-uv run --locked python scripts/adopt.py /absolute/path/to/project --ref HEAD
-```
-
-The destination must already be a Git repository with a clean worktree, including
-no untracked files. For a new project, create the directory and initialize Git
-explicitly first; the adoption tool does not initialize repositories. `HEAD`
-selects this checkout's committed experimental template. Once releases exist,
-use an explicit reviewed tag or commit instead. Keep the source checkout available:
-Copier records its location in `.factory-answers.yml` for subsequent updates.
-
-Adoption renders into a temporary directory, checks all destination paths, then
-installs the template and integrates guidance/hooks. It does not execute project
-verification commands, create commits, or publish anything. Existing application
-files, project skills, and project extensions are preserved. Existing factory core,
-reserved skill names, answers metadata, symlinked integration paths, and a root
-`AGENTS.override.md` are conflicts. Resolve them explicitly before retrying; do not
-force-copy the template over an existing project. Changes are rolled back on
-ordinary write failures; do not run adoption concurrently with other editors.
-
-Review the generated diff, select actual verification commands in
-`.factory/project/config.json`, and commit the adoption under project policy.
-Restart Codex to load the new root guidance. The four skills live directly in
-`.agents/skills/`. Local hooks are not tracked by Git; in each subsequent clone run:
-
-```sh
+uv tool run --from copier==9.14.0 copier copy \
+  --vcs-ref "$FACTORY_REF" --defaults \
+  "$FACTORY_TEMPLATE" "$FACTORY_PROJECT"
+cd "$FACTORY_PROJECT"
+git init
 python3 .factory/core/tools/integrate.py
 python3 .factory/core/tools/integrate.py --check
-python3 .factory/core/tools/check.py verify
+git status --short
 ```
 
-On a plain Git hook setup, integration preserves an existing executable
-`pre-commit` script as `pre-commit.factory-original` in the same hooks directory.
-The dispatcher runs it first with the original arguments and environment; any
-failure prevents factory checks. It then runs configured factory pre-commit
-checks. Repeated integration is idempotent. Existing hooks that depend on their
-exact filename, symlinks, hook managers, or `core.hooksPath` need manual composition.
-Linked worktrees share Git hook storage and are rejected by automatic integration;
-use manual composition for such setups.
+Review the generated files in your editor, customize them as below, and commit
+the initialization under your project's Git policy. Integration adds the factory
+section to `AGENTS.md` and installs a local pre-commit dispatcher.
 
-For a hook manager or custom hook path, use `--hooks manual` during adoption and
-integration. This leaves hooks untouched. Add the following command as a required
-step in the existing pre-commit workflow, preserving its current commands:
+### Add the factory to an existing project
+
+Start at a clean Git repository root, with no untracked files. Use the
+Copier-based adoption helper so collisions are checked before files are changed:
 
 ```sh
-python3 .factory/core/tools/check.py pre-commit
+cd "$FACTORY_TEMPLATE"
+uv sync --locked
+uv run --locked python scripts/adopt.py "$FACTORY_PROJECT" --ref "$FACTORY_REF"
+cd "$FACTORY_PROJECT"
+git status --short
+git diff
 ```
 
-Manual mode checks guidance integration only; it does not claim to validate or
-activate the project's hook manager. Neither mode installs Codex hooks. Python
-3.11+ and Git must be available where these scripts run.
+The helper preserves existing application files, guidance, skills, and project
+extensions. Review untracked generated files too, then customize and commit.
+For a hook manager, `core.hooksPath`, or a linked worktree, pass `--hooks manual`
+and follow [hook composition](docs/integration.md#hook-composition). Resolve
+reported collisions rather than using Copier's overwrite option.
 
-## Update an adopted repository
+### Update an initialized project
 
-Start with a clean, committed destination on the branch required by its own
-policy. Run from the destination:
+Select the new template commit or tag in `FACTORY_REF`. Start with a clean,
+committed project on the branch required by its policy:
 
 ```sh
-uv tool run --from copier==9.14.0 copier update --answers-file .factory-answers.yml --vcs-ref REVIEWED_REF --defaults
+cd "$FACTORY_PROJECT"
+uv tool run --from copier==9.14.0 copier update \
+  --answers-file .factory-answers.yml --vcs-ref "$FACTORY_REF" --defaults
 git diff --check
 git diff
-python3 .factory/core/tools/integrate.py
-python3 .factory/core/tools/integrate.py --check
-python3 .factory/core/tools/check.py verify
 ```
 
-Replace `REVIEWED_REF` with the selected template tag or commit. Stop and resolve
-Copier's inline conflict markers before integration or checks. Never use `recopy`
-as an update shortcut. If the project uses manual hook composition, pass
-`--hooks manual` to both integration commands.
+Resolve any conflicts before continuing. Then refresh the managed guidance:
 
-The managed section in `AGENTS.md` is updated only when its content matches the
-digest recorded by the previous integration. An edited or missing section is a
-conflict. Reconcile the section against the last committed integration and move
-project guidance outside the markers before retrying; do not delete the record
-to bypass the check. Content outside the markers is preserved byte-for-byte.
-Commit `.factory/project/integration.json` with the adoption and each integration
-change so future updates can detect local edits.
+```sh
+python3 .factory/core/tools/integrate.py
+python3 .factory/core/tools/integrate.py --check
+```
 
-Project extensions are skipped by Copier updates. Unknown configuration keys or
-schema versions fail validation; migrate project configuration explicitly when a
-future version requires it. Inspect answers metadata changes with the rest of the
-diff. Submit downstream updates for project review; these commands do not merge,
-release, or promote anything.
+Use `--hooks manual` for both commands if you maintain hook composition yourself.
+Run the project's verification inside the sandbox, as shown below, before
+committing or submitting the update for review. Project extensions are preserved;
+managed-file edits may need reconciliation. See [update conflicts](docs/integration.md#update-conflicts).
 
-## Validation limits
+## 2. Customize the initialized factory
 
-Fixtures exercise generation, adoption, hook composition, explicit overrides,
-and updates between two temporary template tags, including conflicts. They check
-Codex's documented discovery paths and instruction links, not an actual Codex
-session or the effectiveness of the workflows. Live model discovery and workflow
-evaluation remain runtime preflight and evaluation-harness work. No benchmark,
-stable release, promotion, or downstream PR has been performed.
+Make project-specific changes in these locations:
 
-Local validation used Python 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
-macOS execution and older supported Python versions have not yet been exercised.
+| Location | What to customize |
+| --- | --- |
+| `.factory/project/config.json` | Verification and pre-commit commands. |
+| `.factory/project/policy.md` | Project conventions, task source, task selection/completion rules, and commit policy. |
+| `AGENTS.md`, outside the factory markers | Repository guidance and commands. |
+| `.agents/skills/<project-skill>/SKILL.md` | Additional project skills; reserve `factory-*` names for the template. |
+
+For example, a Python project using `unittest` could configure:
+
+```json
+{
+  "schema_version": 1,
+  "verification_commands": [["python3", "-m", "unittest", "discover", "-s", "tests"]],
+  "pre_commit_commands": [["git", "diff", "--cached", "--check"]]
+}
+```
+
+Replace the example verification command with your actual test/build commands.
+Commands run from the project root, as argument arrays without an implicit shell.
+Every configured command must succeed. The initial empty verification list means
+**unconfigured**, not a successful check. Validate your configuration with:
+
+```sh
+python3 .factory/core/tools/check.py config
+```
+
+For run-forever, describe in `policy.md` where ready tasks come from, their order,
+acceptance criteria, how to record completion/blockers, and whether Codex should
+commit completed work. Use the task tracker you already maintain; the factory
+does not create one. Each new session must be able to read that task source and
+see what previous sessions completed. Without it, use an explicit run-once task.
+
+Keep `.factory/core/`, `.agents/skills/factory-*/`, and the marked `AGENTS.md`
+section template-managed. Read the generated
+`.factory/core/references/customization.md` for supported overrides. Commit
+`.factory/project/integration.json` along with guidance integration changes; it
+lets updates detect local edits. Hook activation is local to a clone, so rerun
+`integrate.py` in each new clone. Restart an existing Codex session after changing
+its project instructions.
+
+## 3. Install and configure Docker sbx
+
+These instructions target the Apple Silicon Mac host (macOS Sonoma 14 or newer).
+Docker's standalone `sbx` CLI does not require Docker Desktop or a host Docker
+Engine. For other hosts, use [Docker's installation instructions](https://docs.docker.com/ai/sandboxes/install/).
+
+Install with Homebrew, initialize the network policy on a new installation, and
+sign in to Docker and your OpenAI subscription:
+
+```sh
+brew trust docker/tap
+brew install docker/tap/sbx
+sbx --help
+sbx policy init deny-all
+sbx login
+sbx secret set openai --oauth
+```
+
+Policy initialization is global. On an existing installation, inspect `sbx policy
+ls` and adjust the current policy rather than resetting other sandboxes' rules.
+OAuth runs on the host and stores credentials in the host keychain. A host Codex
+installation or copied `~/.codex` credentials are not required.
+
+Create a named Codex sandbox with just this project mounted:
+
+```sh
+cd "$FACTORY_PROJECT"
+FACTORY_SANDBOX=my-project-factory
+sbx create --name "$FACTORY_SANDBOX" codex "$PWD"
+sbx policy ls "$FACTORY_SANDBOX" --wide
+```
+
+The project mount is read-write: agent edits appear in your host worktree. The
+sandbox supplies its own Docker daemon and Linux environment. Host-level Codex
+configuration is not imported; use project configuration or explicit run flags.
+
+`deny-all` starts without a baseline allowlist, but the Codex kit may add rules.
+Inspect the effective policy and allow the package registries, documentation, and
+state services your project needs. For example, for a Python project:
+
+```sh
+sbx policy allow network --sandbox "$FACTORY_SANDBOX" pypi.org
+sbx policy allow network --sandbox "$FACTORY_SANDBOX" files.pythonhosted.org
+sbx policy check network --sandbox "$FACTORY_SANDBOX" pypi.org
+```
+
+Verify that the kit's rules permit the OpenAI endpoints required by your chosen
+authentication. Add other destinations deliberately; blocked requests will not
+be resolved automatically in an unattended run. See [Docker network policy](https://docs.docker.com/ai/sandboxes/governance/access-controls/local/).
+If tasks need authenticated GitHub access, configure it on the host with
+`sbx secret set github --command 'gh auth token'` after signing in with `gh`.
+
+Check the tools inside the sandbox, install your project's dependencies there,
+and run its configured verification:
+
+```sh
+sbx exec "$FACTORY_SANDBOX" codex --version
+sbx exec "$FACTORY_SANDBOX" python3 --version
+sbx exec "$FACTORY_SANDBOX" git --version
+sbx exec "$FACTORY_SANDBOX" docker version
+sbx exec -it "$FACTORY_SANDBOX" bash
+```
+
+In that sandbox shell, run your project's documented dependency setup, then:
+
+```sh
+python3 .factory/core/tools/integrate.py --check
+python3 .factory/core/tools/check.py verify
+exit
+```
+
+Use `--hooks manual` on the integration check if applicable. Missing tools or
+failing checks must be resolved before relying on unattended task execution.
+See [Docker's Codex guide](https://docs.docker.com/ai/sandboxes/agents/codex/)
+for authentication and agent configuration details.
+
+## 4. Start the factory
+
+Use the named sandbox created above. In a host Bash or Zsh terminal, define a
+small run-once function:
+
+```sh
+FACTORY_SANDBOX=my-project-factory
+factory_run_once() {
+  sbx run --name "$FACTORY_SANDBOX" -- \
+    exec --dangerously-bypass-approvals-and-sandbox "$@"
+}
+```
+
+Arguments after `--` select `codex exec` inside the sandbox. The bypass flag is
+appropriate here because `sbx` provides the external isolation; do not use this
+recipe to run Codex directly on the host. See [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive).
+To select a model, pass `--model MODEL_ID` to the function using an identifier
+available to your account; otherwise it uses the sandbox's Codex configuration.
+
+### Run once: one task, then exit
+
+Replace the example with one concrete task and its acceptance criteria:
+
+```sh
+factory_run_once 'Read AGENTS.md and the factory instructions. Use the factory
+skills to implement exactly this task: fix the failing date-parser test without
+changing the public API. Run the configured verification, review the diff, and
+report the result. Follow the project commit policy, then stop.'
+```
+
+The Codex process exits after its response; the sandbox and its installed tools
+persist. Review the result and diff: a successful process exit alone does not
+prove task acceptance.
+
+### Run forever: repeat one task at a time
+
+After configuring a durable task source in `policy.md`, run this loop in the same
+terminal where you defined `factory_run_once`:
+
+```sh
+FACTORY_NEXT_TASK='Read AGENTS.md and the factory instructions. Read the task
+source and selection rules in .factory/project/policy.md. Select exactly one
+ready task and use the factory skills to implement, verify, and review it.
+Record completion only when its acceptance criteria pass; otherwise record the
+blocker. Follow the project commit policy. If no task is ready, report that and
+make no changes. Do not invent work or start a second task. Then exit.'
+
+(
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  while :; do
+    if factory_run_once "$FACTORY_NEXT_TASK"; then
+      sleep 30
+    else
+      factory_exit_code=$?
+      printf 'Run failed (exit %s); inspect before restarting.\n' "$factory_exit_code" >&2
+      exit "$factory_exit_code"
+    fi
+  done
+)
+```
+
+The loop runs sequentially until interrupted, polling every 30 seconds even when
+no task is ready. Each iteration starts a fresh conversation in the same sandbox;
+progress comes from the project task source. It stops on a nonzero process exit
+rather than repeatedly retrying authentication, quota, or runtime errors. Inspect
+any partial work before restarting. The loop has no scheduler, per-task timeout,
+or automatic restart after closing the terminal or rebooting.
+
+Press **Ctrl-C** to stop the loop. To stop the sandbox as well, use another host
+terminal:
+
+```sh
+sbx stop my-project-factory
+```
+
+The sandbox commands are documentation-backed recipes, not yet live-tested in
+this repository. For template development and validation details, see
+[CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
+[architecture](docs/architecture.md).
