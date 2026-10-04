@@ -16,7 +16,8 @@ git diff --check
 
 There is no application build or development server. `pyproject.toml` and
 `uv.lock` pin template development tools (Copier 9.14.0); they do not define
-a factory application or select the future harness's language. Generated check
+a factory application. The separate evaluation controller uses Python and must
+remain outside template resources and builder mounts. Generated check
 and integration scripts use Python's standard library; the adoption helper uses
 the pinned Copier and PyYAML dependencies. Use four-space indentation, descriptive snake-case
 names, and standard-library `unittest` for behavior fixtures. Keep skills concise

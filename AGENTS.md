@@ -2,10 +2,11 @@
 
 ## Project Structure & Module Organization
 
-This workspace contains an experimental Copier template for repository-contained agent workflows. The factory is instructions, policies, skills, and focused tools, not an application. A separate evaluation harness remains to be designed.
+This workspace contains an experimental Copier template for repository-contained agent workflows. The factory is instructions, policies, skills, and focused tools, not an application. A separate Python evaluation controller and protected grading suite are authorized for implementation; benchmark execution remains separately gated.
 
 - `template/` and `copier.yml`: managed factory resources and Copier configuration.
-- `tests/`: isolated generation, integration, and update fixtures.
+- `tests/`: isolated generation, integration, update, and controller fixtures.
+- `evaluation/`: separate operator-side controller; never template-managed or builder-mounted.
 - `scripts/adopt.py`: focused render/preflight/adoption helper; no central factory CLI.
 - `README.md`: project initialization/updates, customization, sandbox setup, and run modes.
 - `CONTRIBUTING.md`: development setup, checks, and validation limits.
@@ -16,7 +17,7 @@ This workspace contains an experimental Copier template for repository-contained
 - `.factory-planning/EVALUATION.md`: experimental protocol and evidence rules.
 - `.gitignore`: excludes `/.factory-planning/` from version control.
 
-Read these records before proposing implementation. Preserve identifiers such as `REQ-001` and `D-001` when referencing them. The planned TypeScript/React and Python/FastAPI stack belongs to the benchmark application; the separate evaluation harness's implementation language remains undecided.
+Read these records before proposing implementation. Preserve identifiers such as `REQ-001` and `D-001` when referencing them. The planned TypeScript/React and Python/FastAPI stack belongs to the benchmark application; the separately authorized evaluation controller uses Python.
 
 ## Build, Test, and Development Commands
 
@@ -54,7 +55,7 @@ After the owner runs a script, read the resulting files directly, explain what p
 
 Continue authorized work autonomously until the current effort's tasks are complete. Do not stop after a successful intermediate check to ask whether to continue. When blocked on host-only execution, provide the next logging script and exact invocation; after the owner reports completion, read its logs and resume independently. Keep the existing scope and evidence boundaries in force.
 
-This authorization covers iterative setup and preflight testing, including sandbox-local provisioning. It does not authorize purchases, benchmark or confirmatory experiment execution, stable promotion, or implementation of the separate evaluation harness. Preflight results retain their evidence limits.
+This authorization covers iterative setup and preflight testing, including sandbox-local provisioning. It does not authorize purchases, benchmark or confirmatory experiment execution, or stable promotion. The subsequent owner authorization separately permits implementing the Python evaluation controller and protected grading suite. Preflight results retain their evidence limits.
 
 ## Commit & Pull Request Guidelines
 
@@ -71,4 +72,4 @@ If Git is unavailable or the directory is not a repository, report the blocker; 
 
 ## Planning & Configuration Boundaries
 
-Keep `.factory-planning/` local; adding it to Git requires the owner's approval. The owner authorized implementation of the component/template plan (D-039 through D-044) and collaborative setup/preflight testing as described above. Provisioning beyond that testing, benchmark or confirmatory experiment execution, purchasing, stable promotion, and implementing the separate evaluation harness remain outside this task. Keep unresolved recommendations distinct from confirmed requirements.
+Keep `.factory-planning/` local; adding it to Git requires the owner's approval. The owner authorized implementation of the component/template plan (D-039 through D-044) and collaborative setup/preflight testing as described above. Provisioning beyond that testing, benchmark or confirmatory experiment execution, purchasing and stable promotion remain outside this task. The owner subsequently authorized implementing the proposed Python evaluation controller and protected grading suite (D-049); keep protected cases out of builder mounts and obtain human review before suite freeze. Keep unresolved recommendations distinct from confirmed requirements.
