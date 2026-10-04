@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evaluation.deployment import grade_capture, verify_capture
 from evaluation.evidence import Attempt
@@ -50,7 +51,7 @@ class DeploymentTest(unittest.TestCase):
         self.commands = []
         FakeGuard.stopped = True
 
-    def run_grade(self, attempt, *, bootstrap='passed', runner=None):
+    def run_grade(self, attempt, *, bootstrap='passed', runner=None, **extras):
         def command(attempt, label, argv, **kwargs):
             self.commands.append(argv)
             return {'outcome': bootstrap, 'exit_code': 0 if bootstrap == 'passed' else 7}
@@ -61,7 +62,7 @@ class DeploymentTest(unittest.TestCase):
         return grade_capture(attempt, self.capture, self.inventory, self.spec, self.root/'project',
                              self.suite, {'base_url': 'https://untrusted.invalid'}, port=18080,
                              development=True, sandbox_factory=FakeSandbox, guard_factory=FakeGuard,
-                             command_runner=command, suite_runner=runner or default_suite)
+                             command_runner=command, suite_runner=runner or default_suite, **extras)
 
     def test_capture_tampering_refused(self):
         (self.capture/'ops/bootstrap.sh').write_text('modified')
@@ -103,3 +104,46 @@ class DeploymentTest(unittest.TestCase):
             result = self.run_grade(attempt)
         self.assertTrue(result['cleanup']['fallback_remote_termination_verified'])
         self.assertTrue(FakeSandbox.instances[-1].stopped)
+
+    def test_fault_transport_closes_before_sandbox_guard_release(self):
+        events = []; broker = object()
+        class Runtime:
+            def __init__(inner, directory, box, guard, workloads, prefix, **kwargs):
+                inner.broker = broker
+                self.assertEqual(workloads, {'storage': 'operator selection'})
+                self.assertGreater(kwargs['wall_deadline'], 0)
+            def close(inner): events.append('broker-close')
+        def runner(attempt, suite, target, **kwargs):
+            self.assertIs(kwargs['fault_broker'], broker)
+            events.append('grade')
+            return {'criteria': {'AC-001': {'verdict': 'pass'}}, 'project_success': False, 'accepted_packages': []}
+        def release(guard):
+            events.append('guard-release')
+            return {'remote_termination_verified': True}
+        with patch.object(FakeGuard, 'release', release), Attempt(self.root/'fault-run', {}) as attempt:
+            report = self.run_grade(attempt, runner=runner, fault_runtime_factory=Runtime,
+                                    fault_workloads=lambda box: {'storage': 'operator selection'} if box.creation_attempted else {},
+                                    kubectl_prefix=['kubectl'])
+        self.assertEqual(events, ['grade', 'broker-close', 'guard-release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_fault_initialization_failure_still_stops_sandbox(self):
+        def broken(*args, **kwargs): raise RuntimeError('fixture fault admission')
+        with Attempt(self.root/'fault-broken', {}) as attempt:
+            report = self.run_grade(attempt, fault_runtime_factory=broken,
+                                    fault_workloads={'storage': 'operator selection'}, kubectl_prefix=['kubectl'])
+        self.assertEqual(report['outcome'], 'grading_incomplete')
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_fault_close_failure_still_releases_guard_and_cannot_accept(self):
+        class Runtime:
+            def __init__(self, *args, **kwargs): self.broker = object()
+            def close(self): raise RuntimeError('fixture broker close')
+        self.suite.approved = True
+        with Attempt(self.root/'fault-close-broken', {}) as attempt:
+            report = self.run_grade(attempt, fault_runtime_factory=Runtime,
+                                    fault_workloads={'storage': 'operator selection'}, kubectl_prefix=['kubectl'])
+        self.assertEqual(report['outcome'], 'grading_incomplete')
+        self.assertFalse(report['project_success'])
+        self.assertEqual(report['accepted_packages'], [])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])

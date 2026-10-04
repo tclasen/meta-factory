@@ -277,3 +277,31 @@ in a parent thread while the grader records its subprocess. They must bound all
 operations and prevent new commands near/after the sandbox guard deadline. Wiring
 that lifecycle-aware factory into `grade_capture`, and live protected application
 fault cases, remain pending. This transport alone is not a launch gate bypass.
+
+### Binding faults to a grading attempt
+
+`grade_capture` accepts optional operator-created `fault_workloads` and
+`kubectl_prefix` arguments. Each role maps to exactly `namespace`, `kind`, `name`
+and the independently observed workload `uid`; namespace must be `incident-app`.
+For a fresh deployment, `fault_workloads` may be an operator-owned resolver
+called with the sandbox after bootstrap, when the live UIDs exist. The resolver
+must independently inspect the deployed roles. These arguments are separate from
+application target data. `FaultRuntime` creates
+a parent-owned broker and private child evidence attempts for each fault, checking
+the selected UID before suspension. It revokes new commands and closes the broker
+before releasing the grading sandbox's guard.
+
+Admission requires at least 630 seconds of remaining grading time for four bounded
+commands, the 60-second fault body, and scheduling allowance. Every command checks
+both wall and monotonic deadlines again, reserving 150 seconds, and refuses after
+guard exit/release, sandbox stop or explicit revocation. Insufficient time is
+inconclusive; it does not shorten restoration silently or extend the grading budget.
+These checks do not resolve host sleep/reboot or independently initiated host stops;
+that interruption/containment gate remains part of launch review.
+
+Local run `local-cluster-grading-logs/run-7bpoxv6c` exercised the connected runtime
+and broker against the synthetic StatefulSet, using a node with a 900-second
+internal ceiling. Its private child attempt recorded `fault_restored` and
+`restoration_verified: true`; service outage/recovery, independent API controls
+and cluster removal passed. This validates local transport and lifecycle wiring,
+not Mac sbx transport, real S3 behavior, or host-interruption containment.

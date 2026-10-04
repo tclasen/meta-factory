@@ -4,6 +4,7 @@ from pathlib import Path
 import time
 
 from .evidence import atomic_json, collect, positive
+from .fault_runtime import FaultRuntime
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
 from .watchdog import Guard
@@ -38,7 +39,8 @@ def verify_capture(source, inventory):
 def grade_capture(attempt, source, inventory, specification, project, suite, target, *,
                   port, bootstrap_seconds=1800, grading_seconds=5400, development=False,
                   sandbox_factory=Sandbox, guard_factory=Guard, command_runner=collect,
-                  suite_runner=run_suite):
+                  suite_runner=run_suite, fault_workloads=None, kubectl_prefix=None,
+                  fault_runtime_factory=FaultRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -49,6 +51,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     positive(bootstrap_seconds, 'bootstrap timeout')
     positive(grading_seconds, 'grading timeout')
     grading_started = time.monotonic()
+    grading_wall_started = time.time()
     lifetime = grading_seconds + 120
     if lifetime > 26 * 3600:
         raise ValueError('Grading lifetime exceeds watchdog envelope')
@@ -69,6 +72,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     atomic_json(attempt.directory / 'redeployment-source.json', copied)
     box = sandbox_factory(attempt, project, specification, repository, port=port, role='grader')
     guard = None
+    fault_runtime = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
     cleanup = {'remote_termination_verified': False}
     try:
@@ -90,7 +94,22 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:
             raise TimeoutError('Grading budget consumed by deployment')
-        report = suite_runner(attempt, suite, target, deadline_seconds=remaining, development=development)
+        options = {}
+        if fault_workloads is not None:
+            # Fresh workload UIDs exist only after bootstrap. An operator-owned
+            # resolver may inspect the live deployment here; never use app output
+            # as executable configuration or as an authoritative role mapping.
+            selected_workloads = fault_workloads(box) if callable(fault_workloads) else fault_workloads
+            fault_runtime = fault_runtime_factory(attempt.directory / 'faults', box, guard,
+                selected_workloads, kubectl_prefix,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            options['fault_broker'] = fault_runtime.broker
+        remaining = grading_seconds - (time.monotonic() - grading_started)
+        if remaining <= 0:
+            raise TimeoutError('Grading budget consumed by fault preparation')
+        report = suite_runner(attempt, suite, target, deadline_seconds=remaining,
+                              development=development, **options)
         report['outcome'] = ('graded' if all(c['verdict'] in ('pass', 'fail') for c in report['criteria'].values())
                              else 'grading_incomplete')
         if not suite.approved:
@@ -99,6 +118,13 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     except Exception as error:
         report.update(outcome='grading_incomplete', project_success=False, error_type=type(error).__name__)
     finally:
+        if fault_runtime is not None:
+            try:
+                fault_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[],
+                              fault_cleanup_error=type(error).__name__)
         if guard is not None:
             try:
                 cleanup = guard.release()
