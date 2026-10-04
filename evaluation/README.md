@@ -338,3 +338,18 @@ the verified-outage flag, restored the StatefulSet and removed its cluster. The
 peer used the locked BusyBox fixture image; its API and storage services were
 synthetic HTTP servers. This does not verify S3 data semantics, HTTPS/raw-TCP
 probes, real application peer selection, or Mac fault transport.
+
+### Shared application fixture changes
+
+Cases that alter shared users, memberships or configuration declare
+`"mutates_shared_state": true` in the hashed manifest. They must preserve original
+values and restore them in `finally`; uncertain restoration raises
+`FaultRestoreError`. Any non-passing result, including timeout or an untested
+observation, aborts the remaining suite because later permissions or behavior may
+be contaminated. A passing case is responsible for verifying restoration.
+
+This declaration does not grant the parent fault-control capability. Only
+`mutates_runtime` grants that separate capability when a broker is configured.
+Ordinary tests that create isolated records need neither declaration unless they
+also change shared state or runtime infrastructure. This protects REQ-012/015/020;
+it does not prove the application's own authorization or transaction behavior.

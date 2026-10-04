@@ -60,8 +60,9 @@ class Suite:
             if len(set(case["criteria"])) != len(case["criteria"]):
                 raise ValueError("Duplicate criterion reference")
             positive(case["timeout_seconds"], "case timeout")
-            if type(case.get("mutates_runtime", False)) is not bool:
-                raise ValueError("Invalid runtime mutation declaration")
+            for declaration in ("mutates_runtime", "mutates_shared_state"):
+                if type(case.get(declaration, False)) is not bool:
+                    raise ValueError("Invalid mutation declaration: " + declaration)
             if case["source"] not in self.manifest["files"] or not re.fullmatch(r"[a-z][a-z0-9_]*", case["function"]):
                 raise ValueError("Unhashed source or invalid function")
         covered = set(self.manifest.get("coverage_complete", []))
@@ -157,11 +158,15 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
                                        'reason': 'fault_control_aborted', 'abort_suite': True}
         attempt.emit("grader", "case.result", results[case["id"]])
+        shared_state_uncertain = (case.get("mutates_shared_state", False)
+                                  and results[case["id"]]["verdict"] != "pass")
         if (results[case["id"]].get("abort_suite") is True
+                or shared_state_uncertain
                 or case.get("mutates_runtime", False) and results[case["id"]]["verdict"] == "inconclusive"):
             aborted = True
             attempt.emit("grader", "suite.aborted", {"case_id": case["id"],
-                                                       "reason": "runtime_state_uncertain"})
+                                                       "reason": ("shared_fixture_state_uncertain" if shared_state_uncertain
+                                                                  else "runtime_state_uncertain")})
             break
     report = suite.aggregate(results)
     report["case_results"] = results

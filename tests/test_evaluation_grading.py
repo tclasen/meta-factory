@@ -113,8 +113,37 @@ class GradingTest(unittest.TestCase):
                 self.assertFalse(report['project_success'])
 
     def test_mutation_declaration_requires_boolean(self):
-        self.manifest['cases'][0]['mutates_runtime'] = 'false'; self.save()
-        with self.assertRaises(ValueError): Suite(self.suite, self.packages)
+        for declaration in ('mutates_runtime', 'mutates_shared_state'):
+            self.manifest['cases'][0][declaration] = 'false'; self.save()
+            with self.assertRaises(ValueError): Suite(self.suite, self.packages)
+            del self.manifest['cases'][0][declaration]
+
+    def test_shared_fixture_failure_aborts_without_runtime_capability(self):
+        for mode, body, verdict in [
+                ('pass', 'pass', 'pass'),
+                ('assertion', 'raise AssertionError("Membership changed unexpectedly")', 'fail'),
+                ('inconclusive', 'raise Inconclusive("Restoration unknown")', 'inconclusive'),
+                ('untested', 'raise Untested("Missing observation")', 'untested'),
+                ('timeout', 'time.sleep(10)', 'inconclusive')]:
+            self.source.write_text(
+                'import time\nfrom evaluation.verdicts import Inconclusive, Untested\n'
+                'def first(target):\n    assert "_fault_control" not in target\n    ' + body + '\n'
+                'def second(target):\n    pass\n')
+            self.manifest['files']['cases.py'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+            self.manifest['cases'] = [dict(id='first', source='cases.py', function='first', criteria=['AC-001'],
+                                           timeout_seconds=0.2 if mode == 'timeout' else 2, mutates_shared_state=True),
+                                      dict(id='second', source='cases.py', function='second', criteria=['AC-002'], timeout_seconds=2)]
+            self.save()
+            @contextmanager
+            def unexpected_fault(role):
+                raise AssertionError('Shared state tests cannot request runtime faults')
+                yield
+            with FaultBroker(['storage'], unexpected_fault) as broker, Attempt(self.root / ('shared-' + mode), {}) as attempt:
+                report = run_suite(attempt, Suite(self.suite, self.packages), {'_fault_control': {'untrusted': True}},
+                                   deadline_seconds=5, development=True, fault_broker=broker)
+            self.assertEqual(report['case_results']['first']['verdict'], verdict)
+            self.assertEqual(report['aborted'], mode != 'pass')
+            self.assertEqual('second' in report['case_results'], mode == 'pass')
 
     def test_worker_fault_requests_execute_in_parent_and_strip_untrusted_capability(self):
         self.source.write_text('from evaluation.fault_broker import remote_fault\ndef first(target):\n    with remote_fault(target["_fault_control"], "storage"):\n        pass\n\ndef second(target):\n    assert "_fault_control" not in target\n')
