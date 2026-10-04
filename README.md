@@ -307,3 +307,9 @@ The latest recorded smoke passed after the MCP compatibility correction; see the
 preflight findings for network and model-identity evidence limits. For development and validation
 details, see [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).
+
+The [infrastructure preflight](docs/runtime-preflight.md#completed-infrastructure-preflight)
+also passed nested Kubernetes and sampled sandbox/pod HTTPS allowlist checks.
+Those tests temporarily removed global TCP allow-all and restored it afterward;
+the host remains allow-all. UDP results are inconclusive. The runbook records
+the tested setup corrections and the limits of this evidence.

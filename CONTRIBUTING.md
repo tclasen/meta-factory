@@ -51,7 +51,12 @@ is copied into isolated projects; it is not part of top-level test discovery.
 The target Mac completed the bounded Luna Medium smoke with sbx 0.46.0 and
 Codex 0.160.0, including the MCP compatibility correction and scoped network-denial
 checks. See the runbook's observed results for timings and evidence limits.
-Global policy remains unchanged; default-deny enforcement is not established.
+Subsequent disposable preflights also passed nested Kubernetes startup, a job,
+and paired sandbox/pod HTTPS checks under temporary default deny with the kit's
+allowlist. Global TCP allow-all was restored afterward; its rule ID changed.
+UDP checks remain inconclusive, and the sampled checks do not establish full
+REQ-021 acceptance or protected grader isolation. See the runbook's completed
+infrastructure preflight for the tested corrections and remaining limits.
 
 The README sandbox recipes were checked against current Docker and OpenAI
 documentation. `sbx` is not installed in the editing environment; the owner ran

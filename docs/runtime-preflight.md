@@ -3,14 +3,17 @@
 Use this operator-run smoke test on the target Apple Silicon Mac to check the
 factory with Docker `sbx` and **`gpt-6-luna` at `medium` reasoning**. It addresses
 the factory-runtime portions of Q-001 and Q-003 and exercises D-039 through
-D-044. It does not validate Kubernetes, long-horizon behavior, benchmark quality,
-or the full isolation requirements of REQ-021. It cannot authorize promotion.
+D-044. The model task alone does not validate Kubernetes; separate infrastructure
+checks below exercise it. These preflights do not validate long-horizon behavior,
+benchmark quality, or the full isolation requirements of REQ-021. They cannot
+authorize promotion.
 
-**Live status: bounded workflow and scoped network smoke checks passed on the target Mac.** The observed configuration
+**Live status: bounded workflow, Kubernetes, and sampled HTTPS isolation checks passed on the target Mac.** The observed configuration
 is sbx 0.46.0, Codex 0.160.0, and requested `gpt-6-luna`/`medium` through Docker's
 `sandboxd` provider. Catalog discovery, MCP configuration migration, and the task
 passed without reported runtime errors. Network and model-identity evidence limits
-remain. See [observed results](#observed-results).
+remain. See [observed results](#observed-results) and the
+[completed infrastructure preflight](#completed-infrastructure-preflight).
 If Luna or Medium is unavailable on a later run, record a blocker; do not
 substitute another model or reasoning setting.
 
@@ -264,6 +267,45 @@ retained with their existing baseline limitations. Global policy is restored
 before cluster removal and sandbox stop. Allow about 25 minutes at timeout
 ceilings; the restricted-policy phase has the independent 240-second restoration
 watchdog. Collection success is not a verdict on all recorded network paths.
+
+### Completed infrastructure preflight
+
+The paired allowlist run at `a315601` on 2026-10-04 at 03:26 UTC
+(`allowlist-preflight-logs/run-oddhkbui`, local evidence) completed the bounded
+infrastructure preflight. Registry and example.com HTTPS returned 200 from both
+sandbox and pod at baseline, using environment proxy settings and with proxies
+disabled. During default deny:
+
+| Probe | Sandbox | Kubernetes pod |
+| --- | --- | --- |
+| Allowed registry, environment proxy settings | HTTP 200 | HTTP 200 |
+| Allowed registry, proxies disabled | HTTP 200 | HTTP 200 |
+| Unlisted example.com, environment proxy settings | HTTP 403 | TLS EOF error |
+| Unlisted example.com, proxies disabled | DNS lookup error | TLS EOF error |
+
+Policy independently reported registry allowance and implicit default denial of
+example.com. The paired observations support blocking for these sampled HTTPS
+paths; DNS/TLS errors alone are not proof of policy enforcement. Proxy-disabled
+requests may still traverse transparent interception. Public UDP DNS was refused
+before and during restriction, so UDP policy transitions remain **inconclusive**.
+
+Cluster removal and sandbox stop succeeded. The final policy snapshot confirms
+that global TCP allow-all was restored with a new rule ID; the working host has
+**not** been permanently switched to default deny. No test sandboxes were deleted.
+
+The bounded preflight now has evidence for mounted-file separation, nested
+Kubernetes startup and a completed job, explicit denial, and a usable allowlist
+on sampled sandbox/pod HTTPS paths. The practical candidate setup is k3s with
+the `/dev/kmsg` correction, probe-pod `ndots:1`, and default deny implemented by
+absence of global allow-all while retaining explicitly reviewed destination
+allowances. Do not substitute an explicit wildcard deny: it overrides allows.
+
+This completes these setup checks, not full REQ-021 acceptance. Remaining study
+design/validation includes protected grader access, complete destination review,
+general cluster DNS and service behavior, UDP/IPv6 and other network paths,
+long-horizon behavior, and the benchmark protocol. A permanent host-wide policy
+change is a separate operational decision. The separate evaluation harness and
+experiment execution remain outside this preflight effort.
 
 ### Prepare the bounded model task
 
