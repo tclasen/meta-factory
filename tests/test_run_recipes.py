@@ -32,7 +32,7 @@ sbx() {
 }
 sleep() {
   printf '%s\n' "$@" >> "$PAUSES_LOG"
-  if [ -n "$INTERRUPT" ]; then kill -s "$INTERRUPT" "$BASHPID"; fi
+  if [ -n "$INTERRUPT" ]; then sh -c 'kill -s "$1" "$PPID"' sh "$INTERRUPT"; fi
 }
 '''
             result = subprocess.run(["bash", "-c", fake_transport + RUN_ONCE + "\n" + recipe],

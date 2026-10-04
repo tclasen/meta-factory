@@ -37,9 +37,21 @@ now exercised discovery and one bounded workflow; it is not comparative workflow
 evaluation. No benchmark, stable release, promotion, or downstream PR has been
 performed.
 
-Local validation used Python 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
+Local validation used Python 3.11.14 and 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
 The preparation helper has also run on macOS with Python 3.13.16. The full fixture
-suite on macOS and other supported Python versions remains unverified.
+suite on macOS and other supported Python versions remains unverified. To collect
+the Mac results for the minimum Python version and the current development version:
+
+```sh
+python3 scripts/test_host_fixtures.py
+```
+
+The runner uses `uv run --isolated --locked --python 3.11` and `--python 3.14`,
+downloading missing interpreters and dependencies into uv's cache. It does not
+replace the shared checkout's `.venv`. Per-command logs, exact Python versions,
+revision/worktree state, and the overall result are saved under
+`.factory-planning/host-fixture-logs/`. Tests use disposable temporary repositories;
+the runner preserves logs and reports a dirty worktree for review.
 
 The [runtime preflight](docs/runtime-preflight.md) supplies a disposable smoke
 fixture and operator runbook. `scripts/prepare_smoke.py DESTINATION --ref REVISION`
