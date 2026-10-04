@@ -42,7 +42,9 @@ class AdoptionTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
+        # macOS aliases /var to /private/var; Git and adoption resolve that alias.
+        # Copier updates and injected write failures must use the same spelling.
+        self.base = Path(self.temp.name).resolve()
         self.source = self.base / "source"
         init(self.source)
         shutil.copy(REPO / "copier.yml", self.source)

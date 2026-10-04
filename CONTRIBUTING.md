@@ -39,7 +39,12 @@ performed.
 
 Local validation used Python 3.11.14 and 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
 The preparation helper has also run on macOS with Python 3.13.16. The full fixture
-suite on macOS and other supported Python versions remains unverified. To collect
+suite on macOS and other supported Python versions is not yet verified passing. The
+first Mac run exposed `/var` versus `/private/var` path mismatches in two Copier
+update fixtures and the injected rollback failure. Fixture roots now resolve
+parent aliases, matching Git and the adoption helper; the adoption suite passed
+locally with a symlinked temporary-directory root. The Mac rerun is still pending.
+To collect
 the Mac results for the minimum Python version and the current development version:
 
 ```sh
