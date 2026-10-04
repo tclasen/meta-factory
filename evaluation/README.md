@@ -305,3 +305,11 @@ internal ceiling. Its private child attempt recorded `fault_restored` and
 `restoration_verified: true`; service outage/recovery, independent API controls
 and cluster removal passed. This validates local transport and lifecycle wiring,
 not Mac sbx transport, real S3 behavior, or host-interruption containment.
+
+Fault factories may yield `{"service_outage_verified": true}` only after an
+independent service observation. The broker forwards only that exact Boolean,
+never arbitrary callback fields; missing evidence and truthy strings become
+false. `remote_fault` yields this projected observation to the protected case.
+Replica suspension alone does not set it: the current generic `FaultRuntime`
+leaves service-level verification false until a bounded independent probe is
+connected. Storage oracles must remain inconclusive without that precondition.

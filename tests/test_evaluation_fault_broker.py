@@ -107,3 +107,13 @@ class BrokerTest(unittest.TestCase):
                     raise OSError('body fixture')
             self.assertEqual(self.events[-1], ('restore', 'storage'))
             self.assertFalse(broker.aborted)
+
+    def test_service_observations_require_explicit_parent_boolean_and_are_projected(self):
+        for evidence, expected in [(None, False), ({'service_outage_verified': 'true'}, False),
+                                   ({'service_outage_verified': True, 'secret': 'do-not-forward'}, True)]:
+            @contextmanager
+            def factory(role):
+                yield evidence
+            with FaultBroker(['storage'], factory) as broker:
+                with remote_fault(broker.configuration, 'storage') as observations:
+                    self.assertEqual(observations, {'service_outage_verified': expected})

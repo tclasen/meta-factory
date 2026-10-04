@@ -95,8 +95,13 @@ class FaultBroker:
                             send(stream, {'status': 'abort'})
                             continue
                         try:
-                            with self.factory(request['role']):
-                                send(stream, {'status': 'suspended'})
+                            with self.factory(request['role']) as observations:
+                                # Project only explicit parent observations. Never
+                                # forward arbitrary callback data or diagnostics.
+                                verified = (isinstance(observations, dict)
+                                            and observations.get('service_outage_verified') is True)
+                                send(stream, {'status': 'suspended',
+                                              'observations': {'service_outage_verified': verified}})
                                 ending = receive(stream)
                                 if ending != {'operation': 'restore'}:
                                     raise FaultSetupError('Invalid fault completion')
@@ -161,7 +166,7 @@ def remote_fault(configuration, role, *, timeout=300):
             if response.get('status') != 'suspended':
                 raise FaultSetupError('Parent fault precondition unavailable')
             try:
-                yield
+                yield response.get('observations', {})
             finally:
                 try:
                     send(stream, {'operation': 'restore'})
