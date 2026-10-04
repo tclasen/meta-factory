@@ -20,7 +20,7 @@ finally:
 
 
 class IsolationScriptTest(unittest.TestCase):
-    def exercise(self, fail_label):
+    def exercise(self, fail_label, argv=None):
         calls = []
 
         def collect(directory, label, command, timeout):
@@ -41,7 +41,7 @@ class IsolationScriptTest(unittest.TestCase):
                  patch.object(ISOLATION, "collect", side_effect=collect), \
                  patch.object(ISOLATION.tempfile, "mkdtemp", side_effect=temporary_directory), \
                  contextlib.redirect_stdout(io.StringIO()):
-                status = ISOLATION.main()
+                status = ISOLATION.main(argv or [])
             summary_path = next(root.glob(".factory-planning/isolation-preflight-logs/run-*/summary.json"))
             summary = json.loads(summary_path.read_text())
         return status, summary, calls
@@ -71,3 +71,14 @@ class IsolationScriptTest(unittest.TestCase):
         self.assertEqual(summary["outcome"], "checks_passed_pending_log_review")
         deny = next(command for label, command in calls if label == "deny-egress")
         self.assertEqual(deny, ["sbx", "policy", "deny", "network", "--sandbox", summary["sandbox"], "**"])
+
+    def test_extended_observations_do_not_claim_isolation_pass(self):
+        status, summary, calls = self.exercise(None, ["--egress"])
+        self.assertEqual(status, 0)
+        self.assertEqual(summary["outcome"], "observations_collected_pending_review")
+        for stage in ("before", "denied", "after-allow"):
+            self.assertIn("sandbox-egress-" + stage, [label for label, _ in calls])
+            self.assertIn("pod-egress-" + stage, [label for label, _ in calls])
+        allow = next(command for label, command in calls if label == "allow-registry")
+        self.assertEqual(allow, ["sbx", "policy", "allow", "network", "--sandbox",
+                                summary["sandbox"], "registry.npmjs.org:443"])

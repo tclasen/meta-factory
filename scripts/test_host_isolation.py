@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Run a disposable sbx mount, Kubernetes, and network-denial preflight on Mac."""
 
+import argparse
 import json
 from pathlib import Path
 import platform
@@ -28,7 +29,11 @@ sys.exit(0 if status == int(sys.argv[1]) else 1)
 """
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--egress", action="store_true",
+                        help="Also compare sandbox/pod direct HTTPS and UDP, and deny/allow precedence")
+    args = parser.parse_args(argv)
     if platform.system() != "Darwin":
         raise SystemExit("Run on the host Mac, not inside sbx")
     base = REPO / ".factory-planning/isolation-preflight-logs"
@@ -44,7 +49,7 @@ def main():
     summary = {
         "started": utc_now(), "outcome": "running", "sandbox": sandbox,
         "workspace": str(workspace), "host_fixture": str(temporary),
-        "checks": [], "diagnostics": [], "cleanup": [],
+        "checks": [], "diagnostics": [], "cleanup": [], "extended_egress": args.egress,
         "manual_cleanup": ["sbx stop " + sandbox, "sbx rm " + sandbox],
         "limitations": [
             "Sampled mount and proxied HTTPS checks, not proof against every escape or egress path.",
@@ -69,11 +74,19 @@ def main():
     def inside(label, command, timeout=60, required=True):
         return run(label, ["sbx", "exec", sandbox, *command], timeout, required)
 
+    def egress(stage):
+        code = (Path(__file__).resolve().parent / "egress_probe.py").read_text()
+        inside(f"sandbox-egress-{stage}", ["python3", "-c", code])
+        inside(f"pod-egress-{stage}", ["docker", "exec", "factory-k3s", "kubectl",
+                                      "exec", "factory-egress", "--", "python3", "-c", code])
+
     try:
         run("revision", ["git", "rev-parse", "HEAD"])
         run("worktree", ["git", "status", "--porcelain"])
         run("sbx-version", ["sbx", "version"])
         run("profile-help", ["sbx", "policy", "profile", "--help"], required=False)
+        if args.egress:
+            run("profiles", ["sbx", "policy", "profile", "ls"], required=False)
         attempted_create = True
         run("create", ["sbx", "create", "--name", sandbox, "--cpus", "4",
                        "--memory", "8g", "--skills", "off", "codex", str(workspace)], 300)
@@ -123,6 +136,15 @@ exit 1
         inside("workload-image", ["docker", "exec", "factory-k3s", "kubectl", "get", "pods",
                                   "-l", "job-name=factory-smoke", "-o",
                                   "jsonpath={.items[*].status.containerStatuses[*].imageID}"])
+        if args.egress:
+            inside("egress-pod-create", ["docker", "exec", "factory-k3s", "kubectl", "run",
+                                        "factory-egress", "--image=python:3.14-alpine",
+                                        "--restart=Never", "--command", "--", "sleep", "1200"])
+            inside("egress-pod-ready", ["docker", "exec", "factory-k3s", "kubectl", "wait",
+                                       "--for=condition=Ready", "pod/factory-egress", "--timeout=180s"], 200)
+            inside("egress-pod-image", ["docker", "exec", "factory-k3s", "kubectl", "get", "pod",
+                                       "factory-egress", "-o", "jsonpath={.status.containerStatuses[*].imageID}"])
+            egress("before")
         run("deny-egress", ["sbx", "policy", "deny", "network", "--sandbox", sandbox, "**"])
         run("effective-policy", ["sbx", "policy", "ls", sandbox, "--wide"])
         run("policy-registry", ["sbx", "policy", "check", "network", "--sandbox", sandbox,
@@ -130,7 +152,19 @@ exit 1
         run("policy-unlisted", ["sbx", "policy", "check", "network", "--sandbox", sandbox,
                                 "--json", "example.com:443"], required=False)
         inside("network-denied", ["python3", "-c", PROBE, "403"])
+        if args.egress:
+            egress("denied")
+            run("allow-registry", ["sbx", "policy", "allow", "network", "--sandbox", sandbox,
+                                   "registry.npmjs.org:443"])
+            run("policy-after-allow", ["sbx", "policy", "check", "network", "--sandbox", sandbox,
+                                       "--json", "registry.npmjs.org:443"], required=False)
+            run("policy-unlisted-after-allow", ["sbx", "policy", "check", "network", "--sandbox", sandbox,
+                                                "--json", "example.com:443"], required=False)
+            egress("after-allow")
+            run("policy-final", ["sbx", "policy", "ls", sandbox, "--wide"])
         summary["outcome"] = "checks_passed_pending_log_review"
+        if args.egress:
+            summary["outcome"] = "observations_collected_pending_review"
     except KeyboardInterrupt:
         summary["outcome"] = "interrupted"
     except Exception as error:
@@ -156,7 +190,9 @@ exit 1
         print(f"Outcome: {summary['outcome']}\nLogs: {evidence}", flush=True)
         print(f"Cleanup checks passed: {summary['cleanup_ok']}. Host fixture retained.", flush=True)
         print(f"If stopping failed, run: sbx stop {sandbox}", flush=True)
-    return 0 if summary["outcome"] == "checks_passed_pending_log_review" and all(
+    return 0 if summary["outcome"] in (
+        "checks_passed_pending_log_review", "observations_collected_pending_review",
+    ) and all(
         item["outcome"] == "ok" for item in summary["cleanup"]
     ) else 1
 

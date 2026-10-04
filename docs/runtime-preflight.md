@@ -144,6 +144,32 @@ allowlist, direct TCP/UDP and pod egress tests, and protected grader access rema
 unverified. Global policy was not changed; these results are not full REQ-021
 acceptance or benchmark/promotion evidence.
 
+### Extend the egress checks
+
+Run the same disposable procedure with additional paired observations:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 scripts/test_host_isolation.py --egress
+```
+
+This additionally creates a `python:3.14-alpine` pod and records its image digest.
+Both sandbox and pod perform HTTPS requests to `registry.npmjs.org` using the
+environment's proxy configuration and with proxies explicitly disabled. They also
+send a UDP DNS query for that public registry to `1.1.1.1:53`. The probes run
+before the wildcard deny, after it, and after adding an explicit registry allow
+rule to the same sandbox. Policy decisions for the registry and an unlisted
+destination are recorded separately. Governance profile listing is read-only.
+
+Allow about 30 minutes at the command timeout ceilings. Logs use the same
+`isolation-preflight-logs` directory and cleanup procedure. A successful exit
+means observations were collected, **not** that all egress was correctly blocked
+or the allowlist worked. Review the paired results: a baseline connection that
+already fails cannot demonstrate newly enforced denial; failed DNS or TLS may
+have unrelated causes. The UDP check covers one resolver and IPv4 path only.
+Proxy-disabled requests may still traverse transparent sandbox interception.
+No global policy is modified, and no cloud resources or model calls are made.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
