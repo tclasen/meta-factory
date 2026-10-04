@@ -40,7 +40,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   port, bootstrap_seconds=1800, grading_seconds=5400, development=False,
                   sandbox_factory=Sandbox, guard_factory=Guard, command_runner=collect,
                   suite_runner=run_suite, fault_workloads=None, kubectl_prefix=None,
-                  fault_runtime_factory=FaultRuntime):
+                  fault_runtime_factory=FaultRuntime, fault_service_probes=None):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -100,10 +100,11 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             # resolver may inspect the live deployment here; never use app output
             # as executable configuration or as an authoritative role mapping.
             selected_workloads = fault_workloads(box) if callable(fault_workloads) else fault_workloads
+            service_probes = fault_service_probes(box) if callable(fault_service_probes) else fault_service_probes
             fault_runtime = fault_runtime_factory(attempt.directory / 'faults', box, guard,
                 selected_workloads, kubectl_prefix,
                 monotonic_deadline=grading_started + grading_seconds,
-                wall_deadline=grading_wall_started + grading_seconds)
+                wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes)
             options['fault_broker'] = fault_runtime.broker
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:

@@ -36,10 +36,10 @@ class FaultRuntimeTest(unittest.TestCase):
         return {'outcome': 'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
                 'observation': {'workload': copy.deepcopy(self.state)}}
 
-    def runtime(self):
+    def runtime(self, **kwargs):
         runtime = FaultRuntime(self.root / 'faults', self.box, self.guard, {'storage': self.resource},
                                ['kubectl'], monotonic_deadline=1000, wall_deadline=1000,
-                               monotonic=lambda: self.clock, wall=lambda: self.wall, operation=self.operation)
+                               monotonic=lambda: self.clock, wall=lambda: self.wall, operation=self.operation, **kwargs)
         self.addCleanup(runtime.close)
         return runtime
 
@@ -87,3 +87,32 @@ class FaultRuntimeTest(unittest.TestCase):
             with remote_fault(runtime.broker.configuration, 'storage'): pass
         self.assertEqual(self.called, ['workload-baseline'])
         self.assertEqual(self.state['replicas'], 1)
+
+    def test_service_evidence_requires_all_three_phases(self):
+        phases = []
+        def probe(attempt, transport, *, label, configuration, mode):
+            phases.append((label, mode))
+            return {'outcome': 'service_' + mode + '_verified'}
+        runtime = self.runtime(service_probes={'storage': {}}, service_runner=probe)
+        with remote_fault(runtime.broker.configuration, 'storage') as observed:
+            self.assertTrue(observed['service_outage_verified'])
+        self.assertEqual(phases, [('service-baseline', 'available'), ('service-outage', 'unavailable'), ('service-recovery', 'available')])
+
+    def test_unverified_outage_is_restored_and_never_forwarded(self):
+        def probe(attempt, transport, *, label, configuration, mode):
+            return {'outcome': 'service_available_verified' if mode == 'available' else 'service_probe_incomplete'}
+        runtime = self.runtime(service_probes={'storage': {}}, service_runner=probe)
+        with self.assertRaises(FaultSetupError):
+            with remote_fault(runtime.broker.configuration, 'storage'): self.fail('Unverified outage exposed')
+        self.assertEqual(self.state['replicas'], 1)
+        self.assertTrue(runtime.broker.aborted)
+
+    def test_service_recovery_failure_aborts_after_workload_restoration(self):
+        from evaluation.faults import FaultRestoreError
+        def probe(attempt, transport, *, label, configuration, mode):
+            return {'outcome': 'service_probe_incomplete' if label == 'service-recovery' else 'service_' + mode + '_verified'}
+        runtime = self.runtime(service_probes={'storage': {}}, service_runner=probe)
+        with self.assertRaises(FaultRestoreError):
+            with remote_fault(runtime.broker.configuration, 'storage'): pass
+        self.assertEqual(self.state['replicas'], 1)
+        self.assertTrue(runtime.broker.aborted)

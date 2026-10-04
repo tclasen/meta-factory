@@ -310,6 +310,31 @@ Fault factories may yield `{"service_outage_verified": true}` only after an
 independent service observation. The broker forwards only that exact Boolean,
 never arbitrary callback fields; missing evidence and truthy strings become
 false. `remote_fault` yields this projected observation to the protected case.
-Replica suspension alone does not set it: the current generic `FaultRuntime`
-leaves service-level verification false until a bounded independent probe is
-connected. Storage oracles must remain inconclusive without that precondition.
+Replica suspension alone does not set it: `FaultRuntime` leaves service-level
+verification false unless independent service probes are configured. Storage oracles must remain inconclusive without that precondition.
+
+### Independent service connectivity probes
+
+Optional `fault_service_probes` in `grade_capture` is an operator-created mapping
+(or post-bootstrap resolver) from fault role to `peer_prefix`, `target`, and
+`control`. The prefix executes a trusted diagnostic peer inside the grading
+sandbox; it must not use builder-modified utilities. Targets are private HTTP IP
+addresses with explicit ports, no credentials/query/path. The control must be an
+independent service reachable from the same permitted peer. Operator role/peer
+selection remains required; this does not infer network policy or application
+roles from builder declarations.
+
+The sanitized probe records HTTP connectivity and original exit statuses, excluding
+response bodies, headers and arbitrary stderr from operator logs. HTTP errors such
+as a private bucket's 403 still prove connectivity. Only recognized connection
+failures prove unreachability; missing utilities, exec errors and ambiguous output
+remain inconclusive. Baseline and recovery require a reachable target plus controls;
+outage requires three unreachable target observations bracketed by working controls.
+Each probe process is bounded to 40 seconds. Three phases raise fault admission
+reserve to 750 seconds; the private worker RPC timeout is 360 seconds.
+
+Local run `local-cluster-grading-logs/run-jn_nu41f` passed all three phases, propagated
+the verified-outage flag, restored the StatefulSet and removed its cluster. The
+peer used the locked BusyBox fixture image; its API and storage services were
+synthetic HTTP servers. This does not verify S3 data semantics, HTTPS/raw-TCP
+probes, real application peer selection, or Mac fault transport.

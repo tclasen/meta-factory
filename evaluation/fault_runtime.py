@@ -10,9 +10,10 @@ import uuid
 
 from .evidence import Attempt, atomic_json, positive
 from .fault_broker import FaultBroker
-from .faults import FaultSetupError, suspended_workload
+from .faults import FaultRestoreError, FaultSetupError, suspended_workload
 from .workload_probe import KINDS, NAME
 from .workloads import workload_operation
+from .services import service_operation
 
 
 COMMAND_ALLOWANCE = 150  # 135-second command ceiling plus scheduling allowance.
@@ -22,7 +23,7 @@ FAULT_ALLOWANCE = 630    # Four commands, 60-second body, plus scheduling allowa
 class FaultRuntime:
     def __init__(self, directory, sandbox, guard, workloads, kubectl_prefix, *,
                  monotonic_deadline, wall_deadline, operation=workload_operation,
-                 monotonic=time.monotonic, wall=time.time):
+                 monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation):
         positive(monotonic_deadline, 'fault monotonic deadline')
         positive(wall_deadline, 'fault wall deadline')
         if (not isinstance(workloads, dict) or not workloads
@@ -35,6 +36,12 @@ class FaultRuntime:
                     or resource['namespace'] != 'incident-app' or resource['kind'] not in KINDS
                     or not all(isinstance(resource[k], str) and NAME.fullmatch(resource[k]) for k in ('name', 'uid'))):
                 raise ValueError('Fault roles require exact operator-observed workload identities')
+        service_probes = {} if service_probes is None else service_probes
+        if not isinstance(service_probes, dict) or not set(service_probes) <= set(workloads):
+            raise ValueError('Service probes must belong to reviewed fault roles')
+        self.service_probes = copy.deepcopy(service_probes)
+        self.service_runner = service_runner
+        self.fault_allowance = FAULT_ALLOWANCE + (120 if service_probes else 0)
         self.directory = Path(directory)
         self.directory.mkdir(mode=0o700)
         self.sandbox, self.guard = sandbox, guard
@@ -47,8 +54,8 @@ class FaultRuntime:
         self.revoked = threading.Event()
         atomic_json(self.directory / 'scope.json', {'sandbox': sandbox.name, 'workloads': workloads,
                                                    'kubectl_prefix': kubectl_prefix,
-                                                   'wall_deadline': wall_deadline})
-        self.check(FAULT_ALLOWANCE)
+                                                   'wall_deadline': wall_deadline, 'service_probes': service_probes})
+        self.check(self.fault_allowance)
         self.broker = FaultBroker(workloads, self._fault, idle_seconds=60)
 
     def check(self, allowance):
@@ -66,7 +73,7 @@ class FaultRuntime:
 
     @contextmanager
     def _fault(self, role):
-        self.check(FAULT_ALLOWANCE)
+        self.check(self.fault_allowance)
         resource = self.workloads[role]
         with Attempt(self.directory / ('fault-' + uuid.uuid4().hex),
                      {'role': role, 'resource': resource, 'sandbox': self.sandbox.name}) as attempt:
@@ -79,11 +86,24 @@ class FaultRuntime:
                 if observed.get('uid') != resource['uid']:
                     raise FaultSetupError('Operator-selected workload identity changed')
                 return report
+            def verify_service(phase, mode):
+                self.check(COMMAND_ALLOWANCE)
+                report = self.service_runner(attempt, self, label='service-' + phase,
+                                             configuration=self.service_probes[role], mode=mode)
+                if report.get('outcome') != 'service_' + mode + '_verified':
+                    error = FaultRestoreError if phase == 'recovery' else FaultSetupError
+                    raise error('Independent service observation incomplete: ' + phase)
             try:
+                if role in self.service_probes:
+                    verify_service('baseline', 'available')
                 with suspended_workload(attempt, self, label='workload', kubectl_prefix=self.kubectl_prefix,
                                         namespace=resource['namespace'], kind=resource['kind'],
                                         name=resource['name'], operation=checked_operation):
-                    yield
+                    if role in self.service_probes:
+                        verify_service('outage', 'unavailable')
+                    yield {'service_outage_verified': role in self.service_probes}
+                if role in self.service_probes:
+                    verify_service('recovery', 'available')
                 result['outcome'] = 'fault_restored'
             except BaseException as error:
                 result['error_type'] = type(error).__name__

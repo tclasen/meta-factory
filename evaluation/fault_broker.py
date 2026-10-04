@@ -146,7 +146,7 @@ class FaultBroker:
 
 
 @contextmanager
-def remote_fault(configuration, role, *, timeout=300):
+def remote_fault(configuration, role, *, timeout=360):
     """Request one reviewed fault; only the parent controller can execute it."""
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     connection.settimeout(timeout)
