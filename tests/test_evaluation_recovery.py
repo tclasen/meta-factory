@@ -41,6 +41,9 @@ class RecoveryTest(unittest.TestCase):
         self.assertFalse(result['resumed'])
 
     def test_absent_resource_is_safe_without_stop_or_restart(self):
+        creation = self.source / 'builder-create'
+        creation.mkdir()
+        atomic_json(creation / 'result.json', {'outcome': 'failed', 'exit_code': 1, 'ended': 'fixture'})
         def command(attempt, label, argv, **kwargs):
             self.assertEqual(argv, ['sbx', 'ls'])
             folder = attempt.directory / label; folder.mkdir()
@@ -50,6 +53,16 @@ class RecoveryTest(unittest.TestCase):
             result = recover(attempt, self.source, command_runner=command)
         self.assertEqual(result['resources'][self.name]['after'], 'absent')
         self.assertEqual(result['outcome'], 'cleanup_verified')
+
+    def test_absence_during_unsettled_creation_is_incomplete(self):
+        def command(attempt, label, argv, **kwargs):
+            folder = attempt.directory / label; folder.mkdir()
+            (folder / 'stdout.log').write_text('SANDBOX AGENT STATUS\n')
+            return {'outcome': 'passed'}
+        with Attempt(self.root / 'recovery', {}) as attempt:
+            result = recover(attempt, self.source, command_runner=command)
+        self.assertEqual(result['outcome'], 'cleanup_incomplete')
+        self.assertEqual(result['resources'][self.name]['reason'], 'absent_with_unsettled_creation')
 
     def test_daemon_unavailable_never_proves_cleanup(self):
         with Attempt(self.root / 'recovery', {}) as attempt:

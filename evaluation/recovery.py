@@ -50,8 +50,14 @@ def resources(directory):
                     started = True
         if not started:
             raise ValueError('Resource has no matching creation attempt')
+        creation_result = path.parent / (role + '-create') / 'result.json'
+        settled = False
+        if creation_result.is_file() and not creation_result.is_symlink():
+            result = json.loads(creation_result.read_text())
+            settled = (result.get('outcome') in ('passed', 'failed')
+                       and type(result.get('exit_code')) is int and bool(result.get('ended')))
         records[name] = {'record': str(path.relative_to(directory)),
-                         'sha256': hashlib.sha256(raw).hexdigest()}
+                         'sha256': hashlib.sha256(raw).hexdigest(), 'creation_command_settled': settled}
     return records
 
 
@@ -98,7 +104,11 @@ def recover(attempt, source, *, command_runner=collect):
                 result['remote_termination_verified'] = stopped['outcome'] == 'passed' and after in ('stopped', 'absent')
             else:
                 after = before
-                result['remote_termination_verified'] = True
+                # An orphaned create command might still be provisioning after
+                # controller death. One absent listing cannot establish cleanup.
+                result['remote_termination_verified'] = before == 'stopped' or selected[name]['creation_command_settled']
+                if not result['remote_termination_verified']:
+                    result['reason'] = 'absent_with_unsettled_creation'
             result['after'] = after
         except Exception as error:
             result['error_type'] = type(error).__name__
