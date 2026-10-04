@@ -6,17 +6,19 @@ the factory-runtime portions of Q-001 and Q-003 and exercises D-039 through
 D-044. It does not validate Kubernetes, long-horizon behavior, benchmark quality,
 or the full isolation requirements of REQ-021. It cannot authorize promotion.
 
-**Live status: qualified smoke pass on the target Mac.** The observed configuration
+**Live status: bounded workflow and scoped network smoke checks passed on the target Mac.** The observed configuration
 is sbx 0.46.0, Codex 0.160.0, and requested `gpt-6-luna`/`medium` through Docker's
-`sandboxd` provider. Catalog discovery and the task passed; MCP configuration
-warnings and network-policy limits remain. See [observed results](#observed-results).
+`sandboxd` provider. Catalog discovery, MCP configuration migration, and the task
+passed without reported runtime errors. Network and model-identity evidence limits
+remain. See [observed results](#observed-results).
 If Luna or Medium is unavailable on a later run, record a blocker; do not
 substitute another model or reasoning setting.
 
 ## Observed results
 
-The owner executed these smoke attempts on 2026-10-04 (UTC), using template
-commit `012166dd3a78d4ef3d2bb0ee989ce1c0d4ca9ec7`. Raw logs remain local under
+The owner executed these smoke attempts on 2026-10-04 (UTC). The first four used
+template commit `012166dd3a78d4ef3d2bb0ee989ce1c0d4ca9ec7`; the final run used
+`c1a95ce2d5403866f05b58e2494f33a000084319`. Raw logs remain local under
 `.factory-planning/runtime-smoke-logs/`; they are not committed or benchmark evidence.
 
 | Attempt | Observation |
@@ -25,22 +27,26 @@ commit `012166dd3a78d4ef3d2bb0ee989ce1c0d4ca9ec7`. Raw logs remain local under
 | 01:45 UTC | `sbx exec` completed the task in 56.76 seconds on Codex 0.149.1; acceptance passed, but Luna metadata was missing. |
 | 01:55 UTC | Model discovery stopped before inference: the old CLI catalog lacked `gpt-6-luna`. |
 | 02:01 UTC | Updating Codex from 0.149.1 to 0.160.0 made Luna/Medium discoverable. Task time was 33.91 seconds; all four tests, guidance integration, staged hook, and file/history checks passed. |
+| 02:20 UTC | Explicit Codex 0.160.0 pin and MCP migration passed; no runtime errors were reported. Scoped denial checks passed, then the task completed in 29.24 seconds with all acceptance checks passing. |
 
 The final attempt read and applied all four factory skills and changed only
 `value.lower()` to `value.strip().lower()`. Cleanup stopped each sandbox. The
 host reported macOS 27.0.1 on arm64, preparation used uv-managed Python 3.13.16,
 and the sandbox reported Python 3.14.4 and Git 2.53.0.
 
-Codex 0.160.0 reported that Docker's generated MCP gateway `headers` and `type`
-keys were ignored. The proposed compatibility correction maps `headers` to
+The 02:01 attempt reported that Docker's generated MCP gateway `headers` and `type`
+keys were ignored by Codex 0.160.0. The validated compatibility correction maps `headers` to
 `http_headers` and removes the legacy `type` for a recognized HTTP URL transport,
-preserving values and all other settings. This correction is prepared in the
-local runner but has not yet been validated on the Mac. Never log header values
+preserving values and all other settings. The 02:20 attempt applied this correction
+with a sandbox-local backup and produced no configuration warnings. This establishes
+configuration compatibility, not functional coverage of every gateway tool. Never log header values
 or overwrite an unfamiliar configuration without review.
 
-The effective global network policy was allow-all. The next authorized smoke
-checks explicit deny rules only on its disposable sandbox, leaving global policy
-unchanged. This is not default-deny validation or full REQ-021 acceptance.
+The effective global network policy was allow-all and was left unchanged. The
+02:20 run added explicit sandbox-only denies for `registry.npmjs.org:443` and
+`example.com:443`; policy checks reported both denied. An actual request to the
+registry returned HTTP 200 before the rule and HTTP 403 afterward. No live request
+to example.com was needed. This is not default-deny validation or full REQ-021 acceptance.
 Runtime catalog/configuration evidence does not independently attest the provider's
 served model identity. These observations do not establish benchmark performance,
 natural compaction, Kubernetes isolation, or stable promotion.

@@ -200,7 +200,7 @@ sbx exec "$FACTORY_SANDBOX" codex --version
 
 Stop if installation fails or the active version is not 0.160.0; do not continue
 using the old binary. See the [preflight findings](docs/runtime-preflight.md#observed-results)
-for the remaining Docker MCP configuration warnings and network-policy limits.
+for the validated Docker MCP compatibility correction and network-policy limits.
 
 Open a sandbox shell and run your project's documented dependency setup:
 
@@ -303,7 +303,7 @@ Mac; the full setup recipes and run-forever loop have not been validated end to
 end. Use the [runtime preflight](docs/runtime-preflight.md) to prepare
 a disposable project and validate one bounded Luna Medium task on the target Mac,
 including factory skill use, fixed acceptance checks, and hook activation.
-The latest recorded smoke result is qualified; see the preflight findings for
-configuration warnings and network limits. For template development and validation
+The latest recorded smoke passed after the MCP compatibility correction; see the
+preflight findings for network and model-identity evidence limits. For development and validation
 details, see [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).

@@ -48,10 +48,10 @@ it never launches sbx or a model. Preparation tests cover destination refusal,
 revision pinning, the expected failure and known correction, and hook enforcement.
 The deliberately failing source fixture under `tests/fixtures/runtime-smoke/`
 is copied into isolated projects; it is not part of top-level test discovery.
-The target Mac completed a qualified Luna Medium smoke run with sbx 0.46.0 and
-Codex 0.160.0. See the runbook's observed results for timings, configuration
-warnings, and evidence limits. The next MCP repair and scoped network-denial
-checks remain pending live execution; global policy remains unchanged.
+The target Mac completed the bounded Luna Medium smoke with sbx 0.46.0 and
+Codex 0.160.0, including the MCP compatibility correction and scoped network-denial
+checks. See the runbook's observed results for timings and evidence limits.
+Global policy remains unchanged; default-deny enforcement is not established.
 
 The README sandbox recipes were checked against current Docker and OpenAI
 documentation. `sbx` is not installed in the editing environment; the owner ran
