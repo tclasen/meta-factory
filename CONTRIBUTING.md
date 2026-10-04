@@ -38,9 +38,11 @@ evaluation. No benchmark, stable release, promotion, or downstream PR has been
 performed.
 
 Local validation used Python 3.11.14 and 3.14.4, Git 2.53.0, and Copier 9.14.0 on Linux.
-The preparation helper has also run on macOS with Python 3.13.16. All 42 fixtures
-passed on the target Mac using Python 3.11.17 and 3.14.8, with a clean worktree
-before and after (`host-fixture-logs/run-w5jv8b1r`, local evidence). The initial Mac
+The preparation helper has also run on macOS with Python 3.13.16. All 43 fixtures,
+including the Copier CLI copy/update/integration lifecycle, passed on the target
+Mac using Python 3.11.17 and 3.14.8 at revision `0b72e89`, with a clean worktree
+before and after (`host-fixture-logs/run-7h46q7fu`, 2026-10-04 05:00 UTC, local
+evidence). The initial Mac
 run exposed `/var` versus `/private/var` path mismatches in update and rollback
 fixtures; resolving fixture roots corrected them without weakening assertions.
 Other interpreter versions remain unverified. To repeat the Mac matrix:
