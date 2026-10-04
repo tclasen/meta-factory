@@ -190,6 +190,17 @@ policy transition. The corrected pod baseline still needs the host-side paired
 run. The script additionally collects read-only policy-removal help and global
 network-rule metadata for planning a separate allowlist solution.
 
+The corrected 2026-10-04 03:10 UTC rerun at `4df46d2` (`run-vur6cspy`, local evidence)
+completed with successful cleanup. Sandbox and pod HTTPS both returned 200
+before denial. After denial, proxied sandbox HTTPS returned 403 and direct
+sandbox/pod HTTPS failed with `SSLEOFError`; adding the exact allow rule did not
+change those observations or the explicit policy denial. This supports blocking
+on the sampled HTTPS paths, with transparent interception still possible.
+UDP remained refused at baseline and is inconclusive for policy transitions.
+The usable-allowlist blocker is the global TCP allow-all rule plus deny precedence,
+not a failure to add a narrow allow rule. Testing removal of that global rule
+requires an explicit host-wide policy change, outside the scoped scripts above.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
