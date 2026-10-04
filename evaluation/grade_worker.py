@@ -8,14 +8,7 @@ from pathlib import Path
 from .evidence import atomic_json
 from .faults import FaultRestoreError, FaultSetupError
 from .grading import contained_file, sha256
-
-
-class Inconclusive(Exception):
-    """The required test precondition could not be established."""
-
-
-class Untested(Exception):
-    """No observation procedure was executed for this criterion."""
+from .verdicts import Inconclusive, Untested
 
 
 def main():

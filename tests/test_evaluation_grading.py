@@ -97,6 +97,21 @@ class GradingTest(unittest.TestCase):
             self.assertNotIn('second', report['case_results'])
             self.assertEqual(report['criteria']['AC-002']['verdict'], 'untested')
 
+    def test_worker_preserves_explicit_missing_evidence_verdicts(self):
+        for exception, verdict in [('Inconclusive', 'inconclusive'), ('Untested', 'untested')]:
+            with self.subTest(exception=exception):
+                self.source.write_text(
+                    f'from evaluation.grade_worker import {exception}\n'
+                    f'def good(target):\n    raise {exception}("Required fixture unavailable")\n')
+                self.manifest['files']['cases.py'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+                self.save()
+                with Attempt(self.root / exception, {}) as attempt:
+                    report = run_suite(attempt, Suite(self.suite, self.packages), {},
+                                       deadline_seconds=5, development=True)
+                self.assertEqual(report['case_results']['first']['verdict'], verdict)
+                self.assertEqual(report['case_results']['first']['reason'], 'Required fixture unavailable')
+                self.assertFalse(report['project_success'])
+
     def test_mutation_declaration_requires_boolean(self):
         self.manifest['cases'][0]['mutates_runtime'] = 'false'; self.save()
         with self.assertRaises(ValueError): Suite(self.suite, self.packages)
