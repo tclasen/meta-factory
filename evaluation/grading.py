@@ -112,7 +112,7 @@ class Suite:
                 "limits": "Unapproved or incomplete suites cannot establish acceptance"}
 
 
-def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
+def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -121,6 +121,8 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
     positive(deadline_seconds, "grading deadline")
     if not suite.approved and not development:
         raise ValueError("Independent human suite approval required")
+    target = dict(target)
+    target.pop('_fault_control', None)
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
@@ -132,8 +134,12 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
         if remaining <= 0:
             break
         path = attempt.directory / (case["id"] + "-verdict.json")
+        worker_target = target_path
+        if case.get('mutates_runtime', False) and fault_broker is not None:
+            worker_target = attempt.directory / (case['id'] + '-target.json')
+            atomic_json(worker_target, dict(target, _fault_control=fault_broker.configuration))
         argv = [sys.executable, "-m", "evaluation.grade_worker", "--suite", str(suite.root),
-                "--case", case["id"], "--target", str(target_path), "--result", str(path),
+                "--case", case["id"], "--target", str(worker_target), "--result", str(path),
                 "--manifest-sha256", suite.digest]
         command = collect(attempt, "grade-" + case["id"], argv, cwd=Path(__file__).resolve().parents[1],
                           timeout=min(remaining, case["timeout_seconds"]))
@@ -146,6 +152,10 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
             if value.get("case_id") != case["id"] or value.get("verdict") not in VERDICTS:
                 raise ValueError("Malformed grader result")
             results[case["id"]] = value
+        if case.get('mutates_runtime', False) and fault_broker is not None:
+            if not fault_broker.wait_idle() or fault_broker.aborted:
+                results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
+                                       'reason': 'fault_control_aborted', 'abort_suite': True}
         attempt.emit("grader", "case.result", results[case["id"]])
         if (results[case["id"]].get("abort_suite") is True
                 or case.get("mutates_runtime", False) and results[case["id"]]["verdict"] == "inconclusive"):

@@ -255,3 +255,25 @@ context around the StatefulSet service outage and recorded
 Controller fixtures additionally cover interruption, failed suspension after a
 mutation, replacement/concurrent scaling, and restoration failure. These are fault
 control checks; protected S3/application observations remain to be integrated.
+
+### Parent-owned fault transport
+
+`fault_broker.FaultBroker` serves authenticated requests on a private Unix socket
+(mode 0600 in a 0700 temporary directory). It accepts only `suspend` for a reviewed
+role and `restore`; worker-supplied commands, arguments and workload names are
+refused. Its parent-owned factory opens the scoped fault context. Disconnection,
+idle timeout or uncertain restoration blocks subsequent faults. Broker shutdown
+waits for bounded context cleanup. A dead parent leaves no endpoint for the worker
+to execute or restart a sandbox; workers never receive `sbx exec` capability.
+
+`run_suite(..., fault_broker=broker)` supplies this capability only to cases marked
+`mutates_runtime`. Any `_fault_control` supplied in the ordinary target is removed.
+The parent waits for fault cleanup and aborts grading if the broker is uncertain.
+The nonce stays in the private per-case target file outside application mounts;
+requests and tokens must not be copied into application evidence or public logs.
+
+Factories must use separate child evidence attempts, since broker callbacks run
+in a parent thread while the grader records its subprocess. They must bound all
+operations and prevent new commands near/after the sandbox guard deadline. Wiring
+that lifecycle-aware factory into `grade_capture`, and live protected application
+fault cases, remain pending. This transport alone is not a launch gate bypass.

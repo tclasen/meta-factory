@@ -1,12 +1,14 @@
 """The evaluator must never turn absent/invalid grading into acceptance."""
 
 import hashlib
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from evaluation.evidence import Attempt
+from evaluation.fault_broker import FaultBroker
 from evaluation.grading import Suite, run_suite
 
 
@@ -98,3 +100,21 @@ class GradingTest(unittest.TestCase):
     def test_mutation_declaration_requires_boolean(self):
         self.manifest['cases'][0]['mutates_runtime'] = 'false'; self.save()
         with self.assertRaises(ValueError): Suite(self.suite, self.packages)
+
+    def test_worker_fault_requests_execute_in_parent_and_strip_untrusted_capability(self):
+        self.source.write_text('from evaluation.fault_broker import remote_fault\ndef first(target):\n    with remote_fault(target["_fault_control"], "storage"):\n        pass\n\ndef second(target):\n    assert "_fault_control" not in target\n')
+        self.manifest['files']['cases.py'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.manifest['cases'] = [dict(id='first', source='cases.py', function='first', criteria=['AC-001'], timeout_seconds=2, mutates_runtime=True),
+                                  dict(id='second', source='cases.py', function='second', criteria=['AC-002'], timeout_seconds=2)]
+        self.save(); events = []
+        @contextmanager
+        def factory(role):
+            events.append(('suspend', role))
+            try: yield
+            finally: events.append(('restore', role))
+        with FaultBroker(['storage'], factory) as broker, Attempt(self.root / 'broker', {}) as attempt:
+            report = run_suite(attempt, Suite(self.suite, self.packages), {'_fault_control': {'token': 'untrusted'}},
+                               deadline_seconds=5, development=True, fault_broker=broker)
+        self.assertEqual(events, [('suspend', 'storage'), ('restore', 'storage')])
+        self.assertEqual([v['verdict'] for v in report['case_results'].values()], ['pass', 'pass'])
+        self.assertFalse(report['aborted'])
