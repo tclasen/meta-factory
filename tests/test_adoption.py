@@ -101,6 +101,35 @@ class AdoptionTest(unittest.TestCase):
         self.assertTrue(os.access(self.hook(), os.X_OK))
         self.assertFalse(list((self.target / ".factory").rglob("__pycache__")))
 
+    def test_documented_cli_copy_and_update_preserve_extensions(self):
+        project = self.base / "new cli project"
+        subprocess.run(
+            [sys.executable, "-m", "copier", "copy", "--vcs-ref", "v0.1.0",
+             "--defaults", str(self.source), str(project)],
+            capture_output=True, text=True, check=True, timeout=30,
+        )
+        init(project)
+        tool = project / ".factory/core/tools/integrate.py"
+        subprocess.run([sys.executable, str(tool)], cwd=project, capture_output=True, check=True)
+        policy = project / ".factory/project/policy.md"
+        policy.write_text("Project-owned CLI lifecycle policy\n")
+        config = project / ".factory/project/config.json"
+        config_before = config.read_bytes()
+        commit(project, "initialize CLI fixture")
+        self.new_version()
+        subprocess.run(
+            [sys.executable, "-m", "copier", "update", "--answers-file", ".factory-answers.yml",
+             "--vcs-ref", "v0.2.0", "--defaults"],
+            cwd=project, capture_output=True, text=True, check=True, timeout=30,
+        )
+        self.assertIn("New template guidance.", (project / ".factory/core/instructions.md").read_text())
+        self.assertEqual(policy.read_text(), "Project-owned CLI lifecycle policy\n")
+        self.assertEqual(config.read_bytes(), config_before)
+        subprocess.run([sys.executable, str(tool)], cwd=project, capture_output=True, check=True)
+        subprocess.run([sys.executable, str(tool), "--check"], cwd=project, capture_output=True, check=True)
+        self.assertIn("## Factory workflows", (project / "AGENTS.md").read_text())
+        git(project, "diff", "--check")
+
     def test_existing_hook_runs_before_factory_and_failure_blocks_commit(self):
         original = b"#!/bin/sh\nprintf 'existing' > hook-ran\nexit 0\n"
         self.hook().write_bytes(original)

@@ -76,7 +76,9 @@ infrastructure preflight for the tested corrections and remaining limits.
 The README sandbox recipes were checked against current Docker and OpenAI
 documentation. `sbx` is not installed in the editing environment; the owner ran
 the live smoke checks on the target Mac. The tested non-interactive launch uses
-`sbx exec`; the full initialization recipes and run-forever loop remain unverified.
+`sbx exec`; two fresh sessions passed one ready task and an unchanged empty queue.
+The Copier CLI copy/update/integration lifecycle is covered by a deterministic
+fixture. The unbounded run-forever loop remains unverified.
 Validate authentication and effective network policy before unattended use.
 
 `tests/test_run_recipes.py` executes the exact README Bash snippets with a fake

@@ -299,8 +299,9 @@ sbx stop my-project-factory
 ```
 
 The `sbx exec` launch path has passed a bounded factory smoke task on the target
-Mac; the full setup recipes and run-forever loop have not been validated end to
-end. Use the [runtime preflight](docs/runtime-preflight.md) to prepare
+Mac. A two-session smoke also passed task selection and an unchanged empty
+queue in a fresh conversation. The unbounded run-forever loop remains unverified.
+Use the [runtime preflight](docs/runtime-preflight.md) to prepare
 a disposable project and validate one bounded Luna Medium task on the target Mac,
 including factory skill use, fixed acceptance checks, and hook activation.
 The latest recorded smoke passed after the MCP compatibility correction; see the
@@ -309,9 +310,9 @@ details, see [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).
 
 The published Bash recipes have bounded control-flow tests for polling, argument
-handling, failed invocations, and interrupts between calls. Live task selection,
-empty-queue handling, and interruption during a model request remain separate
-runtime validation work.
+handling, failed invocations, and interrupts between calls. A separate fixture
+executes the Copier CLI copy/update recipes and checks preservation of project
+extensions. Interruption during a live model request remains unverified.
 
 The [infrastructure preflight](docs/runtime-preflight.md#completed-infrastructure-preflight)
 also passed nested Kubernetes and sampled sandbox/pod HTTPS allowlist checks.
