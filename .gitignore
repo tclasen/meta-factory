@@ -1,1 +1,4 @@
 /.factory-planning/
+/.venv/
+__pycache__/
+*.pyc

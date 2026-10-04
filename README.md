@@ -40,3 +40,25 @@ This repository will consume its own template only after a stable release exists
 Factory skills use the native `.agents/skills` directory. Existing project and
 user instructions still follow Codex's own instruction hierarchy; the factory
 does not claim to override that hierarchy.
+
+## Development
+
+Install [uv](https://docs.astral.sh/uv/) and Python 3.11 or newer, then run:
+
+```sh
+uv sync --locked
+uv run --locked python -m unittest discover -s tests -v
+git diff --check
+```
+
+There is no application build or development server. `pyproject.toml` and
+`uv.lock` pin template development tools (Copier 9.14.0); they do not define
+a factory application or select the future harness's language. Focused scripts
+use Python's standard library. Use four-space indentation, descriptive snake-case
+names, and standard-library `unittest` for behavior fixtures. Keep skills concise
+and maintain their YAML `name` and `description` fields.
+
+The template's verification commands are deliberately unconfigured. Projects
+select their actual commands in `.factory/project/config.json`; an empty list
+does not count as passing verification. See the generated customization reference
+for the full extension contract.

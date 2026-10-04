@@ -2,7 +2,11 @@
 
 ## Project Structure & Module Organization
 
-This workspace is in the planning stage for a knowledge-work factory: a template, evaluation, and release system for repository-contained agent workflows. No source, test, or asset directories exist yet.
+This workspace contains an experimental Copier template for repository-contained agent workflows. The factory is instructions, policies, skills, and focused tools, not an application. A separate evaluation harness remains to be designed.
+
+- `template/` and `copier.yml`: managed factory resources and Copier configuration.
+- `tests/`: isolated generation, integration, and update fixtures.
+- `README.md`: component ownership, setup, and usage.
 
 - `.factory-planning/SPEC.md`: product scope, requirements, and open questions.
 - `.factory-planning/DECISIONS.md`: confirmed decisions and unresolved choices.
@@ -13,7 +17,7 @@ Read these records before proposing implementation. Preserve identifiers such as
 
 ## Build, Test, and Development Commands
 
-No build system, dependency manifest, development server, or executable test suite is configured. Do not assume commands such as `npm test` or `make build` work.
+Use `uv sync --locked` for setup and `uv run --locked python -m unittest discover -s tests -v` for fixture tests. Run `git diff --check` before committing. There is no application build or development server. Copier is pinned in `pyproject.toml` and `uv.lock`.
 
 Useful inspection commands from the workspace root:
 
@@ -25,11 +29,11 @@ When tooling is introduced, document exact setup, build, lint, and test commands
 
 ## Coding Style & Naming Conventions
 
-No language-specific indentation rules, formatter, or linter are established. Follow existing Markdown conventions: descriptive headings, short paragraphs, fenced command examples, and stable identifiers. When adding code under an authorized implementation task, establish formatting and naming rules with the selected toolchain.
+Follow existing Markdown conventions: descriptive headings, short paragraphs, fenced command examples, and stable identifiers. Python tools use four-space indentation, descriptive snake-case names, and the standard library where practical. No formatter is configured.
 
 ## Testing Guidelines
 
-No testing framework or coverage threshold is configured. Future evaluation checks must trace to disclosed requirements. Keep authoritative grading independent of builder-written tests, protect holdout cases, and obtain human review before freezing acceptance suites. Report pilot and inconclusive results with their evidence limits.
+Use standard-library `unittest` for template behavior fixtures. No coverage threshold is configured. Evaluation checks must trace to disclosed requirements. Keep authoritative grading independent of builder-written tests, protect holdout cases, and obtain human review before freezing acceptance suites. Fixture tests are not promotion evidence. Report pilot and inconclusive results with their evidence limits.
 
 ## Commit & Pull Request Guidelines
 
@@ -46,4 +50,4 @@ If Git is unavailable or the directory is not a repository, report the blocker; 
 
 ## Planning & Configuration Boundaries
 
-Keep `.factory-planning/` local; adding it to Git requires the owner's approval. This documentation task authorizes neither repository initialization nor implementation, experiment execution, provisioning, or purchasing. Keep unresolved recommendations distinct from confirmed requirements.
+Keep `.factory-planning/` local; adding it to Git requires the owner's approval. The owner authorized implementation of the component/template plan (D-039 through D-044). Experiment execution, provisioning, purchasing, stable promotion, and implementing the separate evaluation harness remain outside this task. Keep unresolved recommendations distinct from confirmed requirements.
