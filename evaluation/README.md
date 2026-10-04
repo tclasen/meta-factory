@@ -67,3 +67,18 @@ mounts. This repository contains grader mechanics and synthetic fixtures only;
 those fixtures are not the application acceptance suite. The controller does not
 execute application build scripts on the host or trust application-produced
 passing-test messages as grading results.
+
+Readiness inspection is available without enabling experiment launch:
+
+```sh
+uv run --locked python -m evaluation inspect \
+  --workload .factory-planning/first-test \
+  --suite .factory-planning/protected-first-test
+```
+
+It writes a unique directory under `.factory-planning/evaluation-readiness-logs/`
+and exits 2 while gates remain unresolved. This is expected, not an application
+failure. No `run` command or boolean bypass is exposed while long-run containment,
+protected-suite coverage/review and host integration remain incomplete. The network
+checker rejects wildcard/global allow-all and unreviewed effective destinations;
+that check alone is not live enforcement evidence.
