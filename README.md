@@ -308,6 +308,11 @@ preflight findings for network and model-identity evidence limits. For developme
 details, see [CONTRIBUTING.md](CONTRIBUTING.md); for component ownership, see
 [architecture](docs/architecture.md).
 
+The published Bash recipes have bounded control-flow tests for polling, argument
+handling, failed invocations, and interrupts between calls. Live task selection,
+empty-queue handling, and interruption during a model request remain separate
+runtime validation work.
+
 The [infrastructure preflight](docs/runtime-preflight.md#completed-infrastructure-preflight)
 also passed nested Kubernetes and sampled sandbox/pod HTTPS allowlist checks.
 Those tests temporarily removed global TCP allow-all and restored it afterward;

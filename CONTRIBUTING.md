@@ -63,3 +63,10 @@ documentation. `sbx` is not installed in the editing environment; the owner ran
 the live smoke checks on the target Mac. The tested non-interactive launch uses
 `sbx exec`; the full initialization recipes and run-forever loop remain unverified.
 Validate authentication and effective network policy before unattended use.
+
+`tests/test_run_recipes.py` executes the exact README Bash snippets with a fake
+sbx transport. It covers argument preservation, sequential polling after successful
+invocations, stopping on failure, and INT/TERM handling between invocations. These
+bounded tests do not launch a model, prove task acceptance, or establish interruption
+behavior during a live sbx/model request. The empty-queue instruction remains agent
+behavior; the shell intentionally continues polling after any successful exit.
