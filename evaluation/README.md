@@ -52,3 +52,18 @@ restart the sandbox). Source capture reads regular files without executing Git,
 hooks or build scripts on the host; bounds and unsafe paths fail capture rather
 than manufacture an application failure. Live sbx behavior still needs Mac
 preflight. No global policy mutation or resource deletion is implemented here.
+
+
+`grading.py` and `grade_worker.py` run externally stored, hash-verified operator
+suite code in bounded processes. The suite binds its package mapping, enumerates
+case-to-criterion coverage, and declares which criteria have complete coverage.
+Independent review must bind the suite manifest hash before final acceptance.
+Missing tests, partial coverage, unapproved suites, changed source, worker crashes,
+and timeouts cannot yield project success. Development runs explicitly report
+unapproved observations; they never populate accepted-package counts.
+
+Protected cases and approval records are operator-local, outside all application
+mounts. This repository contains grader mechanics and synthetic fixtures only;
+those fixtures are not the application acceptance suite. The controller does not
+execute application build scripts on the host or trust application-produced
+passing-test messages as grading results.
