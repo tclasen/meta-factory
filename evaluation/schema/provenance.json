@@ -1,0 +1,18 @@
+{
+  "version": "codex-cli 0.160.0",
+  "command": "codex app-server generate-json-schema --experimental --out DIRECTORY",
+  "bundle_sha256": "7243ba241962af92ca60581f1a81808ebda4212a800f8b205f54703bcfd508c5",
+  "selection": [
+    "InitializeParams",
+    "ThreadStartParams",
+    "TurnStartParams",
+    "TurnInterruptParams",
+    "DynamicToolCallParams",
+    "DynamicToolCallResponse",
+    "ThreadTokenUsageUpdatedNotification",
+    "TurnCompletedNotification",
+    "ItemCompletedNotification"
+  ],
+  "selection_sha256": "91d2604aa2ab5f28bedb5d89f28f47ace3838fbc65bc6900e4d9e58acffef8b7",
+  "source": "Generated from installed pinned CLI; not inferred from current online docs"
+}
