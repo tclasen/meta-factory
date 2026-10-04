@@ -53,6 +53,32 @@ natural compaction, Kubernetes isolation, or stable promotion.
 
 ## 1. Prepare a disposable project
 
+### Host inspection before extending the isolation tests
+
+From the host Mac, collect the installed sbx command interfaces, global policy,
+versions, and available disk/memory without changing the setup:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 scripts/inspect_host.py
+```
+
+Optionally append `--sandbox NAME` to capture the effective policy of an existing
+sandbox too. The script prints its unique log directory under
+`.factory-planning/host-preflight-logs/`. Tell the agent when it finishes; the
+agent reads those shared logs directly to prepare the next test script. Each
+command has a 30-second limit and separate output/status files; `summary.json`
+records overall collection status. A nonzero exit means partial or interrupted
+collection; retain the logs for diagnosis. Python 3.11+ is supported.
+
+This is a read-only preparation step for Q-003 / REQ-021. It does not launch
+inference, create resources, or establish isolation. In particular, default-deny
+enforcement, host-file boundaries, and Kubernetes/grader access still require
+dedicated tests based on the installed sbx capabilities. Policy output can
+contain internal destination names; logs remain local and ignored by Git.
+
+### Prepare the bounded workflow fixture
+
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
 terminal, replace the checkout path and run:
 
