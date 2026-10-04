@@ -307,6 +307,40 @@ long-horizon behavior, and the benchmark protocol. A permanent host-wide policy
 change is a separate operational decision. The separate evaluation harness and
 experiment execution remain outside this preflight effort.
 
+### Continue Q-003: immutable inputs and external service access
+
+The completed HTTPS checks above are one part of setup validation, not a stopping
+point for the overall effort. The next independent boundary checks are read-only
+specification inputs, evidence kept outside the builder mount, and HTTP access
+from an external test process to the Kubernetes application (Q-003 / REQ-021).
+Run on the Mac:
+
+```sh
+cd /Users/t.clasen/projects/factory
+python3 scripts/test_host_boundaries.py
+```
+
+The script creates a disposable workspace and synthetic specification canary,
+mounts the specification with `:ro`, and attempts a write as the sandbox user and
+as root. It checks evidence-path visibility and compares the canary on the host
+afterward. It then creates a synthetic HTTP service in nested Kubernetes, checks
+its internal service DNS, and verifies the exact response from the host through
+an ephemeral `127.0.0.1` port. The port forwards through sbx and a NodePort inside
+the nested cluster; no Kubernetes credentials are exported to the host.
+
+The fixture's published port and internal service DNS checks passed locally
+inside the agent's sbx before the host script was prepared. The outer sbx port
+publication and host-mounted read-only input still need the Mac run. Results go
+to `.factory-planning/boundary-preflight-logs/run-*/`. Cluster removal and sandbox
+stop are attempted on failure too. The stopped sandbox, canaries, and evidence
+are retained for inspection. No global network policy changes or model calls
+occur; allow about 20 minutes at timeout ceilings.
+
+This is connectivity and mount testing, not an authoritative grader or holdout
+suite. Root write rejection alone does not prove resistance to remounts or every
+privileged escape. The sampled setup checks do not settle evaluation-harness
+architecture, evaluator permissions, or benchmark acceptance gates.
+
 ### Prepare the bounded model task
 
 Use a trusted template checkout with Python 3.11+, Git, and uv. In a host Bash
