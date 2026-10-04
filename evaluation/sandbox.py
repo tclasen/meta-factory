@@ -28,9 +28,10 @@ def stopped_from_listing(text, name):
 
 
 class Sandbox:
-    def __init__(self, attempt, project, specification, controller, *, port, role="builder"):
+    def __init__(self, attempt, project, specification, controller, *, port, role="builder", project_readonly=False):
         if role not in ("builder", "grader") or isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
             raise ValueError("Invalid sandbox role/port")
+        self.project_readonly = bool(project_readonly)
         self.project, self.specification = disjoint(project, specification)
         for mount in (self.project, self.specification):
             for protected in (attempt.directory, controller):
@@ -47,7 +48,7 @@ class Sandbox:
     def create_argv(self):
         return ["sbx", "create", "--name", self.name, "--cpus", "8", "--memory", "16g",
                 "--skills", "off", "--publish", f"127.0.0.1:{self.port}:8080",
-                "codex" if self.role == "builder" else "shell", str(self.project), str(self.specification) + ":ro"]
+                "codex" if self.role == "builder" else "shell", str(self.project) + (":ro" if self.project_readonly else ""), str(self.specification) + ":ro"]
 
     def create(self):
         if self.creation_attempted:
@@ -78,12 +79,14 @@ class Sandbox:
         return self.stopped
 
 
-def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 1024**3, max_files=100000):
+def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 1024**3, max_files=100000, selected_files=None):
     """Copy regular source files only; never execute Git/build/hooks on the host.
 
     Symlinks/special files/hardlinks are capture-incomplete, not application failure.
     Caller must include all source, Git metadata and required build assets; no
-    implicit ignore rules silently omit application inputs.
+    implicit ignore rules silently omit application inputs. An explicit source
+    selection may omit inventoried generated artifacts; selected symlinks remain
+    unsupported and produce capture-incomplete, never application failure.
     """
     if termination_verified is not True:
         raise ValueError("Remote termination must be verified before capture")
@@ -92,12 +95,33 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
     source = Path(source).resolve(strict=True)
     destination = Path(destination).resolve()
     disjoint(source, destination)
+    selected = None
+    selected_directories = set()
+    if selected_files is not None:
+        selected = set(selected_files)
+        if len(selected) > max_files:
+            raise ValueError("Capture file limit exceeded")
+        for name in selected:
+            path = Path(name)
+            if (not isinstance(name, str) or not path.parts or path.is_absolute()
+                    or ".." in path.parts or str(path) != name):
+                raise ValueError("Invalid selected source path")
+            full = source / path
+            if any(p.is_symlink() for p in (full, *full.parents) if p != source and source in p.parents):
+                raise ValueError("Symlink in selected source path")
+            if not full.is_file():
+                raise ValueError("Selected source file missing or non-regular")
+            selected_directories.update(str(parent) for parent in path.parents)
     destination.mkdir(mode=0o700)
     inventory = {}
     total = 0
     try:
         for root, directories, files in os.walk(source, followlinks=False):
             relative = Path(root).relative_to(source)
+            if selected is not None:
+                directories[:] = [name for name in directories
+                                  if str(relative / name) in selected_directories]
+                files = [name for name in files if str(relative / name) in selected]
             for name in directories:
                 path = Path(root) / name
                 if path.is_symlink():
@@ -135,6 +159,8 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                     total += size
                 finally:
                     os.close(descriptor)
+        if selected is not None and set(inventory) != selected:
+            raise ValueError("Selected source changed during capture")
         return {"files": inventory, "bytes": total, "outcome": "captured"}
     except BaseException:
         # Partial bytes are retained for diagnosis; never relabel as a full capture.

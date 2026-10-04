@@ -113,3 +113,13 @@ The Mac watchdog preflight (`evaluation-failure-logs/run-znnxk7d0`, local eviden
 sandboxes stopped, heartbeat files ceased changing, and stop status was verified.
 Transport exits 143 and -9 were retained as expected failure evidence. No model
 calls, host reboot, daemon failure or network policy changes were part of that test.
+
+`source.py` inventories the stopped builder project through a separate shell
+sandbox with a readonly project mount. It selects tracked and nonignored untracked
+files, records tracked deletions and ignored artifacts explicitly, and preserves
+regular Git metadata. Thus ignored virtual environments and dependency directories
+do not block source capture merely because they contain symlinks. Git does not run
+against application repositories on the host. Selected symlinks, linked worktrees,
+submodules and hardlinks are still unsupported capture inputs; these produce
+incomplete infrastructure evidence, not an application-failure verdict. A source
+inventory alone does not prove reproducible deployment or capture container images.

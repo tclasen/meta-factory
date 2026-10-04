@@ -70,6 +70,9 @@ class SandboxTest(unittest.TestCase):
             self.assertIn(str(spec) + ":ro", argv)
             self.assertNotIn("--cloud", argv)
             self.assertIn("-i", box.exec_argv(["codex", "app-server"], interactive=True))
+            inspector = Sandbox(attempt, self.project, spec, control, port=18081,
+                                role="grader", project_readonly=True)
+            self.assertIn(str(self.project) + ":ro", inspector.create_argv())
             with self.assertRaises(ValueError):
                 box.stop()
             box.stopped = True
