@@ -17,6 +17,45 @@ remain. See [observed results](#observed-results) and the
 If Luna or Medium is unavailable on a later run, record a blocker; do not
 substitute another model or reasoning setting.
 
+## Repeatable tested setup
+
+Use this as the entry point; the sections below retain individual attempts and
+recovery details. These are preflight configurations, not a promoted release.
+
+| Part | Tested configuration and repeat procedure |
+| --- | --- |
+| Template lifecycle | Pinned Copier from `uv.lock`; `python3 scripts/test_host_fixtures.py` runs generation, adoption, updates, hooks, and recipe fixtures on isolated Python 3.11/3.14. |
+| Agent workflow | sbx 0.46.0, Codex 0.160.0, requested Luna/medium; the [two-session runner](#bounded-consecutive-session-smoke) creates its own project, installs the CLI pin, corrects known MCP keys, and checks one task followed by an empty queue. |
+| Kubernetes | `rancher/k3s:v1.34.1-k3s1`, privileged nested container, `/dev/kmsg` creation before startup; probe pods use `ndots:1`. Infrastructure runners encode these corrections. |
+| Inputs and application access | `python3 scripts/test_host_boundaries.py` checks a separate read-only specification mount, hidden evidence path, internal service DNS, and host-loopback HTTP. |
+| Sampled restricted egress | `python3 scripts/test_host_allowlist.py --allow-temporary-global-policy-change --pods` temporarily removes global TCP allow-all, retains kit allowances, tests sandbox/pod HTTPS, then restores policy. This affects all local sandboxes while active; see the [opt-in procedure](#opt-in-test-of-the-global-default). |
+
+The tested allowed HTTPS destination is `registry.npmjs.org:443`; `example.com:443`
+is the unlisted control. This pair is not a complete destination inventory for
+model access, GitHub task state, packages, images, or documentation. The tests use
+the existing kit allowances and host authentication. Review the effective policy
+for a concrete workload before adopting a permanent restricted setup. An explicit
+wildcard deny overrides exact allows and is unsuitable for this configuration.
+
+Run only the check affected by a change. Template changes need fixtures; runtime,
+MCP, or task-selection changes need the bounded workflow check; mount, cluster,
+or policy changes need the corresponding infrastructure check. Do not repeat
+model calls or temporary global restrictions just to refresh successful evidence.
+
+Every host runner prints a unique directory under `.factory-planning/`, with
+stdout/stderr, command statuses, UTC times, revision, and overall outcome. Read
+`summary.json` and the relevant check logs together; collection success alone
+is not acceptance. Retain failed attempts. Infrastructure runners remove their
+cluster and stop their named sandbox; stopped sandboxes and evidence are retained.
+Inspect recorded cleanup results before manual cleanup, and use only the explicit
+resource names from that attempt. Policy restoration and its recovery command are
+described in the opt-in procedure; never reset the global policy database.
+
+The current host remains globally allow-all. UDP policy transitions, broader
+network isolation, interruption during inference, and long-horizon execution are
+unverified. Protected grading and experiment execution require separate work and
+authorization. These limits do not invalidate the bounded checks already passed.
+
 ## Observed results
 
 The owner executed these smoke attempts on 2026-10-04 (UTC). The first four used
@@ -302,7 +341,7 @@ allowances. Do not substitute an explicit wildcard deny: it overrides allows.
 
 This completes these setup checks, not full REQ-021 acceptance. Remaining study
 design/validation includes protected grader access, complete destination review,
-general cluster DNS and service behavior, UDP/IPv6 and other network paths,
+cluster behavior beyond the synthetic service below, UDP/IPv6 and other network paths,
 long-horizon behavior, and the benchmark protocol. A permanent host-wide policy
 change is a separate operational decision. The separate evaluation harness and
 experiment execution remain outside this preflight effort.
@@ -330,7 +369,7 @@ the nested cluster; no Kubernetes credentials are exported to the host.
 
 The fixture's published port and internal service DNS checks passed locally
 inside the agent's sbx before the host script was prepared. The outer sbx port
-publication and host-mounted read-only input still need the Mac run. Results go
+publication and host-mounted read-only input also passed the Mac run recorded below. Results go
 to `.factory-planning/boundary-preflight-logs/run-*/`. Cluster removal and sandbox
 stop are attempted on failure too. The stopped sandbox, canaries, and evidence
 are retained for inspection. No global network policy changes or model calls
@@ -379,7 +418,7 @@ its dedicated sandbox. It installs the pinned CLI and applies the previously
 tested MCP correction in that sandbox, using existing host authentication; no
 global policy changes occur. Raw event logs remain local. Preparation, known
 correction acceptance, and unchanged-file snapshot checks passed locally before
-the host run. Live consecutive-session behavior remains pending until reviewed.
+the host run. The reviewed live result is recorded below.
 
 This is a bounded native workflow test, not the continuous-conversation
 experimental protocol. The official
