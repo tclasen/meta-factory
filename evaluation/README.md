@@ -171,3 +171,12 @@ failure logs identify the limitation. Do not infer enforcement from NetworkPolic
 objects or healthy application connectivity; both permitted and denied connections
 must be observed. The tested alternative remains a preparation candidate pending
 complete toolchain identity capture and final protocol review.
+
+`images.py` runs a standalone image probe inside the grading sandbox, using an
+operator-selected kubectl command prefix. It records declared references and
+runtime-reported SHA-256 image IDs for application, init and ephemeral containers.
+Missing identities or failed queries remain incomplete. Raw Pod environment and
+query diagnostics are excluded from host logs; the underlying query exit status
+is retained. These observations are neither registry attestations nor archived
+image layers. The adapter has local fixtures; live image-inventory integration
+is still pending.
