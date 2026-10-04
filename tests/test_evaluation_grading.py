@@ -76,3 +76,25 @@ class GradingTest(unittest.TestCase):
         with Attempt(self.root / "broken", {}) as attempt:
             report = run_suite(attempt, Suite(self.suite, self.packages), {}, deadline_seconds=5, development=True)
         self.assertEqual(report["criteria"]["AC-001"]["verdict"], "inconclusive")
+
+    def test_uncertain_runtime_fault_stops_following_cases(self):
+        for mode in ('restore-error', 'timeout', 'exception'):
+            source = {'restore-error': 'from evaluation.faults import FaultRestoreError\ndef first(target):\n    raise FaultRestoreError("fixture")\n',
+                      'timeout': 'import time\ndef first(target):\n    time.sleep(10)\n',
+                      'exception': 'def first(target):\n    raise RuntimeError("uncertain state")\n'}[mode]
+            self.source.write_text(source + '\ndef second(target):\n    raise AssertionError("must not run")\n')
+            self.manifest['files']['cases.py'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+            self.manifest['cases'] = [dict(id='first', source='cases.py', function='first', criteria=['AC-001'],
+                                           timeout_seconds=0.2 if mode == 'timeout' else 2, mutates_runtime=True),
+                                      dict(id='second', source='cases.py', function='second', criteria=['AC-002'], timeout_seconds=2)]
+            self.save()
+            with Attempt(self.root / mode, {}) as attempt:
+                report = run_suite(attempt, Suite(self.suite, self.packages), {}, deadline_seconds=5, development=True)
+            self.assertTrue(report['aborted'])
+            self.assertEqual(report['case_results']['first']['verdict'], 'inconclusive')
+            self.assertNotIn('second', report['case_results'])
+            self.assertEqual(report['criteria']['AC-002']['verdict'], 'untested')
+
+    def test_mutation_declaration_requires_boolean(self):
+        self.manifest['cases'][0]['mutates_runtime'] = 'false'; self.save()
+        with self.assertRaises(ValueError): Suite(self.suite, self.packages)

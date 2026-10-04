@@ -226,3 +226,32 @@ passed before and after the outage; final cluster removal was verified. The
 StatefulSet used a disposable HTTP server, not an S3 service or persistent volume.
 Object-write atomicity, orphan cleanup, durable data and job recovery remain
 unverified by this fixture.
+
+### Fault contexts and grading aborts
+
+`faults.suspended_workload` wraps the workload adapter for an operator-selected
+resource. It requires a ready baseline, writes the original UID/replicas before
+suspension, and verifies restoration in `finally`, including when suspension may
+have changed replicas before reporting failure. Body errors and restoration
+outcomes are recorded separately. A replaced or independently scaled workload is
+not overwritten. This supports REQ-012/015/020; it does not discover storage roles
+or establish an application-level fault by itself.
+
+Protected cases that alter runtime infrastructure must declare
+`"mutates_runtime": true` in their hashed suite manifest. An inconclusive result
+from such a case aborts the remaining suite; a restoration failure explicitly
+requests the same abort. Remaining cases stay untested. The deployment owner then
+stops the disposable sandbox using its existing guard/cleanup path. Cases cannot
+continue on uncertain cluster state after a worker timeout or exception.
+
+The context's `finally` cannot run after SIGKILL or host loss. Its surrounding
+sandbox lifetime guard remains required. This is a callable operator adapter;
+serialized transport configuration and protected application fault-case wiring
+remain separate integration work.
+
+The local synthetic run `local-cluster-grading-logs/run-12nbsq9r` exercised this
+context around the StatefulSet service outage and recorded
+`restoration_verified: true`, recovered connectivity, and verified cluster removal.
+Controller fixtures additionally cover interruption, failed suspension after a
+mutation, replacement/concurrent scaling, and restoration failure. These are fault
+control checks; protected S3/application observations remain to be integrated.

@@ -60,6 +60,8 @@ class Suite:
             if len(set(case["criteria"])) != len(case["criteria"]):
                 raise ValueError("Duplicate criterion reference")
             positive(case["timeout_seconds"], "case timeout")
+            if type(case.get("mutates_runtime", False)) is not bool:
+                raise ValueError("Invalid runtime mutation declaration")
             if case["source"] not in self.manifest["files"] or not re.fullmatch(r"[a-z][a-z0-9_]*", case["function"]):
                 raise ValueError("Unhashed source or invalid function")
         covered = set(self.manifest.get("coverage_complete", []))
@@ -122,6 +124,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
+    aborted = False
     started = time.monotonic()
     for case in suite.cases:
         suite.verify()
@@ -144,8 +147,15 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False):
                 raise ValueError("Malformed grader result")
             results[case["id"]] = value
         attempt.emit("grader", "case.result", results[case["id"]])
+        if (results[case["id"]].get("abort_suite") is True
+                or case.get("mutates_runtime", False) and results[case["id"]]["verdict"] == "inconclusive"):
+            aborted = True
+            attempt.emit("grader", "suite.aborted", {"case_id": case["id"],
+                                                       "reason": "runtime_state_uncertain"})
+            break
     report = suite.aggregate(results)
     report["case_results"] = results
+    report["aborted"] = aborted
     report["elapsed_seconds"] = time.monotonic() - started
     atomic_json(attempt.directory / "grading.json", report)
     return report

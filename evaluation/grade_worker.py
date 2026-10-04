@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .evidence import atomic_json
+from .faults import FaultRestoreError, FaultSetupError
 from .grading import contained_file, sha256
 
 
@@ -42,6 +43,10 @@ def main():
         if value is not None:
             raise ValueError("Test functions must assert observations and return None")
         result["verdict"] = "pass"
+    except FaultRestoreError:
+        result.update(verdict="inconclusive", reason="workload_restoration_incomplete", abort_suite=True)
+    except FaultSetupError:
+        result.update(verdict="inconclusive", reason="workload_fault_precondition_incomplete")
     except AssertionError as error:
         result.update(verdict="fail", reason=str(error)[:2000])
     except Untested as error:
