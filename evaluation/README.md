@@ -1065,3 +1065,20 @@ A parent continuity observer must also compare Pod UIDs and the exact Pod set.
 These are identity observations, not a bound running-service clock by themselves.
 No retry oracle should substitute sampled HTTP health or raw wall time for that
 clock, or count preclaim latency as proven storage-retry duration.
+
+`running_clock.RunningClock` supplies a parent-only continuity primitive for exact
+API/worker workloads. Trusted callbacks bracket bounded workload reads with the
+outer guard, owner and immutable grading deadlines. Each sample requires running
+Pods, unique Pod identities and complete instance fingerprints; it rejects changed
+workload generations, Pod sets, container instances or restart counts. Failure or
+explicit invalidation permanently refuses subsequent samples. Only fixed numeric
+`minimum`/`maximum` seconds are returned.
+
+The lower bound uses the intersection between the first completed role observations
+and the current role-observation starts. The upper bound covers the interval from
+an independently bracketed earliest possible handoff through the final clock read.
+This assumes the reviewed operator envelope excludes external process/container
+pauses. Kubernetes container continuity does not prove internal subprocess identity,
+CPU scheduling or useful queue progress; worker-command semantics need independent
+binding. Retry-start uncertainty is separate from process duration. This primitive
+is not yet attached to staging receipts or granted to protected retry cases.
