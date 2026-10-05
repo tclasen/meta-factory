@@ -599,8 +599,7 @@ must enforce that total budget independently, including preparation and cleanup.
 It owns container isolation, pinned browser provisioning, peer identity checks,
 both relay hops, deadline/parent-death guards and resource cleanup. This callback
 interface does not itself provide those controls; the Docker executor below
-implements them for the tested Linux topology. Fresh deployment binding remains
-unfinished. Boundary tests use synthetic callbacks; separate live executor
+implements them for the tested Linux topology. Fresh-deployment resolution is described below. Boundary tests use synthetic callbacks; separate live executor
 preflights exercise the Docker topology.
 
 Results require the matching `case_id`, a recognized `verdict`, exact true
@@ -688,8 +687,8 @@ worker. Supply an immutable browser image ID, seccomp file/hash, immutable relay
 network ID, numeric peer IP/port, and a trusted bounded `peer_check` callback. No
 image pull/build, host networking, Docker socket mount, or application command is
 performed by this adapter. The operator must provision the pinned browser image
-and resolve the peer from the fresh deployment; that deployment binding remains
-unfinished. Current live evidence is Linux nested Docker with a synthetic app.
+and resolve the peer from the fresh deployment through the binding below.
+Actual application-specific discovery and Mac transport remain unverified. Current live evidence is Linux nested Docker with a synthetic app.
 
 Each case snapshots hashed suite files and controller modules into private
 readonly mounts, gives only the browser its synthetic target and protected cases,
@@ -722,4 +721,34 @@ unapproved and browser journey registration is still incomplete.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_runtime.py -v
+```
+
+### Post-bootstrap browser binding
+
+`grade_capture(..., browser_resolver=...)` invokes that trusted callback with the
+fresh grading sandbox only after successful bootstrap. It must return exactly
+`image`, `seccomp`, `seccomp_sha256`, `network`, `peer_host`, `peer_port`,
+`peer_check`, and `fixtures`. The first six configure `BrowserExecutor`;
+`peer_check(allowance_seconds)` verifies the peer with its supplied one-second
+budget. `fixtures` maps protected case IDs to JSON-compatible fixture values and
+semantic control labels. Keep this resolver operator-owned; application output
+must not become executable configuration or a browser-selected endpoint.
+
+`BrowserBinding` copies those fixtures and combines only the selected case's
+values with the common target. Fixtures cannot replace `base_url` or introduce
+host fault/audit capabilities. The URL must remain the loopback endpoint fixed
+by `grade_capture`. The binding checks owner process identity, sandbox stop state,
+outer watchdog liveness/release/result, revocation and both grading deadlines
+before and after peer verification and case execution. Per-case preparation and
+cleanup stay within the remaining grading budget. Missing fixtures or insufficient
+budget are inconclusive preconditions before browser creation.
+
+The binding is revoked before outer sandbox cleanup, including grading failure.
+Unit tests verify resolution and teardown ordering and guard/precondition failures;
+they do not establish actual Kubernetes endpoint/fixture discovery, Mac Docker
+file-sharing/transport, or application acceptance. Those remain preflight work.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_binding.py -v
+uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
 ```

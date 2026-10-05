@@ -76,6 +76,16 @@ class BrowserGradingTest(unittest.TestCase):
         self.assertTrue(report['aborted'])
         self.assertNotIn('private credential', json.dumps(report))
 
+    def test_missing_browser_fixture_is_inconclusive_without_launch_or_abort(self):
+        from evaluation.browser import BrowserFixtureUnavailable
+        def executor(*a, **k):
+            raise BrowserFixtureUnavailable('private fixture detail')
+        report = self.execute(executor)
+        self.assertEqual(report['case_results']['first']['reason'], 'browser_fixture_unavailable')
+        self.assertEqual(report['case_results']['first']['verdict'], 'inconclusive')
+        self.assertFalse(report['aborted'])
+        self.assertNotIn('private fixture detail', json.dumps(report))
+
     def test_browser_clean_failure_and_untested_remain_distinct(self):
         for verdict in ('fail', 'untested', 'inconclusive'):
             report = self.execute(lambda *a, **k: self.evidence(verdict=verdict))

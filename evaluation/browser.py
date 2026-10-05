@@ -10,6 +10,10 @@ TRANSPORT_COUNTERS = {
 }
 
 
+class BrowserFixtureUnavailable(Exception):
+    """A parent-side precondition failed before any browser resources started."""
+
+
 def run_browser_case(executor, attempt, suite, case, target, timeout):
     """The trusted executor owns bounds, guards, both relay hops and cleanup.
 
@@ -23,6 +27,8 @@ def run_browser_case(executor, attempt, suite, case, target, timeout):
     started = time.monotonic()
     try:
         value = executor(attempt, suite, dict(case), dict(target), timeout_seconds=timeout)
+    except BrowserFixtureUnavailable:
+        return dict(result, reason="browser_fixture_unavailable")
     except Exception:
         return dict(result, reason="browser_executor_error", abort_suite=True)
     if not isinstance(value, dict) or value.get("case_id") != case["id"]:

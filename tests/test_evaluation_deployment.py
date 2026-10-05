@@ -280,3 +280,62 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(report['outcome'], 'grading_incomplete')
         self.assertTrue(report['cleanup']['remote_termination_verified'])
         self.assertNotIn('private diagnostic', str(report))
+
+    def test_browser_resolves_only_after_bootstrap_and_closes_before_outer_guard(self):
+        events=[];configuration={'private':'browser configuration'}
+        def resolve(box):
+            self.assertTrue(box.creation_attempted)
+            self.assertEqual(len(self.commands),1)
+            events.append('resolve');return configuration
+        class Binding:
+            def __init__(inner,box,guard,config,**kwargs):
+                self.assertIs(config,configuration)
+                self.assertEqual(kwargs['base_url'],'http://127.0.0.1:18080')
+                self.assertGreater(kwargs['monotonic_deadline'],0)
+                events.append('bind')
+            def close(inner):events.append('close')
+        def runner(attempt,suite,target,**kwargs):
+            self.assertIsInstance(kwargs['browser_executor'],Binding)
+            self.assertEqual(target,{'base_url':'http://127.0.0.1:18080'})
+            events.append('grade')
+            return {'criteria':{'AC-025':{'verdict':'pass'}},'project_success':True,'accepted_packages':['WP-009']}
+        def release(guard):
+            events.append('guard-release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release),Attempt(self.root/'browser',{}) as attempt:
+            report=self.run_grade(attempt,runner=runner,browser_resolver=resolve,browser_binding_factory=Binding)
+        self.assertEqual(events,['resolve','bind','grade','close','guard-release'])
+        self.assertFalse(report['project_success'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_failed_bootstrap_does_not_resolve_browser(self):
+        def unexpected(*args):self.fail('Browser resolved before successful bootstrap')
+        with Attempt(self.root/'browser-no-bootstrap',{}) as attempt:
+            report=self.run_grade(attempt,bootstrap='failed',browser_resolver=unexpected)
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_browser_resolution_failure_cleans_sandbox_and_redacts_exception(self):
+        def broken(box):raise RuntimeError('private-browser-credential')
+        with Attempt(self.root/'browser-broken',{}) as attempt:
+            report=self.run_grade(attempt,browser_resolver=broken)
+        self.assertEqual(report['outcome'],'grading_incomplete')
+        self.assertNotIn('private-browser-credential',str(report))
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_static_browser_configuration_rejected_before_sandbox_creation(self):
+        count=len(FakeSandbox.instances)
+        with Attempt(self.root/'browser-static',{}) as attempt,self.assertRaises(ValueError):
+            self.run_grade(attempt,browser_resolver={})
+        self.assertEqual(len(FakeSandbox.instances),count)
+
+    def test_browser_close_failure_cannot_accept_and_still_stops_outer_sandbox(self):
+        class Binding:
+            def __init__(self,*args,**kwargs):pass
+            def close(self):raise RuntimeError('private-browser-cleanup')
+        self.suite.approved=True
+        with Attempt(self.root/'browser-close-broken',{}) as attempt:
+            report=self.run_grade(attempt,browser_resolver=lambda box:{},browser_binding_factory=Binding)
+        self.assertFalse(report['project_success'])
+        self.assertEqual(report['accepted_packages'],[])
+        self.assertEqual(report['browser_cleanup_error'],'RuntimeError')
+        self.assertNotIn('private-browser-cleanup',str(report))
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
