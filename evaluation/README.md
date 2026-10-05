@@ -1221,3 +1221,32 @@ Run its focused channel/lifecycle checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_security_broker.py -v
 ```
+
+
+### Guarded parent security inspection lifetime
+
+`security_runtime.SecurityRuntime` wraps a fixed nonempty subset of the security
+operations in owned sandbox/watchdog lifetime checks. `inspections` maps each
+operation to trusted `reader(canaries, timeout=...)` code; password canaries are
+always `None`. Readers must independently bind actual accounts/library defaults or
+log source inventory/history, enforce their command/time limits and return the
+sanitized receipt described above. `peer_check(operation, timeout=...)` must return
+exactly `True` for the bound active peer. These are operator integration contracts,
+not automatic application discovery or self-attestation.
+
+The parent checks owner PID, stopped sandbox, watchdog process/release/result
+markers and both immutable wall/monotonic deadlines before and after peer checks
+and inspection. Initial reserve is 40 seconds; reader timeout is 30 seconds, with
+a five-second final allowance. A late callback or lost lifetime/peer suppresses
+its receipt. Closing revokes in-flight observation, closes the broker and removes
+the private socket. Evidence contains operation names, fixed outcomes/verdicts
+and exception types only, never requests, hashes, passwords or raw callback text.
+This adds no grading time or authorization to change peers/policy; unsupported
+operations are unavailable. No deployment resolver or grading case grants this
+runtime yet.
+
+Run its focused lifetime checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_security_runtime.py -v
+```
