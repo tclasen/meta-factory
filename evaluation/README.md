@@ -874,3 +874,28 @@ The physical object count still comes from the separate storage callback.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
 ```
+
+### Independent physical artifact enumeration
+
+`job_storage.S3ListTransport` invokes a trusted AWS CLI prefix bound by the
+operator to an independently verified storage endpoint and immutable private
+config/credential files. Secrets must stay out of that prefix. A hard subprocess
+deadline, combined output limit, single CLI attempt and fixed page size bound the
+read. Raw keys, continuation tokens, command arguments and diagnostics are not
+recorded; only UTC times, byte counts, exit status and outcome enter evidence.
+Peer/lifetime checks bracket the command. Provisioning the CLI is separate.
+
+`S3ArtifactCounter` enumerates current physical objects over bounded pages and a
+single total deadline. It verifies bucket/prefix, page counts, unique keys and
+continuation progress; truncation beyond the page allowance is inconclusive.
+Two physical keys remain observable as two artifacts. The trusted export-prefix
+resolver must derive its scope independently of application artifact rows and
+include only that export's published artifacts. Staging, evidence and unrelated
+objects need separate scopes. Unsupported layouts require reviewed adapters.
+This does not inspect object version history, prove private access/orphan cleanup,
+or establish an atomic snapshot while publication is in progress. Barrier or
+convergence checks and live storage transport evidence remain required.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_job_storage.py -v
+```
