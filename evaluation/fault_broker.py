@@ -19,7 +19,7 @@ LIMIT = 4096
 
 
 def send(stream, value):
-    stream.write(json.dumps(value).encode() + b'\n')
+    stream.write(json.dumps(value, allow_nan=False).encode() + b'\n')
     stream.flush()
 
 
@@ -29,7 +29,16 @@ def receive(stream):
         raise EOFError('Fault connection closed')
     if len(line) > LIMIT or not line.endswith(b'\n'):
         raise ValueError('Oversized fault request')
-    value = json.loads(line)
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError('Duplicate fault message key')
+            result[key] = value
+        return result
+    def constant(value):
+        raise ValueError('Nonfinite fault message value')
+    value = json.loads(line, object_pairs_hook=pairs, parse_constant=constant)
     if not isinstance(value, dict):
         raise ValueError('Invalid fault request')
     return value

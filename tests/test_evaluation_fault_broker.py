@@ -217,3 +217,24 @@ class BrokerTest(unittest.TestCase):
                 if rejected:
                     with self.assertRaises(FaultRestoreError):session.restart('worker')
                 else:self.assertEqual(session.restart('worker'),observations)
+
+    def test_ambiguous_or_nonfinite_json_is_rejected(self):
+        import io
+        for raw in (b'{"operation":"inspect","operation":"suspend"}\n',
+                    b'{"observations":{"held_fault_verified":false,"held_fault_verified":true}}\n',
+                    b'{"value":NaN}\n',b'{"value":Infinity}\n',b'{"value":-Infinity}\n'):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):receive(io.BytesIO(raw))
+        with self.assertRaises(ValueError):send(io.BytesIO(),{'value':float('nan')})
+
+    def test_duplicate_operation_never_executes_callback(self):
+        import json
+        with FaultBroker(['storage'],self.factory) as broker:
+            connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
+            connection.connect(str(broker.path))
+            with connection,connection.makefile('rwb') as stream:
+                raw=('{"token":'+json.dumps(broker.token)+',"role":"storage",'
+                     '"operation":"inspect","operation":"suspend"}\n').encode()
+                stream.write(raw);stream.flush()
+                self.assertEqual(stream.readline(),b'')
+            self.assertTrue(broker.wait_idle(2))
+            self.assertEqual(self.events,[])
