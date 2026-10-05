@@ -64,11 +64,13 @@ class Suite:
             if "browser" in case:
                 if not isinstance(case["browser"], str) or case["browser"] not in BROWSER_MODES:
                     raise ValueError("Invalid browser invocation mode")
-                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False):
+                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False) or case.get("stages_jobs", False):
                     raise ValueError("Browser cases cannot receive host broker capabilities")
-            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs"):
+            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs", "stages_jobs"):
                 if type(case.get(declaration, False)) is not bool:
                     raise ValueError("Invalid case capability declaration: " + declaration)
+            if case.get('stages_jobs', False) and not (case.get('mutates_runtime', False) and case.get('reads_jobs', False)):
+                raise ValueError('Staged jobs require runtime mutation and independent job observations')
             if case["source"] not in self.manifest["files"] or not re.fullmatch(r"[a-z][a-z0-9_]*", case["function"]):
                 raise ValueError("Unhashed source or invalid function")
         covered = set(self.manifest.get("coverage_complete", []))
@@ -120,7 +122,7 @@ class Suite:
 
 
 def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None,
-              browser_executor=None, job_broker=None):
+              browser_executor=None, job_broker=None, staging_broker=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -133,6 +135,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
     target.pop('_fault_control', None)
     target.pop('_audit_control', None)
     target.pop('_job_control', None)
+    target.pop('_staging_control', None)
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
@@ -146,16 +149,22 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
         path = attempt.directory / (case["id"] + "-verdict.json")
         worker_target = target_path
         capabilities = {}
-        if case.get('mutates_runtime', False) and fault_broker is not None:
+        if case.get('mutates_runtime', False) and not case.get('stages_jobs', False) and fault_broker is not None:
             capabilities['_fault_control'] = fault_broker.configuration
         if case.get('reads_audit', False) and audit_broker is not None:
             capabilities['_audit_control'] = audit_broker.configuration
         if case.get('reads_jobs', False) and job_broker is not None:
             capabilities['_job_control'] = job_broker.configuration
+        if case.get('stages_jobs', False) and staging_broker is not None:
+            capabilities['_staging_control'] = staging_broker.configuration
         if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
             atomic_json(worker_target, dict(target, **capabilities))
-        if "browser" in case:
+        if case.get('stages_jobs', False) and (staging_broker is None or job_broker is None):
+            results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
+                                    'reason':'staging_capability_unavailable', 'abort_suite':True}
+            atomic_json(path, results[case['id']])
+        elif "browser" in case:
             results[case["id"]] = run_browser_case(browser_executor, attempt, suite, case, target,
                                                   min(remaining, case["timeout_seconds"]))
             atomic_json(path, results[case["id"]])
@@ -174,10 +183,14 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
                     raise ValueError("Malformed grader result")
                 results[case["id"]] = value
         suite.verify()
-        if case.get('mutates_runtime', False) and fault_broker is not None:
+        if case.get('mutates_runtime', False) and not case.get('stages_jobs', False) and fault_broker is not None:
             if not fault_broker.wait_idle() or fault_broker.aborted:
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
                                        'reason': 'fault_control_aborted', 'abort_suite': True}
+        if case.get('stages_jobs', False) and staging_broker is not None:
+            if not staging_broker.wait_idle() or staging_broker.aborted:
+                results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
+                                        'reason':'staging_control_aborted', 'abort_suite':True}
         if case.get('reads_audit', False) and audit_broker is not None:
             if not audit_broker.wait_idle():
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',

@@ -7,6 +7,7 @@ from .evidence import atomic_json, collect, positive
 from .fault_runtime import FaultRuntime
 from .audit_runtime import AuditRuntime
 from .job_runtime import JobRuntime
+from .staging_runtime import StagingRuntime
 from .browser_binding import BrowserBinding
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
@@ -47,7 +48,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   fault_audit=None, audit_observer=None, audit_runtime_factory=AuditRuntime,
                   browser_resolver=None, browser_binding_factory=BrowserBinding,
                   fault_storage_worker_restart=False, job_observer=None,
-                  job_runtime_factory=JobRuntime):
+                  job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -55,6 +56,10 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     never grants acceptance and is for synthetic preflights or grader development.
     Factory injection supports deterministic lifecycle/failure tests, not CLI bypasses.
     """
+    if type(job_staging) is not bool:
+        raise ValueError('Job staging selection must be a boolean')
+    if job_staging and not all(callable(callback) for callback in (fault_workloads, fault_service_probes, job_observer)):
+        raise ValueError('Job staging requires trusted post-bootstrap workload, service and job resolvers')
     if type(fault_storage_worker_restart) is not bool:
         raise ValueError('Compound fault selection must be a boolean')
     if fault_storage_worker_restart and (not callable(fault_workloads) or not callable(fault_service_probes)):
@@ -94,6 +99,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     fault_runtime = None
     audit_runtime = None
     job_runtime = None
+    staging_runtime = None
     browser_binding = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
     cleanup = {'remote_termination_verified': False}
@@ -137,7 +143,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 selected_workloads, prefix,
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes,
-                **audit_options, **({'storage_worker_restart': True} if fault_storage_worker_restart else {}))
+                **audit_options, **({'storage_worker_restart': True} if fault_storage_worker_restart or job_staging else {}))
             options['fault_broker'] = fault_runtime.broker
         if audit_observer is not None:
             audit_options = audit_observer(box)
@@ -159,6 +165,9 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds, **job_options)
             options['job_broker'] = job_runtime.broker
+        if job_staging:
+            staging_runtime = staging_runtime_factory(attempt.directory / 'job-staging', fault_runtime)
+            options['staging_broker'] = staging_runtime.broker
         if browser_resolver is not None:
             browser_configuration = browser_resolver(box)
             browser_binding = browser_binding_factory(box, guard, browser_configuration,
@@ -184,6 +193,12 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             except Exception as error:
                 report.update(outcome='grading_incomplete', project_success=False,
                               accepted_packages=[], browser_cleanup_error=type(error).__name__)
+        if staging_runtime is not None:
+            try:
+                staging_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], staging_cleanup_error=type(error).__name__)
         if job_runtime is not None:
             try:
                 job_runtime.close()

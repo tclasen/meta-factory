@@ -465,3 +465,80 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(closed, [True])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
         self.assertNotIn('private-browser-credential', str(report))
+
+    def staging_extras(self, events):
+        owner=self;fault_broker=object();job_broker=object();stage_broker=object()
+        class Faults:
+            def __init__(inner,*args,**kwargs):
+                owner.assertTrue(kwargs['storage_worker_restart']);inner.broker=fault_broker
+                events.append('fault-bind')
+            def close(inner):events.append('fault-close')
+        class Jobs:
+            def __init__(inner,*args,**kwargs):inner.broker=job_broker;events.append('job-bind')
+            def close(inner):events.append('job-close')
+        class Staging:
+            def __init__(inner,directory,faults):
+                owner.assertIsInstance(faults,Faults);inner.broker=stage_broker;events.append('stage-bind')
+            def close(inner):events.append('stage-close')
+        def workloads(box):
+            owner.assertEqual(len(owner.commands),1);events.append('workloads');return {}
+        return dict(job_staging=True,fault_workloads=workloads,fault_service_probes=lambda box:{},
+                    job_observer=lambda box:owner.job_options(),kubectl_prefix=['kubectl'],
+                    fault_runtime_factory=Faults,job_runtime_factory=Jobs,staging_runtime_factory=Staging)
+
+    def test_staging_opt_in_binds_after_bootstrap_and_closes_before_jobs_faults_guard(self):
+        events=[];extras=self.staging_extras(events)
+        def runner(attempt,suite,target,**kwargs):
+            self.assertIn('staging_broker',kwargs);self.assertIn('job_broker',kwargs)
+            self.assertEqual(set(target),{'base_url'});events.append('grade')
+            return {'criteria':{'AC-024':{'verdict':'pass'}},'project_success':False}
+        def release(guard):events.append('guard-release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release),Attempt(self.root/'staging-bound',{}) as attempt:
+            report=self.run_grade(attempt,runner=runner,**extras)
+        self.assertEqual(events,['workloads','fault-bind','job-bind','stage-bind','grade','stage-close','job-close','fault-close','guard-release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_staging_default_does_not_construct_capability(self):
+        def unexpected(*args,**kwargs):self.fail('Default created staging capability')
+        with Attempt(self.root/'staging-default',{}) as attempt:
+            report=self.run_grade(attempt,staging_runtime_factory=unexpected)
+        self.assertEqual(report['outcome'],'graded')
+
+    def test_staging_requires_boolean_and_all_trusted_resolvers_before_creation(self):
+        count=len(FakeSandbox.instances)
+        for index,extras in enumerate((dict(job_staging=1),dict(job_staging=True),
+                                      dict(job_staging=True,fault_workloads={},fault_service_probes=lambda box:{},job_observer=lambda box:{}))):
+            with Attempt(self.root/('staging-invalid-'+str(index)),{}) as attempt,self.assertRaises(ValueError):
+                self.run_grade(attempt,**extras)
+        self.assertEqual(len(FakeSandbox.instances),count)
+
+    def test_failed_bootstrap_never_resolves_staging_inputs(self):
+        def unexpected(*args,**kwargs):self.fail('Staging prepared without successful bootstrap')
+        with Attempt(self.root/'staging-no-bootstrap',{}) as attempt:
+            report=self.run_grade(attempt,bootstrap='failed',job_staging=True,fault_workloads=unexpected,
+                fault_service_probes=unexpected,job_observer=unexpected,staging_runtime_factory=unexpected)
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_staging_close_failure_revokes_acceptance_without_skipping_parent_cleanup(self):
+        events=[];extras=self.staging_extras(events)
+        class Broken:
+            def __init__(inner,*args,**kwargs):inner.broker=object()
+            def close(inner):events.append('stage-close');raise RuntimeError('private-staging-credential')
+        extras['staging_runtime_factory']=Broken;self.suite.approved=True
+        with Attempt(self.root/'staging-close-broken',{}) as attempt:
+            report=self.run_grade(attempt,**extras)
+        self.assertEqual(events[-3:],['stage-close','job-close','fault-close'])
+        self.assertEqual(report['staging_cleanup_error'],'RuntimeError')
+        self.assertFalse(report['project_success']);self.assertEqual(report['accepted_packages'],[])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-staging-credential',str(report))
+
+    def test_staging_binding_failure_disposes_already_bound_parent_capabilities(self):
+        events=[];extras=self.staging_extras(events)
+        def broken(*args,**kwargs):raise ValueError('private-staging-binding')
+        extras['staging_runtime_factory']=broken
+        with Attempt(self.root/'staging-bind-broken',{}) as attempt:
+            report=self.run_grade(attempt,**extras)
+        self.assertEqual(events[-2:],['job-close','fault-close'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-staging-binding',str(report))

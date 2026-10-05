@@ -30,11 +30,12 @@ class BrowserBindingTest(unittest.TestCase):
 
     def test_binding_clones_fresh_fixture_and_caps_remaining_deadline(self):
         binding=self.bind();self.config['fixtures']['journey']['case_id']='changed'
-        binding(None,None,{'id':'journey'},{'base_url':binding.base_url,'_audit_control':{'secret':'host'},'_job_control':{'secret':'jobs'}},timeout_seconds=999)
+        binding(None,None,{'id':'journey'},{'base_url':binding.base_url,'_audit_control':{'secret':'host'},'_job_control':{'secret':'jobs'},'_staging_control':{'secret':'stage'}},timeout_seconds=999)
         args,kwargs=self.factory.return_value.call_args
         self.assertEqual(args[3]['case_id'],'fresh')
         self.assertNotIn('_audit_control',args[3])
         self.assertNotIn('_job_control',args[3])
+        self.assertNotIn('_staging_control',args[3])
         self.assertEqual(kwargs['timeout_seconds'],490)
         self.assertNotIn('fixtures',self.factory.call_args.kwargs)
 
@@ -67,7 +68,7 @@ class BrowserBindingTest(unittest.TestCase):
         self.factory.return_value.assert_not_called()
 
     def test_fixture_cannot_replace_endpoint_or_host_capabilities(self):
-        for field in ('base_url','_audit_control','_fault_control','_job_control'):
+        for field in ('base_url','_audit_control','_fault_control','_job_control','_staging_control'):
             self.config['fixtures']['journey'][field]='injected'
             with self.assertRaises(ValueError):self.bind()
             del self.config['fixtures']['journey'][field]

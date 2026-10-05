@@ -113,7 +113,7 @@ class GradingTest(unittest.TestCase):
                 self.assertFalse(report['project_success'])
 
     def test_mutation_declaration_requires_boolean(self):
-        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit', 'reads_jobs'):
+        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit', 'reads_jobs', 'stages_jobs'):
             self.manifest['cases'][0][declaration] = 'false'; self.save()
             with self.assertRaises(ValueError): Suite(self.suite, self.packages)
             del self.manifest['cases'][0][declaration]
@@ -241,3 +241,83 @@ class GradingTest(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(ValueError, 'host broker capabilities'):
             Suite(self.suite, self.packages)
+
+    def test_staging_requires_mutation_and_independent_job_declarations(self):
+        for declaration in ('mutates_runtime', 'reads_jobs'):
+            self.manifest['cases'][0].update(stages_jobs=True, mutates_runtime=True, reads_jobs=True)
+            self.manifest['cases'][0][declaration]=False
+            self.save()
+            with self.assertRaisesRegex(ValueError, 'independent job observations'):
+                Suite(self.suite, self.packages)
+
+    def test_declared_staging_receives_only_staging_and_job_capabilities(self):
+        from contextlib import contextmanager
+        from types import SimpleNamespace
+        from evaluation.staging_broker import StagingBroker, WORKER_RECEIPT, STORAGE_RECEIPT, RESTART_RECEIPT
+        from evaluation.job_broker import JobBroker
+        identity='00000000-0000-0000-0000-000000000001'
+        self.source.write_text('from evaluation.staging_broker import remote_staging\n'
+            'from evaluation.job_broker import read_job\n'
+            'def first(target):\n'
+            '    assert "_fault_control" not in target\n'
+            '    with remote_staging(target["_staging_control"]) as stage:\n'
+            '        stage.handoff()\n'
+            '        assert read_job(target["_job_control"],"'+identity+'")["active_lease"]\n'
+            '        stage.restart_worker()\n'
+            'def second(target):\n'
+            '    assert "_staging_control" not in target and "_job_control" not in target\n')
+        self.manifest['files']['cases.py']=hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.manifest['cases']=[dict(id='first',source='cases.py',function='first',criteria=['AC-001'],timeout_seconds=2,
+                                    mutates_runtime=True,reads_jobs=True,stages_jobs=True),
+                               dict(id='second',source='cases.py',function='second',criteria=['AC-002'],timeout_seconds=2)]
+        self.save();events=[]
+        class Handle:
+            observations={field:True for field in WORKER_RECEIPT}
+            def handoff(self):return {field:True for field in STORAGE_RECEIPT}
+            def restart_worker(self):return {field:True for field in RESTART_RECEIPT}
+        @contextmanager
+        def factory():
+            events.append('held')
+            try:yield Handle()
+            finally:events.append('restored')
+        def unrelated_wait():self.fail('General fault capability used during staged case')
+        observation=dict(export_id=identity,status='running',processing_attempts=1,active_lease=True,
+                         lease_fingerprint='a'*64,published_artifacts=0,completion_events=0)
+        with StagingBroker(factory) as staging,JobBroker(lambda _:observation) as jobs,Attempt(self.root/'staging',{}) as attempt:
+            result=run_suite(attempt,Suite(self.suite,self.packages),{'_staging_control':{'token':'forged'}},
+                deadline_seconds=5,development=True,staging_broker=staging,job_broker=jobs,
+                fault_broker=SimpleNamespace(configuration={},wait_idle=unrelated_wait,aborted=False))
+        self.assertEqual([v['verdict'] for v in result['case_results'].values()],['pass','pass'])
+        self.assertEqual(events,['held','restored'])
+        self.assertEqual(json.loads((self.root/'staging/grading-target.json').read_text()),{})
+
+    def test_missing_staging_or_job_capability_aborts_before_child_launch(self):
+        from types import SimpleNamespace
+        self.manifest['cases'][0].update(stages_jobs=True,mutates_runtime=True,reads_jobs=True)
+        self.save()
+        for index,capabilities in enumerate(({}, {'staging_broker':SimpleNamespace(configuration={},wait_idle=lambda:True,aborted=False)},
+                                             {'job_broker':SimpleNamespace(configuration={},wait_idle=lambda:True)})):
+            with Attempt(self.root/('staging-missing-'+str(index)),{}) as attempt:
+                result=run_suite(attempt,Suite(self.suite,self.packages),{},deadline_seconds=2,development=True,**capabilities)
+                self.assertFalse((attempt.directory/'grade-first').exists())
+            self.assertTrue(result['aborted'])
+            self.assertEqual(result['case_results']['first']['reason'],'staging_capability_unavailable')
+
+    def test_unsettled_or_aborted_staging_prevents_later_cases(self):
+        from types import SimpleNamespace
+        self.manifest['cases'][0].update(stages_jobs=True,mutates_runtime=True,reads_jobs=True)
+        self.manifest['cases'].append(dict(id='second',source='cases.py',function='good',criteria=['AC-002'],timeout_seconds=2))
+        self.save()
+        for index,(idle,aborted) in enumerate(((False,False),(True,True))):
+            with Attempt(self.root/('staging-aborted-'+str(index)),{}) as attempt:
+                result=run_suite(attempt,Suite(self.suite,self.packages),{'value':1},deadline_seconds=5,development=True,
+                    job_broker=SimpleNamespace(configuration={},wait_idle=lambda:True),
+                    staging_broker=SimpleNamespace(configuration={},wait_idle=lambda:idle,aborted=aborted))
+            self.assertTrue(result['aborted'])
+            self.assertNotIn('second',result['case_results'])
+            self.assertEqual(result['case_results']['first']['reason'],'staging_control_aborted')
+
+    def test_browser_staging_declaration_is_rejected(self):
+        self.manifest['cases'][0].update(browser='page',stages_jobs=True,mutates_runtime=True,reads_jobs=True)
+        self.save()
+        with self.assertRaisesRegex(ValueError,'host broker capabilities'):Suite(self.suite,self.packages)

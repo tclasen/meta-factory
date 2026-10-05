@@ -592,7 +592,7 @@ Suite cases may declare `browser` as `page`, `page_request`, `browser`, or
 `browser_request`, selecting the protected journey's invocation signature. These
 cases route exclusively through an operator-provided `run_suite`
 `browser_executor`; the ordinary host worker refuses them. A missing executor
-is inconclusive. Browser cases cannot receive host audit, fault or job capabilities.
+is inconclusive. Browser cases cannot receive host audit, fault, job or staging capabilities.
 
 The executor receives `(attempt, suite, case, target, timeout_seconds=...)` and
 must enforce that total budget independently, including preparation and cleanup.
@@ -736,7 +736,7 @@ must not become executable configuration or a browser-selected endpoint.
 
 `BrowserBinding` copies those fixtures and combines only the selected case's
 values with the common target. Fixtures cannot replace `base_url` or introduce
-host fault/audit/job capabilities. The URL must remain the loopback endpoint fixed
+host fault/audit/job/staging capabilities. The URL must remain the loopback endpoint fixed
 by `grade_capture`. The binding checks owner process identity, sandbox stop state,
 outer watchdog liveness/release/result, revocation and both grading deadlines
 before and after peer verification and case execution. Per-case preparation and
@@ -916,8 +916,8 @@ requires the parent to independently recheck the current phase. Long observation
 must request these verifications within the bounded idle window; verification
 cannot extend the outer deployment deadlines. Restoration failure is fatal.
 The protocol avoids nesting a second fault socket while the first is held.
-It is not yet backed by the concrete staging runtime or granted to suite cases;
-receipt callbacks alone do not establish a publication barrier or lease recovery.
+The concrete staging runtime and scoped grants are described below; receipt
+callbacks alone do not establish a publication barrier or lease recovery.
 Actual parent-death containment still belongs to the outer sandbox watchdog.
 
 ```sh
@@ -950,10 +950,25 @@ uses a nonblocking, reentrant mutation lock for its entire fault context.
 
 The initial conservative reserve is 4500 seconds with the standard service-probed
 compound configuration. It consumes the existing grading allowance and does not
-increase the proposed grading limit. This runtime is not yet granted to suite
-cases or bound by fresh deployment. Fixture controls do not establish live
-Kubernetes, actual job claiming, lease recovery or a frozen acceptance suite.
+increase the proposed grading limit. Fresh-deployment staging is opt-in as described
+below. Fixture controls do not establish live Kubernetes, actual job claiming, lease recovery or a frozen acceptance suite.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_staging_runtime.py -v
 ```
+
+Cases declare boolean `stages_jobs`, `mutates_runtime` and `reads_jobs` together
+to receive `_staging_control` through `run_suite(staging_broker=..., job_broker=...)`.
+They receive the staging and job capabilities, rather than the general fault
+capability. Common-target injections are stripped. Browser manifests and fixture
+bindings forbid staging capabilities. Missing staging/job capabilities abort
+before launching a child; an unsettled or aborted staging broker prevents later
+cases. Independent job-reader settlement remains required as well.
+
+`grade_capture(..., job_staging=True)` requires trusted post-bootstrap workload,
+service-probe and job-observation resolvers. It enables the parent compound fault
+runtime, binds job observations, then attaches staging. Static selections are
+rejected before sandbox creation; the default is false. The staging capability
+closes before job observations and the parent fault runtime, including preparation
+failures. Cleanup failures prevent acceptance while sandbox termination proceeds.
+No protected lease/retry case is declared complete by this wiring.
