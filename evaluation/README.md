@@ -443,3 +443,32 @@ raise `FaultRestoreError`; abort grading and dispose the environment. `finally`
 handles ordinary exceptions/interruption, while process death requires the outer
 lifetime guard. These contracts still require a concrete trusted application
 connection/peer binding; this adapter does not discover credentials or topology.
+
+### Secret-safe database command transport
+
+`DatabaseTransport` implements the audit adapter's `execute` contract using a
+fixed operator-owned peer prefix and exactly two libpq service aliases (`runtime`
+and `operator`). It invokes trusted `psql -X` with password prompting disabled,
+ON_ERROR_STOP enabled and SQL supplied through stdin. Connection credentials
+belong in private service/password files on the peer; neither query values nor
+connection diagnostics are copied to evidence files.
+
+The caller's `check` must verify exact peer identity, immutable service configuration
+and sandbox lifetime. Use an exact container identity or equivalently protected
+peer binding, preserve stdin through every transport layer, and keep the peer and
+service files outside application control. The implementation checks this scope
+before execution and again before returning an observation. A Docker fixture now
+exercises the entire adapter through an exact container ID and verified service
+file hash; live application Kubernetes binding and Mac sbx stdin transport remain
+separate integration obligations.
+
+Commands are limited to 15 seconds, SQL to 256 KiB, and combined stdout/stderr to
+64 KiB by default (at most 1 MiB when explicitly configured). Input and output are
+pumped concurrently so large input or a blocked child cannot deadlock the caller.
+Only successful completion with one JSON object is accepted; duplicate keys,
+nonfinite numbers, malformed output, partial input and nonzero exits are refused.
+Evidence retains UTC times, SQL hash, byte counts, status and elapsed time, never
+raw SQL/stdout/stderr or command argv. Local process-group termination is recorded
+without claiming remote query termination. Timeout or truncated evidence during
+a mutation therefore remains uncertain and invokes the audit adapter's disposal
+path; there are no automatic retries.
