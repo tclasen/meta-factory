@@ -113,7 +113,7 @@ class GradingTest(unittest.TestCase):
                 self.assertFalse(report['project_success'])
 
     def test_mutation_declaration_requires_boolean(self):
-        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit'):
+        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit', 'reads_jobs'):
             self.manifest['cases'][0][declaration] = 'false'; self.save()
             with self.assertRaises(ValueError): Suite(self.suite, self.packages)
             del self.manifest['cases'][0][declaration]
@@ -202,3 +202,42 @@ class GradingTest(unittest.TestCase):
         self.assertTrue(report['aborted'])
         self.assertEqual(report['case_results']['first']['reason'], 'audit_reader_unsettled')
         self.assertNotIn('second', report['case_results'])
+
+    def test_job_capability_is_injected_only_for_declared_case(self):
+        from evaluation.job_broker import JobBroker
+        identity='00000000-0000-0000-0000-000000000001'
+        self.source.write_text('from evaluation.job_broker import read_job\n'
+            'def first(target):\n'
+            '    value=read_job(target["_job_control"],"'+identity+'")\n'
+            '    assert value["processing_attempts"] == 4\n'
+            'def second(target):\n'
+            '    assert "_job_control" not in target\n')
+        self.manifest['files']['cases.py']=hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.manifest['cases']=[dict(id='first',source='cases.py',function='first',criteria=['AC-001'],timeout_seconds=2,reads_jobs=True),
+                               dict(id='second',source='cases.py',function='second',criteria=['AC-002'],timeout_seconds=2)]
+        self.save()
+        value=dict(export_id=identity,status='running',processing_attempts=4,active_lease=True,
+                   lease_fingerprint='a'*64,published_artifacts=0,completion_events=0)
+        with JobBroker(lambda identity:value) as broker, Attempt(self.root/'jobs',{}) as attempt:
+            result=run_suite(attempt,Suite(self.suite,self.packages),{'_job_control':{'token':'forged'}},
+                             deadline_seconds=5,development=True,job_broker=broker)
+        self.assertEqual([v['verdict'] for v in result['case_results'].values()],['pass','pass'])
+        self.assertEqual(json.loads((self.root/'jobs/grading-target.json').read_text()),{})
+
+    def test_unsettled_job_reader_aborts_later_cases(self):
+        from types import SimpleNamespace
+        self.manifest['cases'][0]['reads_jobs']=True
+        self.manifest['cases'].append(dict(id='second',source='cases.py',function='good',criteria=['AC-002'],timeout_seconds=2))
+        self.save()
+        with Attempt(self.root/'unsettled-jobs',{}) as attempt:
+            result=run_suite(attempt,Suite(self.suite,self.packages),{'value':1},deadline_seconds=5,development=True,
+                             job_broker=SimpleNamespace(configuration={},wait_idle=lambda:False))
+        self.assertTrue(result['aborted'])
+        self.assertEqual(result['case_results']['first']['reason'],'job_reader_unsettled')
+        self.assertNotIn('second',result['case_results'])
+
+    def test_browser_cannot_request_job_capability(self):
+        self.manifest['cases'][0].update(browser='page', reads_jobs=True)
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'host broker capabilities'):
+            Suite(self.suite, self.packages)

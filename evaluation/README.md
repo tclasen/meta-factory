@@ -592,7 +592,7 @@ Suite cases may declare `browser` as `page`, `page_request`, `browser`, or
 `browser_request`, selecting the protected journey's invocation signature. These
 cases route exclusively through an operator-provided `run_suite`
 `browser_executor`; the ordinary host worker refuses them. A missing executor
-is inconclusive. Browser cases cannot receive host audit or fault capabilities.
+is inconclusive. Browser cases cannot receive host audit, fault or job capabilities.
 
 The executor receives `(attempt, suite, case, target, timeout_seconds=...)` and
 must enforce that total budget independently, including preparation and cleanup.
@@ -736,7 +736,7 @@ must not become executable configuration or a browser-selected endpoint.
 
 `BrowserBinding` copies those fixtures and combines only the selected case's
 values with the common target. Fixtures cannot replace `base_url` or introduce
-host fault/audit capabilities. The URL must remain the loopback endpoint fixed
+host fault/audit/job capabilities. The URL must remain the loopback endpoint fixed
 by `grade_capture`. The binding checks owner process identity, sandbox stop state,
 outer watchdog liveness/release/result, revocation and both grading deadlines
 before and after peer verification and case execution. Per-case preparation and
@@ -800,9 +800,13 @@ counts above application limits remain data so protected oracles can fail them.
 The reader must independently bind live database/object-store peers and enforce
 guard lifetime and bounded operations. Status from the public application API is
 insufficient to establish a claimed lease; database metadata alone cannot prove
-physical artifact cardinality. This boundary is not yet attached to suite cases
-or fresh-deployment orchestration and does not implement those readers or a
-publication barrier. No lease-recovery or artifact-uniqueness evidence is claimed.
+physical artifact cardinality. Suite cases explicitly declare boolean `reads_jobs`
+to receive the parent-owned broker configuration through `run_suite(job_broker=...)`.
+Supplied common-target capabilities are stripped; undeclared and browser cases
+receive none. An unsettled job reader makes the case inconclusive and aborts
+later cases. Browser fixture bindings also reject job capability injection.
+Fresh-deployment attachment, actual readers and a publication barrier remain
+unimplemented. No lease-recovery or artifact-uniqueness evidence is claimed.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_broker.py -v
