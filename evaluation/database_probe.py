@@ -5,6 +5,97 @@ privileges describe capabilities; RLS/triggers and live mutation behavior requir
 separate checks. This module does not assign an acceptance verdict.
 """
 
+AUDIT_FIELDS = ('id', 'timestamp', 'actor_id', 'tenant_id', 'action',
+                'target_type', 'target_id', 'result', 'correlation_id')
+
+
+def audit_read_sql(schema, table, table_oid, fields, correlations, *, forbidden_values=(), limit=64):
+    """Read bounded metadata for operator-observed request IDs, never raw rows.
+
+    Each field maps to {column: str, path: [JSON object keys...]}. An empty path
+    selects a scalar column. Mapping is trusted operator input, not app output.
+    Known forbidden strings are searched in the entire matching row before any
+    metadata is returned. A matching row yields only a leakage flag. This does
+    not inspect unrelated rows/logs or establish application identity by itself.
+    """
+    import uuid
+    if type(table_oid) is not int or not 0 < table_oid <= 4294967295:
+        raise ValueError('Expected observed audit relation OID')
+    if not isinstance(fields, dict) or set(fields) != set(AUDIT_FIELDS):
+        raise ValueError('Complete operator audit field mapping required')
+    if type(limit) is not int or not 1 <= limit <= 128:
+        raise ValueError('Invalid audit observation bound')
+    if not isinstance(correlations, (list, tuple)) or not 1 <= len(correlations) <= 32:
+        raise ValueError('Bounded request correlations required')
+    try:
+        if any(not isinstance(value, str) or str(uuid.UUID(value)) != value for value in correlations):
+            raise ValueError()
+    except (ValueError, AttributeError):
+        raise ValueError('Canonical request UUIDs required') from None
+    if len(set(correlations)) != len(correlations):
+        raise ValueError('Duplicate request correlation')
+    if (not isinstance(forbidden_values, (list, tuple)) or len(forbidden_values) > 32
+            or any(not isinstance(value, str) or not value or '\x00' in value
+                   or len(value.encode()) > 4096 for value in forbidden_values)
+            or sum(len(value.encode()) for value in forbidden_values) > 16384):
+        raise ValueError('Invalid forbidden text controls')
+    expressions = {}
+    for field, mapping in fields.items():
+        if (not isinstance(mapping, dict) or set(mapping) != {'column', 'path'}
+                or not isinstance(mapping['path'], list) or len(mapping['path']) > 8
+                or any(not isinstance(key, str) or not key or '\x00' in key
+                       or len(key.encode()) > 256 for key in mapping['path'])):
+            raise ValueError('Invalid audit field mapping')
+        column = 't.' + identifier(mapping['column'])
+        expressions[field] = (column + '::text' if not mapping['path'] else
+            '(' + column + '::jsonb #>> ARRAY[' + ','.join(sql_literal(key) for key in mapping['path']) + ']::text[])')
+    relation = identifier(schema) + '.' + identifier(table)
+    # The lock binds the name to the observed OID through the complete read.
+    identity_check = """BEGIN
+IF pg_catalog.to_regclass(%s)::oid IS DISTINCT FROM %s::oid THEN
+    RAISE EXCEPTION 'Operator audit relation changed';
+END IF;
+END;""" % (sql_literal(relation), table_oid)
+    forbidden = []
+    for value in forbidden_values:
+        # Match JSON's escaping, including embedded quotes/newlines/backslashes.
+        encoded = 'pg_catalog.to_jsonb(' + sql_literal(value) + '::text)::text'
+        needle = 'pg_catalog.substr(' + encoded + ',2,pg_catalog.length(' + encoded + ')-2)'
+        forbidden.append('(pg_catalog.strpos(row_text,' + needle + ') > 0 OR '
+                         'pg_catalog.strpos(metadata::text,' + needle + ') > 0)')
+    unsafe = '(' + ' OR '.join(forbidden) + ')' if forbidden else 'false'
+    oversized = 'EXISTS (SELECT 1 FROM pg_catalog.json_each_text(metadata) m WHERE pg_catalog.octet_length(m.value)>256)'
+    projection = 'pg_catalog.json_build_object(' + ','.join(
+        sql_literal(field) + ',' + expressions[field] for field in AUDIT_FIELDS) + ')'
+    source = """BEGIN READ ONLY;
+SET LOCAL statement_timeout = '5s';
+SET LOCAL lock_timeout = '2s';
+SET LOCAL search_path = pg_catalog;
+SET LOCAL client_min_messages = error;
+LOCK TABLE %s IN ACCESS SHARE MODE;
+DO %s;
+WITH selected AS MATERIALIZED (
+    SELECT pg_catalog.to_jsonb(t)::text AS row_text, %s AS metadata
+      FROM %s t WHERE pg_catalog.lower(%s) = ANY(ARRAY[%s]::text[])
+     LIMIT %s
+), matching AS MATERIALIZED (
+    SELECT CASE WHEN %s THEN pg_catalog.json_build_object('forbidden_text_present',true)
+                WHEN %s THEN pg_catalog.json_build_object('metadata_oversized',true)
+                ELSE metadata END AS event FROM selected
+), bounded AS (SELECT event FROM matching LIMIT %s)
+SELECT pg_catalog.json_build_object(
+    'database_name',current_database(),'session_user',session_user,'current_user',current_user,
+    'relation_oid',%s,'truncated',(SELECT count(*) FROM matching)>%s,
+    'events',COALESCE((SELECT json_agg(event) FROM bounded),'[]'::json));
+COMMIT;
+""" % (relation, sql_literal(identity_check), projection, relation,
+       expressions['correlation_id'], ','.join(sql_literal(value) for value in correlations),
+       limit + 1, unsafe, oversized, limit, table_oid, limit)
+    if len(source.encode()) > 256 * 1024:
+        raise ValueError('Audit query exceeds transport input bound')
+    return source
+
+
 
 def identifier(name):
     if not isinstance(name, str) or not name or '\x00' in name or len(name.encode()) > 63:

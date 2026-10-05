@@ -502,3 +502,29 @@ its broker capability, never database connections, SQL or credential mappings.
 Audit-only grading does not require a workload suspension mapping. Providing a
 resolver remains an integration obligation, not evidence that its observations
 are independently correct.
+
+### Bounded audit metadata reads
+
+`database_probe.audit_read_sql` supports privileged inspection of global
+authentication events without adding a hidden application endpoint. The operator
+maps each of the nine public audit fields to a scalar column or a column plus
+JSON key path. The query accepts at most 32 canonical request UUIDs, compares
+correlations case-insensitively, locks the relation, checks its observed OID, and
+runs read-only with five-second statement and two-second lock limits.
+
+The result contains connection identity, relation OID, a truncation flag and at
+most 128 event projections (64 by default). It never returns whole rows. Supplied
+known password/token/text canaries are checked against both the row's JSON text
+and projected metadata. A matching row returns only `forbidden_text_present`;
+metadata fields larger than 256 bytes return only `metadata_oversized`. This
+redaction is for known strings in those representations, not a universal detector
+for arbitrary encodings or secrets the operator has not supplied.
+
+Use `DatabaseTransport` so neither SQL containing canaries nor raw observations
+are copied into logs. Native database timestamp spellings are retained; an oracle
+must interpret the mapped type rather than require an API wire representation in
+storage. Truncation, unsupported schema mappings, unavailable identity and query
+failure cannot establish a passing audit criterion. The reader supplies
+observations only: the caller must establish the actual application/table/role
+binding and compare events with independently observed HTTP actions. It does not
+prove runtime append-only privileges, inspect general logs, or grant acceptance.
