@@ -811,3 +811,29 @@ unimplemented. No lease-recovery or artifact-uniqueness evidence is claimed.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_broker.py -v
 ```
+
+### Guarded job observation callbacks
+
+`job_runtime.JobRuntime` brackets durable database reads and independent physical
+object enumeration with both peer checks and the outer sandbox guard, owner
+identity, revocation and two grading clocks. It reserves 40 seconds before each
+observation, supplies a 15-second timeout to each reader and a one-second timeout
+to each peer check, and suppresses results if guard or peer verification fails.
+Database-provided artifact counts are ignored. Malformed durable observations
+prevent enumeration; malformed physical counts stay inconclusive. Evidence records
+only operation/outcome and exception type, excluding export identity and lease data.
+
+These are trusted operator callbacks, each required to enforce its supplied
+timeout; this wrapper cannot interrupt a callback that violates that contract.
+An unsettled callback therefore aborts suite execution and makes cleanup uncertain.
+The database reader must verify actual relation/database identities and normalize
+durable lease, attempt and completion-event fields; the object enumerator must
+verify its physical storage scope independently. Neither discovery nor concrete
+readers are supplied here. Sequential reads do not establish an atomic snapshot
+across the database and object store. Protected race oracles still require a
+reviewed barrier or convergence procedure. This runtime is not yet attached to
+fresh deployment and does not establish application lease/retry evidence.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_job_runtime.py -v
+```
