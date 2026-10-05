@@ -546,3 +546,42 @@ an explicit observation error. Callbacks must enforce their own execution bounds
 and sandbox/peer lifetime checks: a socket timeout does not terminate a remote
 database command. Grader injection and live application binding remain separate
 integration steps; this capability alone grants no audit acceptance.
+
+### Fixed HTTP relay for isolated browsers
+
+`http_relay.RelayServer` is a transport primitive for a browser container with no
+network interface except loopback. A loopback relay can connect through a private
+Unix socket to a separate trusted relay whose TCP destination is fixed by the
+operator. Sharing that socket between Linux containers through a private Docker
+volume avoids exposing host networking to the browser. Container orchestration,
+peer identity binding and lifetime guards remain separate integration obligations.
+
+The operator provides a numeric upstream IP/port or private socket path and the
+exact loopback browser authority. Requests cannot select a destination: absolute
+URLs, CONNECT, mismatched/duplicate Host and ambiguous framing are refused. The
+logical Host/Origin stay unchanged, allowing the browser's loopback port to match
+the application's configured origin. Redirects are returned without following them.
+Repeated Set-Cookie headers and opaque multipart/binary bytes are preserved.
+
+Requests have a total deadline (30 seconds by default, at most 60), including
+header/body reads, queuing, upstream I/O and delivery. Four requests run at once;
+default body bounds are 8 MiB input and 128 MiB output. Responses stream in bounded
+chunks rather than buffering full downloads. Normal chunked framing is supported;
+chunk extensions/trailers and protocol upgrades are currently unsupported. A
+long-lived stream is still subject to the total request deadline. Bounds and
+unsupported features must produce an **inconclusive transport result**, never an
+application failure or acceptance claim. A caller must inspect relay observations
+in addition to a browser verdict before accepting any case.
+
+No paths, headers, cookies, bodies or exception text are logged. Observations are
+fixed counters only. The `check` callback must verify the operator-owned peer and
+active guard with bounded work; it runs before connection and during delivery.
+Closing the server revokes in-flight sockets and waits boundedly for handlers;
+uncertain cleanup raises an error. This does not replace an independent container
+lifetime guard or establish networking isolation without live topology probes.
+
+Focused transport fixtures:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_http_relay.py -v
+```
