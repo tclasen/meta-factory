@@ -1152,3 +1152,39 @@ Run its focused fixture checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_secret_scan.py -v
 ```
+
+
+### Private Kubernetes log snapshots
+
+`log_transport.LogTransport` requests fixed read-only `kubectl logs` snapshots for
+one operator-bound Pod/container source. The source contains namespace, Pod name,
+observed Pod UID, container name/ID and explicit current/previous selection.
+Supply a trusted pinned client prefix and `check(source, reserve)` that returns
+exactly `True` only after independently verifying those identities and the active
+grading guard/deadline. Credentials belong in private client configuration files,
+never prefix arguments. Current sources require the selected current container ID;
+previous sources require its independently observed terminated container ID.
+
+The adapter uses timestamps and the complete available snapshot (`--tail=-1`),
+with a 15-second default/30-second maximum client bound and the scanner's byte
+ceiling. It privately scans application logs from client stdout; client stderr is
+bounded, discarded connection diagnostics. Kubernetes merges application stdout
+and stderr into that log stream. It writes only byte counts, source/client hashes,
+fixed outcomes, identity-check flags and sanitized scanner receipts. It terminates
+and verifies absence of its local client process group; it does not mutate Pods.
+
+Both identity checks must succeed for a source verdict. A matching canary remains
+visible in the receipt if later collection/source checks fail, but lost source
+identity makes the transport outcome incomplete. A correctly bound positive match
+can be reported despite later collection truncation/failure. Clean output requires
+complete EOF, successful client exit, retained source/guard identity and verified
+client cleanup. An unavailable previous instance, log rotation, removed Pod or
+missing source coverage cannot be silently replaced by a clean current snapshot.
+This adapter does not discover or prove complete application log inventory/history;
+no deployment resolver, capability socket or acceptance case is wired to it.
+
+Run its focused lifecycle checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_log_transport.py -v
+```
