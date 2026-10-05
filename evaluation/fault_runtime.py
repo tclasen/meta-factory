@@ -11,7 +11,7 @@ import uuid
 from .evidence import Attempt, atomic_json, positive
 from .fault_broker import FaultBroker
 from .faults import FaultRestoreError, FaultSetupError, suspended_workload
-from .workload_probe import KINDS, NAME
+from .workload_probe import KINDS, NAME, converged
 from .workloads import workload_operation
 from .services import service_operation
 from .audit_faults import audit_insert_failure, FAULT_RESERVE
@@ -26,7 +26,8 @@ class FaultRuntime:
     def __init__(self, directory, sandbox, guard, workloads, kubectl_prefix, *,
                  monotonic_deadline, wall_deadline, operation=workload_operation,
                  monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation,
-                 audit_binding=None, database_peer=None, database_peer_check=None):
+                 audit_binding=None, database_peer=None, database_peer_check=None,
+                 storage_worker_restart=False):
         positive(monotonic_deadline, 'fault monotonic deadline')
         positive(wall_deadline, 'fault wall deadline')
         audit_enabled = audit_binding is not None
@@ -52,9 +53,22 @@ class FaultRuntime:
         service_probes = {} if service_probes is None else service_probes
         if not isinstance(service_probes, dict) or not set(service_probes) <= set(workloads):
             raise ValueError('Service probes must belong to reviewed fault roles')
+        if type(storage_worker_restart) is not bool:
+            raise ValueError('Compound restart selection must be a boolean')
+        if storage_worker_restart:
+            if not {'storage', 'worker'} <= workloads.keys() or 'storage' not in service_probes:
+                raise ValueError('Compound restart requires independently mapped storage/worker and storage probe')
+            left, right = workloads['storage'], workloads['worker']
+            if left['uid'] == right['uid'] or all(left[k] == right[k] for k in ('namespace', 'kind', 'name')):
+                raise ValueError('Compound restart requires distinct workload identities')
+        self.storage_worker_restart = storage_worker_restart
+        self.held_workloads = {}
         self.service_probes = copy.deepcopy(service_probes)
         self.service_runner = service_runner
         self.fault_allowance = (FAULT_ALLOWANCE + (120 if service_probes else 0)) if workloads else FAULT_RESERVE
+        self.workload_fault_allowance = self.fault_allowance
+        if storage_worker_restart:
+            self.fault_allowance = 2 * self.workload_fault_allowance + 6 * COMMAND_ALLOWANCE
         self.audit_binding = copy.deepcopy(audit_binding)
         self.database_peer = copy.deepcopy(database_peer)
         self.database_peer_check = database_peer_check
@@ -71,9 +85,12 @@ class FaultRuntime:
         atomic_json(self.directory / 'scope.json', {'sandbox': sandbox.name, 'workloads': workloads,
                                                    'kubectl_prefix': kubectl_prefix,
                                                    'wall_deadline': wall_deadline, 'service_probes': service_probes,
-                                                   'audit_enabled': audit_enabled})
+                                                   'audit_enabled': audit_enabled,
+                                                   'storage_worker_restart': storage_worker_restart})
         self.check(self.fault_allowance)
-        self.broker = FaultBroker([*workloads, *(['audit'] if audit_enabled else [])], self._fault, idle_seconds=60)
+        actions = {('storage', 'worker'): self._restart_worker_under_storage} if storage_worker_restart else {}
+        self.broker = FaultBroker([*workloads, *(['audit'] if audit_enabled else [])], self._fault,
+                                  idle_seconds=60, restart_actions=actions)
 
     def check(self, allowance):
         if (self.revoked.is_set() or os.getpid() != self.owner_pid or self.sandbox.stopped
@@ -94,7 +111,8 @@ class FaultRuntime:
             with self._audit_fault() as observation:
                 yield observation
             return
-        self.check(self.fault_allowance)
+        self.check(self.fault_allowance if role == 'storage' and self.storage_worker_restart
+                   else self.workload_fault_allowance)
         resource = self.workloads[role]
         with Attempt(self.directory / ('fault-' + uuid.uuid4().hex),
                      {'role': role, 'resource': resource, 'sandbox': self.sandbox.name}) as attempt:
@@ -119,14 +137,60 @@ class FaultRuntime:
                     verify_service('baseline', 'available')
                 with suspended_workload(attempt, self, label='workload', kubectl_prefix=self.kubectl_prefix,
                                         namespace=resource['namespace'], kind=resource['kind'],
-                                        name=resource['name'], operation=checked_operation):
-                    if role in self.service_probes:
-                        verify_service('outage', 'unavailable')
-                    yield {'service_outage_verified': role in self.service_probes,
-                           'workload_suspended_verified': True}
+                                        name=resource['name'], operation=checked_operation) as suspended:
+                    self.held_workloads[role] = copy.deepcopy(suspended)
+                    try:
+                        if role in self.service_probes:
+                            verify_service('outage', 'unavailable')
+                        yield {'service_outage_verified': role in self.service_probes,
+                               'workload_suspended_verified': True}
+                    finally:
+                        self.held_workloads.pop(role, None)
                 if role in self.service_probes:
                     verify_service('recovery', 'available')
                 result['outcome'] = 'fault_restored'
+            except BaseException as error:
+                result['error_type'] = type(error).__name__
+                raise
+            finally:
+                attempt.transition('failed')
+                attempt.finish(result)
+
+    def _restart_worker_under_storage(self):
+        if not self.storage_worker_restart or 'storage' not in self.held_workloads:
+            raise FaultSetupError('Reviewed storage hold is not active')
+        self.check(self.workload_fault_allowance + 6 * COMMAND_ALLOWANCE + 120)
+        resource = self.workloads['storage']
+        with Attempt(self.directory / ('restart-' + uuid.uuid4().hex),
+                     {'held_role': 'storage', 'restart_role': 'worker', 'sandbox': self.sandbox.name}) as attempt:
+            attempt.transition('preflight')
+            result = {'outcome': 'held_restart_incomplete'}
+            def held(phase):
+                self.check(COMMAND_ALLOWANCE)
+                report = self.operation(attempt, self, label='held-' + phase,
+                    kubectl_prefix=self.kubectl_prefix, namespace=resource['namespace'],
+                    kind=resource['kind'], name=resource['name'], expected=None, replicas=None)
+                observed = report.get('observation', {}).get('workload', {})
+                try:
+                    verified = report.get('outcome') == 'workload_observed' and converged(observed, resource['uid'], 0)
+                except (KeyError, TypeError, ValueError):
+                    verified = False
+                if not verified:
+                    raise FaultRestoreError('Storage hold changed during worker restart')
+                self.check(COMMAND_ALLOWANCE)
+                service = self.service_runner(attempt, self, label='held-service-' + phase,
+                    configuration=self.service_probes['storage'], mode='unavailable')
+                if service.get('outcome') != 'service_unavailable_verified':
+                    raise FaultRestoreError('Storage outage changed during worker restart')
+            try:
+                held('before')
+                with self._fault('worker') as observation:
+                    if observation.get('workload_suspended_verified') is not True:
+                        raise FaultSetupError('Worker suspension was not verified')
+                held('after')
+                self.check(COMMAND_ALLOWANCE)
+                result['outcome'] = 'held_restart_verified'
+                return {'workload_restarted_verified': True, 'held_fault_verified': True}
             except BaseException as error:
                 result['error_type'] = type(error).__name__
                 raise

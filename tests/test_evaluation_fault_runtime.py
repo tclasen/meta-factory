@@ -213,3 +213,95 @@ class FaultRuntimeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             FaultRuntime(self.root/'faults',self.box,self.guard,{'audit':self.resource},['kubectl'],
                 monotonic_deadline=1000,wall_deadline=1000,**self.audit_options())
+
+
+class CompoundFaultRuntimeTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name); self.calls = []; self.services = []; self.variant = None
+        self.clock = 0
+        self.box = SimpleNamespace(name='factory-eval-grader-0123456789abcdef', stopped=False,
+                                   exec_argv=lambda argv: argv)
+        self.guard = SimpleNamespace(directory=self.root, process=SimpleNamespace(poll=lambda: None))
+        self.resources = {role:dict(namespace='incident-app', kind='deployment', name=role, uid=role+'-uid')
+                          for role in ('storage','worker')}
+        self.states = {role:dict(resource, replicas=1, generation=1, observed_generation=1,
+                                pods=[{'ready':True,'terminating':False}])
+                       for role,resource in self.resources.items()}
+
+    def operation(self, attempt, transport, **kwargs):
+        transport.exec_argv(['trusted-probe'])
+        role=kwargs['name']; state=self.states[role]; label=kwargs['label']; self.calls.append((role,label))
+        if role=='worker' and self.variant=='worker-replaced':state['uid']='different-uid'
+        if role=='worker' and label=='workload-restore' and self.variant=='restore-fails':
+            return {'outcome':'incomplete'}
+        if kwargs['replicas'] is not None:
+            state['replicas']=kwargs['replicas'];state['pods']=[] if kwargs['replicas']==0 else [{'ready':True,'terminating':False}]
+        if role=='worker' and label=='workload-restore' and self.variant=='hold-lost':
+            self.states['storage']['replicas']=1
+            self.states['storage']['pods']=[{'ready':True,'terminating':False}]
+        return {'outcome':'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
+                'observation':{'workload':copy.deepcopy(state)}}
+
+    def service(self, attempt, transport, *, label, configuration, mode):
+        self.services.append((label,mode))
+        if self.variant=='service-restored' and label=='held-service-after':
+            return {'outcome':'service_available_verified'}
+        return {'outcome':'service_'+mode+'_verified'}
+
+    def runtime(self, **kwargs):
+        runtime=FaultRuntime(self.root/'faults',self.box,self.guard,self.resources,['kubectl'],
+            monotonic_deadline=5000,wall_deadline=5000,monotonic=lambda:self.clock,wall=lambda:self.clock,
+            operation=self.operation,service_probes={'storage':{}},service_runner=self.service,
+            storage_worker_restart=True,**kwargs)
+        self.addCleanup(runtime.close);return runtime
+
+    def test_worker_restart_preserves_storage_hold_and_restores_both(self):
+        from evaluation.fault_broker import remote_fault_session
+        runtime=self.runtime()
+        with remote_fault_session(runtime.broker.configuration,'storage') as session:
+            self.assertEqual(self.states['storage']['replicas'],0)
+            self.assertTrue(session.restart('worker')['held_fault_verified'])
+            self.assertEqual(self.states['worker']['replicas'],1)
+            self.assertEqual(self.states['storage']['replicas'],0)
+        self.assertEqual(self.states['storage']['replicas'],1)
+        self.assertFalse(runtime.held_workloads)
+        self.assertEqual([name for name,mode in self.services if mode=='unavailable'],
+                         ['service-outage','held-service-before','held-service-after'])
+
+    def test_changed_worker_or_outer_hold_and_failed_restore_abort(self):
+        from evaluation.fault_broker import remote_fault_session
+        for variant in ('worker-replaced','hold-lost','restore-fails','service-restored'):
+            with self.subTest(variant=variant):
+                # Each lifecycle uses a separate exact runtime/evidence directory.
+                self.variant=variant
+                self.root=Path(self.temp.name)/variant;self.root.mkdir()
+                runtime=self.runtime()
+                with self.assertRaises(FaultRestoreError):
+                    with remote_fault_session(runtime.broker.configuration,'storage') as session:
+                        session.restart('worker')
+                self.assertTrue(runtime.broker.wait_idle(2))
+                self.assertTrue(runtime.broker.aborted)
+                self.assertEqual(self.states['storage']['replicas'],1)
+                self.assertFalse(runtime.held_workloads)
+                self.states['worker']['uid']='worker-uid';self.states['worker']['replicas']=1
+                self.states['worker']['pods']=[{'ready':True,'terminating':False}]
+                self.root=Path(self.temp.name)
+
+    def test_insufficient_restart_reserve_prevents_worker_commands(self):
+        from evaluation.fault_broker import remote_fault_session
+        runtime=self.runtime()
+        with self.assertRaises(FaultRestoreError):
+            with remote_fault_session(runtime.broker.configuration,'storage') as session:
+                self.clock=3500
+                session.restart('worker')
+        self.assertFalse(any(role=='worker' for role,label in self.calls))
+        self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_configuration_requires_storage_probe_and_distinct_identities(self):
+        with self.assertRaises(ValueError):
+            FaultRuntime(self.root/'invalid',self.box,self.guard,self.resources,['kubectl'],
+                         monotonic_deadline=5000,wall_deadline=5000,
+                         service_probes={},storage_worker_restart=True)
+        self.resources['worker']['uid']='storage-uid'
+        with self.assertRaises(ValueError):self.runtime()

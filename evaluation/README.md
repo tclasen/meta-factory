@@ -770,6 +770,15 @@ protocol; callback diagnostics and commands do not. Unknown actions, incomplete
 receipts, connection loss or restoration failures abort control. Ordinary
 `remote_fault` callers keep their existing observation interface.
 
-This protocol primitive does not yet bind composite actions to FaultRuntime or
-prove lease reclamation. Runtime binding and live scoped preflight are required
-before protected worker/storage journeys can use it as fault evidence.
+`FaultRuntime(storage_worker_restart=True)` opts into the single reviewed
+storage-held/worker-restart pair. It requires distinct exact workload identities
+and an independent storage service probe. The runtime checks storage UID,
+zero-replica convergence and service unavailability before and after a verified
+worker suspend/restore cycle. Each component keeps separate restoration evidence;
+uncertain outer or inner state aborts the broker. Compound configuration reserves
+additional time for both contexts and observation/restoration commands.
+
+This runtime capability is not yet exposed through `grade_capture`, and fixture
+unit checks do not establish live Kubernetes, interrupted lease reclamation or
+storage retry evidence. Controller binding and scoped live preflight remain
+required before protected worker/storage journeys can rely on it.
