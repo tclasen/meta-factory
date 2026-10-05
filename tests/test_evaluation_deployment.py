@@ -477,8 +477,8 @@ class DeploymentTest(unittest.TestCase):
             def __init__(inner,*args,**kwargs):inner.broker=job_broker;events.append('job-bind')
             def close(inner):events.append('job-close')
         class Staging:
-            def __init__(inner,directory,faults):
-                owner.assertIsInstance(faults,Faults);inner.broker=stage_broker;events.append('stage-bind')
+            def __init__(inner,directory,faults,**kwargs):
+                owner.assertIsInstance(faults,Faults);owner.assertIsInstance(kwargs['job_runtime'],Jobs);inner.broker=stage_broker;events.append('stage-bind')
             def close(inner):events.append('stage-close')
         def workloads(box):
             owner.assertEqual(len(owner.commands),1);events.append('workloads');return {}

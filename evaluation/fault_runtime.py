@@ -169,10 +169,13 @@ class FaultRuntime:
                 attempt.transition('failed')
                 attempt.finish(result)
 
-    def _restart_worker_under_storage(self):
+    def _restart_worker_under_storage(self, *, paused_reader=None):
+        if paused_reader is not None and not callable(paused_reader):
+            raise ValueError('Trusted paused-worker reader required')
         if not self.storage_worker_restart or 'storage' not in self.held_workloads:
             raise FaultSetupError('Reviewed storage hold is not active')
-        self.check(self.workload_fault_allowance + 6 * COMMAND_ALLOWANCE + 120)
+        paused_reserve = 3 * COMMAND_ALLOWANCE + 25 if paused_reader is not None else 0
+        self.check(self.workload_fault_allowance + 6 * COMMAND_ALLOWANCE + 120 + paused_reserve)
         resource = self.workloads['storage']
         with Attempt(self.directory / ('restart-' + uuid.uuid4().hex),
                      {'held_role': 'storage', 'restart_role': 'worker', 'sandbox': self.sandbox.name}) as attempt:
@@ -185,7 +188,8 @@ class FaultRuntime:
                     kind=resource['kind'], name=resource['name'], expected=None, replicas=None)
                 observed = report.get('observation', {}).get('workload', {})
                 try:
-                    verified = report.get('outcome') == 'workload_observed' and converged(observed, resource['uid'], 0)
+                    verified = (report.get('outcome') == 'workload_observed' and converged(observed, resource['uid'], 0)
+                                and observed.get('generation') == self.held_workloads['storage'].get('generation'))
                 except (KeyError, TypeError, ValueError):
                     verified = False
                 if not verified:
@@ -198,16 +202,35 @@ class FaultRuntime:
             try:
                 held('before')
                 restart_earliest = self.monotonic()
+                paused = None
                 with self._fault('worker') as observation:
                     if observation.get('workload_suspended_verified') is not True:
                         raise FaultSetupError('Worker suspension was not verified')
+                    if paused_reader is not None:
+                        self.check(COMMAND_ALLOWANCE)
+                        paused = paused_reader()
+                        self.check(COMMAND_ALLOWANCE)
+                        worker = self.workloads['worker']
+                        report = self.operation(attempt, self, label='paused-worker-check',
+                            kubectl_prefix=self.kubectl_prefix, namespace=worker['namespace'],
+                            kind=worker['kind'], name=worker['name'], expected=None, replicas=None)
+                        observed = report.get('observation', {}).get('workload', {})
+                        try:
+                            unchanged = (report.get('outcome') == 'workload_observed'
+                                and converged(observed, worker['uid'], 0)
+                                and observed.get('generation') == self.held_workloads['worker'].get('generation'))
+                        except (KeyError, TypeError, ValueError):unchanged = False
+                        if not unchanged:raise FaultRestoreError('Worker hold changed during paused job read')
+                        held('paused')
                 restart_latest = self.monotonic()
                 held('after')
                 self.check(COMMAND_ALLOWANCE)
                 result['outcome'] = 'held_restart_verified'
                 result['restart_window'] = {'earliest': restart_earliest, 'latest': restart_latest}
-                return {'workload_restarted_verified': True, 'held_fault_verified': True,
-                        'restart_window': dict(result['restart_window'])}
+                receipt = {'workload_restarted_verified': True, 'held_fault_verified': True,
+                           'restart_window': dict(result['restart_window'])}
+                if paused_reader is not None:receipt['paused_job'] = paused
+                return receipt
             except BaseException as error:
                 result['error_type'] = type(error).__name__
                 raise

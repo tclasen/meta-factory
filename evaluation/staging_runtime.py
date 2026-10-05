@@ -8,6 +8,8 @@ import uuid
 from .evidence import Attempt, atomic_json
 from .fault_runtime import FaultRuntime, COMMAND_ALLOWANCE
 from .faults import FaultRestoreError, FaultSetupError
+from .job_runtime import JobRuntime, LEASE_READ_RESERVE
+from .job_broker import export_identity, project_lease
 from .staging_broker import StagingBroker, WORKER_RECEIPT, STORAGE_RECEIPT, RESTART_RECEIPT, restart_window
 from .workload_probe import converged
 
@@ -20,11 +22,15 @@ class StagingRuntime:
     those while the worker is held, otherwise staging remains inconclusive.
     The supplied fault runtime must stay alive until this capability has closed.
     """
-    def __init__(self, directory, faults):
+    def __init__(self, directory, faults, *, job_runtime=None):
         if (not isinstance(faults, FaultRuntime) or not faults.storage_worker_restart
                 or not {'api', 'worker', 'storage'} <= faults.workloads.keys()
                 or not {'api', 'storage'} <= faults.service_probes.keys()):
             raise ValueError('Staging requires exact API/worker/storage and independent service probes')
+        if job_runtime is not None and (not isinstance(job_runtime, JobRuntime)
+                or job_runtime.sandbox is not faults.sandbox or job_runtime.guard is not faults.guard):
+            raise ValueError('Paused job reader requires the same outer sandbox and guard')
+        self.job_runtime = job_runtime
         resources = faults.workloads
         identities = [(resources[role]['namespace'], resources[role]['kind'], resources[role]['name'])
                       for role in ('api', 'worker', 'storage')]
@@ -38,12 +44,16 @@ class StagingRuntime:
         # Reserve both full workload contexts, compound restart and observations.
         # This is a control reserve, never an extension of the grading deadline.
         self.reserve = 2*faults.workload_fault_allowance + faults.fault_allowance + 4*COMMAND_ALLOWANCE
+        if job_runtime is not None:self.reserve += 3*COMMAND_ALLOWANCE + LEASE_READ_RESERVE
         self.check(self.reserve)
         self.directory = Path(directory); self.directory.mkdir(mode=0o700)
         atomic_json(self.directory/'scope.json', {'sandbox':faults.sandbox.name, 'reserve_seconds':self.reserve})
         self.broker = StagingBroker(self._stage)
 
     def check(self, allowance):
+        if self.job_runtime is not None and (self.job_runtime.sandbox is not self.faults.sandbox
+                or self.job_runtime.guard is not self.faults.guard):
+            raise FaultSetupError('Paused job lifetime binding changed')
         if (self.revoked.is_set() or self.faults.workloads != self.resources
                 or self.faults.service_probes != self.probes or not self.faults.storage_worker_restart):
             raise FaultSetupError('Staging capability revoked or binding changed')
@@ -151,15 +161,24 @@ class StagingHandle:
         self.handed_off=True
         return self.verify()
 
-    def restart_worker(self):
+    def restart_worker(self, export_id=None):
         if not self.handed_off or self.restarted:
             raise FaultSetupError('Staged restart requires a single completed handoff')
+        if export_id is not None:
+            export_identity(export_id)
+            if self.runtime.job_runtime is None:raise FaultSetupError('Paused job reader unavailable')
         self.restarted=True
         self.verify()
-        result=self.runtime.faults._restart_worker_under_storage()
+        def paused_reader():
+            self.runtime.check(COMMAND_ALLOWANCE)
+            return self.runtime.job_runtime._read_lease(export_id)
+        result=self.runtime.faults._restart_worker_under_storage(
+            **({'paused_reader':paused_reader} if export_id is not None else {}))
         if (result.get('held_fault_verified') is not True
                 or result.get('workload_restarted_verified') is not True):
             raise FaultRestoreError('Staged worker restart not verified')
         self.verify()
-        return dict({field:True for field in RESTART_RECEIPT},
-                    restart_window=restart_window(result.get('restart_window')))
+        receipt = dict({field:True for field in RESTART_RECEIPT},
+                       restart_window=restart_window(result.get('restart_window')))
+        if export_id is not None:receipt['paused_job'] = project_lease(result.get('paused_job'), export_id)
+        return receipt

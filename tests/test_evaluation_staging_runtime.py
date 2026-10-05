@@ -212,3 +212,69 @@ class StagingRuntimeTest(unittest.TestCase):
             observation=session.restart_worker()
             self.assertEqual(observation['restart_window'],{'earliest':0.0,'latest':20.0})
             self.assertEqual(self.now[0],100)
+
+    def bound_jobs(self,faults,reader):
+        from evaluation.job_runtime import JobRuntime
+        jobs=JobRuntime(self.root/'jobs',self.box,self.guard,database_read=reader,
+            artifact_count=lambda *args,**kwargs:0,database_peer_check=lambda **kwargs:None,
+            storage_peer_check=lambda **kwargs:None,monotonic_deadline=6000,wall_deadline=6000,
+            monotonic=lambda:self.now[0],wall=lambda:self.now[1])
+        self.addCleanup(jobs.close)
+        return jobs
+
+    def test_requested_job_is_observed_after_worker_zero_before_restore(self):
+        import uuid
+        identity=str(uuid.uuid4());staging,faults=self.runtime();staging.close()
+        def read(export_id,*,timeout):
+            self.assertEqual(export_id,identity);self.assertEqual(timeout,15)
+            self.assertEqual(self.states['worker']['replicas'],0)
+            self.assertEqual(self.states['storage']['replicas'],0)
+            self.events.append(('paused-read',export_id))
+            return dict(export_id=export_id,status='running',processing_attempts=2,active_lease=True,
+                        lease_fingerprint='b'*64,completion_events=0,password='private',published_artifacts=999)
+        jobs=self.bound_jobs(faults,read)
+        staging=StagingRuntime(self.root/'observed-staging',faults,job_runtime=jobs);self.addCleanup(staging.close)
+        with remote_staging(staging.broker.configuration) as session:
+            session.handoff();value=session.restart_worker(identity)
+            self.assertEqual(value['paused_job']['lease_fingerprint'],'b'*64)
+            self.assertNotIn('password',value['paused_job']);self.assertNotIn('published_artifacts',value['paused_job'])
+        changes=[event for event in self.events if len(event)==2]
+        index=changes.index(('paused-read',identity))
+        self.assertEqual(changes[index-1],('worker',0));self.assertEqual(changes[index+1],('worker',1))
+
+    def test_paused_reader_failure_still_restores_worker_and_storage(self):
+        import uuid
+        staging,faults=self.runtime();staging.close()
+        def read(*args,**kwargs):raise RuntimeError('private-database-credential')
+        jobs=self.bound_jobs(faults,read)
+        staging=StagingRuntime(self.root/'broken-read-staging',faults,job_runtime=jobs);self.addCleanup(staging.close)
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:
+                session.handoff();session.restart_worker(str(uuid.uuid4()))
+        self.assertTrue(staging.broker.wait_idle(2))
+        self.assertEqual(self.states['worker']['replicas'],1);self.assertEqual(self.states['storage']['replicas'],1)
+        for path in jobs.directory.rglob('*.json'):
+            self.assertNotIn('private-database-credential',path.read_text())
+
+    def test_foreign_outer_job_guard_is_rejected_before_endpoint_creation(self):
+        staging,faults=self.runtime();staging.close()
+        jobs=self.bound_jobs(faults,lambda *args,**kwargs:{})
+        jobs.guard=SimpleNamespace(directory=self.root,process=SimpleNamespace(poll=lambda:None))
+        with self.assertRaises(ValueError):StagingRuntime(self.root/'foreign-staging',faults,job_runtime=jobs)
+        self.assertFalse((self.root/'foreign-staging').exists())
+
+    def test_worker_spec_change_during_paused_read_never_yields_an_interruption_receipt(self):
+        import uuid
+        staging,faults=self.runtime();staging.close()
+        def read(export_id,*,timeout):
+            self.states['worker']['generation']+=2
+            self.states['worker']['observed_generation']=self.states['worker']['generation']
+            return dict(export_id=export_id,status='running',processing_attempts=1,active_lease=True,
+                        lease_fingerprint='a'*64,completion_events=0)
+        jobs=self.bound_jobs(faults,read)
+        staging=StagingRuntime(self.root/'changed-hold-staging',faults,job_runtime=jobs);self.addCleanup(staging.close)
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:
+                session.handoff();session.restart_worker(str(uuid.uuid4()))
+        self.assertTrue(staging.broker.wait_idle(2));self.assertTrue(staging.broker.aborted)
+        self.assertEqual(self.states['worker']['replicas'],1);self.assertEqual(self.states['storage']['replicas'],1)

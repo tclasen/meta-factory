@@ -6,6 +6,7 @@ import socket
 
 from .fault_broker import FaultBroker, control_stream, receive, send
 from .faults import FaultRestoreError, FaultSetupError
+from .job_broker import export_identity, project_lease, LEASE_FIELDS
 
 WORKER_RECEIPT = {'worker_suspended_verified', 'api_available_verified'}
 STORAGE_RECEIPT = {'storage_suspended_verified', 'storage_outage_verified', 'worker_restored_verified'}
@@ -30,9 +31,10 @@ def restart_window(value):
         raise ValueError('Invalid parent restart window') from None
 
 
-def verified_restart(value):
+def verified_restart(value, export_id=None):
     observation = verified(value, RESTART_RECEIPT)
     observation['restart_window'] = restart_window(value.get('restart_window'))
+    if export_id is not None:observation['paused_job'] = project_lease(value.get('paused_job'), export_id)
     return observation
 
 
@@ -76,7 +78,8 @@ class StagingBroker(FaultBroker):
                                 while True:
                                     request = receive(stream)
                                     if request == {'operation': 'restore'}: break
-                                    if set(request) != {'operation'} or self.closing.is_set() or self.aborted:
+                                    paused = set(request) == {'operation', 'export_id'} and request.get('operation') == 'restart_worker'
+                                    if not (set(request) == {'operation'} or paused) or self.closing.is_set() or self.aborted:
                                         raise FaultSetupError('Invalid staging action')
                                     if request['operation'] == 'verify':
                                         fields = STORAGE_RECEIPT if handed_off else WORKER_RECEIPT
@@ -88,7 +91,9 @@ class StagingBroker(FaultBroker):
                                         send(stream, {'status': 'storage_held', 'observations': observation})
                                     elif request['operation'] == 'restart_worker' and handed_off and not restarted:
                                         restarted = True
-                                        observation = verified_restart(handle.restart_worker())
+                                        export_id = export_identity(request['export_id']) if paused else None
+                                        value = handle.restart_worker(export_id) if paused else handle.restart_worker()
+                                        observation = verified_restart(value, export_id)
                                         send(stream, {'status': 'worker_restarted', 'observations': observation})
                                     else:
                                         raise FaultSetupError('Invalid staging order or repeated action')
@@ -105,16 +110,20 @@ class StagingBroker(FaultBroker):
                 self.connection = None; self.idle.set()
 
 
-def receipt(response, status, fields):
+def receipt(response, status, fields, export_id=None):
     observations = response.get('observations')
     expected = fields | {'restart_window'} if status == 'worker_restarted' else fields
+    if export_id is not None:expected = expected | {'paused_job'}
     if (set(response) != {'status', 'observations'} or response['status'] != status
             or not isinstance(observations, dict) or set(observations) != expected
             or any(observations[field] is not True for field in fields)):
         raise FaultRestoreError('Staging receipt unavailable; abort grading')
+    if export_id is not None and (not isinstance(observations.get('paused_job'), dict)
+            or set(observations['paused_job']) != LEASE_FIELDS):
+        raise FaultRestoreError('Paused job receipt unavailable; abort grading')
     if status == 'worker_restarted':
         try:
-            return verified_restart(observations)
+            return verified_restart(observations, export_id)
         except ValueError as error:
             raise FaultRestoreError('Parent restart window unavailable; abort grading') from error
     return observations
@@ -125,13 +134,15 @@ class StagingSession:
         self.stream, self.observations = stream, observations
         self.handed_off = False; self.restarted = False
 
-    def _action(self, operation, status, fields):
+    def _action(self, operation, status, fields, export_id=None):
         try:
-            send(self.stream, {'operation': operation})
+            request = {'operation': operation}
+            if export_id is not None:request['export_id'] = export_id
+            send(self.stream, request)
             response = receive(self.stream)
         except (OSError, EOFError, ValueError) as error:
             raise FaultRestoreError('Staging control connection lost') from error
-        self.observations = receipt(response, status, fields)
+        self.observations = receipt(response, status, fields, export_id)
         return self.observations
 
     def verify(self):
@@ -143,11 +154,12 @@ class StagingSession:
         self.handed_off = True
         return self._action('handoff', 'storage_held', STORAGE_RECEIPT)
 
-    def restart_worker(self):
+    def restart_worker(self, export_id=None):
         if not self.handed_off or self.restarted:
             raise FaultSetupError('Worker restart requires a single completed staging handoff')
+        if export_id is not None:export_identity(export_id)
         self.restarted = True
-        return self._action('restart_worker', 'worker_restarted', RESTART_RECEIPT)
+        return self._action('restart_worker', 'worker_restarted', RESTART_RECEIPT, export_id)
 
 
 @contextmanager

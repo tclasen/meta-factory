@@ -166,7 +166,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 wall_deadline=grading_wall_started + grading_seconds, **job_options)
             options['job_broker'] = job_runtime.broker
         if job_staging:
-            staging_runtime = staging_runtime_factory(attempt.directory / 'job-staging', fault_runtime)
+            staging_runtime = staging_runtime_factory(attempt.directory / 'job-staging', fault_runtime, job_runtime=job_runtime)
             options['staging_broker'] = staging_runtime.broker
         if browser_resolver is not None:
             browser_configuration = browser_resolver(box)

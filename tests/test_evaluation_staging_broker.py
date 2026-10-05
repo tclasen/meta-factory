@@ -180,3 +180,26 @@ class StagingBrokerTest(unittest.TestCase):
                     session.handoff();session.restart_worker()
             self.assertTrue(broker.wait_idle(2));self.assertTrue(broker.aborted)
             self.assertEqual(self.events[-1],'restore-all')
+
+    def test_invalid_export_identity_is_refused_before_restart_callback(self):
+        with StagingBroker(self.factory) as broker:
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
+                connection.connect(str(broker.path))
+                with connection.makefile('rwb') as stream:
+                    send(stream,{'token':broker.token,'operation':'stage'});receive(stream)
+                    send(stream,{'operation':'handoff'});receive(stream)
+                    send(stream,{'operation':'restart_worker','export_id':'not-a-uuid'})
+                    self.assertEqual(receive(stream),{'status':'inconclusive'})
+            self.assertTrue(broker.wait_idle(2));self.assertTrue(broker.aborted)
+            self.assertNotIn('worker-restarted',self.events);self.assertEqual(self.events[-1],'restore-all')
+
+    def test_client_rejects_private_extra_fields_in_paused_job(self):
+        from types import SimpleNamespace
+        identity='00000000-0000-0000-0000-000000000001'
+        paused=dict(export_id=identity,status='running',processing_attempts=1,active_lease=True,
+                    lease_fingerprint='a'*64,completion_events=0,secret='must-not-cross')
+        observation=dict(self.restart,paused_job=paused)
+        data=json.dumps({'status':'worker_restarted','observations':observation}).encode()+b'\n'
+        stream=SimpleNamespace(write=lambda value:len(value),flush=lambda:None,readline=lambda limit:data)
+        session=StagingSession(stream,self.initial);session.handed_off=True
+        with self.assertRaises(FaultRestoreError):session.restart_worker(identity)

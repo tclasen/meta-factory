@@ -997,3 +997,25 @@ fall back to the combined reader, and both modes share one request budget.
 Physical cardinality must be checked after storage restoration; a missing count
 must never be interpreted as zero. These modes do not establish job recovery by
 themselves.
+
+`session.restart_worker(export_id)` optionally requests a canonical export UUID
+observation while the worker is verified suspended and before restoration. Fresh
+deployment binds the same `JobRuntime` to staging; a foreign sandbox/guard is
+rejected. The parent uses only the durable database reader during the storage
+hold. Its fixed `paused_job` projection contains no artifact count, credentials
+or SQL. Reader failure restores owned contexts and aborts. The ordinary no-ID
+restart remains available for lifecycle transport preflights.
+
+The reclaim oracle must use this paused snapshot's lease fingerprint and confirm
+an active processed lease. A job that finished or expired before suspension does
+not establish an interrupted-lease precondition, even if an earlier poll saw it
+running. Such attempts remain inconclusive. Observing and timing actual recovery
+still requires independent post-restart reads and the parent restart bounds.
+
+
+The parent rechecks zero worker replicas and the unchanged suspension generation
+after the paused database query, and reverifies the held storage state before
+restoring the worker. Changed holds suppress the receipt. A bound paused reader
+adds 475 seconds of conservative command/read reserve, making the initial standard
+staging reserve 4975 seconds. This consumes the existing grading allowance; it
+requires scheduling review and does not authorize increasing the proposed limit.
