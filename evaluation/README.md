@@ -1027,3 +1027,19 @@ restoring the worker. Changed holds suppress the receipt. A bound paused reader
 adds 475 seconds of conservative command/read reserve, making the initial standard
 staging reserve 4975 seconds. This consumes the existing grading allowance; it
 requires scheduling review and does not authorize increasing the proposed limit.
+
+The trusted workload probe offers separate `ready` (default) and `running`
+convergence modes. Running requires the observed generation and exact Pod count,
+no terminating Pods, Pod phase Running, and a running state with a start timestamp
+for every declared regular container and restartable init sidecar. Missing,
+duplicated, replaced, waiting or terminated container observations do not count.
+Dependency readiness and startup-probe success are distinct from process running.
+Only boolean running/readiness projections leave the probe; raw container
+configuration and diagnostics remain excluded.
+
+`workload_operation(..., convergence='running')` lets a reviewed parent lifecycle
+wait for processes during an intentional dependency outage. Ordinary calls retain
+ready convergence. This transport primitive is not yet wired into staging/fault
+restoration; it does not alone establish queue progress, continuous uptime or
+APP-009 retry timing. The same command deadlines and UID/replica conditional writes
+apply to either mode.

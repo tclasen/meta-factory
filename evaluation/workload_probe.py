@@ -17,6 +17,29 @@ def controller_uid(value, kind):
     return owners[0]['uid'] if len(owners) == 1 else None
 
 
+def pod_running(pod):
+    """All declared regular containers and restartable init sidecars have processes.
+
+    This deliberately does not require dependency readiness or startup-probe
+    success. Running is a process observation, not proof of useful queue work.
+    """
+    if pod.get('status', {}).get('phase') != 'Running':
+        return False
+    spec, status = pod.get('spec', {}), pod.get('status', {})
+    containers = spec.get('containers', [])
+    sidecars = [c for c in spec.get('initContainers', []) if c.get('restartPolicy') == 'Always']
+    expected = [c.get('name') for c in containers + sidecars]
+    if not containers or any(not isinstance(name, str) or not name for name in expected) or len(set(expected)) != len(expected):
+        return False
+    observed = status.get('containerStatuses', []) + [c for c in status.get('initContainerStatuses', []) if c.get('name') in {c.get('name') for c in sidecars}]
+    if len(observed) != len(expected) or {c.get('name') for c in observed} != set(expected):
+        return False
+    return all(set(c.get('state', {})) == {'running'}
+               and isinstance(c['state']['running'], dict)
+               and isinstance(c['state']['running'].get('startedAt'), str)
+               and bool(c['state']['running']['startedAt']) for c in observed)
+
+
 def project(workload, replica_sets, pods, namespace, kind, name):
     meta = workload['metadata']
     if meta['namespace'] != namespace or meta['name'] != name or workload['kind'] != KINDS[kind]:
@@ -44,6 +67,7 @@ def project(workload, replica_sets, pods, namespace, kind, name):
                 raise ValueError('Invalid Pod identity')
             selected.append({'name': metadata['name'], 'uid': metadata['uid'],
                              'terminating': bool(metadata.get('deletionTimestamp')),
+                             'running': pod_running(pod),
                              'ready': any(c.get('type') == 'Ready' and c.get('status') == 'True'
                                           for c in pod.get('status', {}).get('conditions', []))})
     return {'namespace': namespace, 'kind': kind, 'name': name, 'uid': uid,
@@ -64,12 +88,14 @@ def scale_patch(snapshot, expected_uid, expected_replicas, replicas):
             {'op': 'replace', 'path': '/spec/replicas', 'value': replicas}]
 
 
-def converged(snapshot, uid, replicas):
+def converged(snapshot, uid, replicas, *, convergence='ready'):
+    if convergence not in ('ready', 'running'):
+        raise ValueError('Invalid workload convergence mode')
     if snapshot['uid'] != uid or snapshot['replicas'] != replicas:
         raise ValueError('Workload identity or replica target changed')
     if snapshot['observed_generation'] < snapshot['generation']:
         return False
-    return len(snapshot['pods']) == replicas and all(p['ready'] and not p['terminating'] for p in snapshot['pods'])
+    return len(snapshot['pods']) == replicas and all(p.get(convergence) is True and not p['terminating'] for p in snapshot['pods'])
 
 
 def main():
@@ -79,6 +105,7 @@ def main():
     parser.add_argument('--kind', choices=KINDS, required=True)
     parser.add_argument('--name', required=True)
     parser.add_argument('--operation', choices=('inspect', 'scale'), required=True)
+    parser.add_argument('--convergence', choices=('ready', 'running'), default='ready')
     parser.add_argument('--expected-uid')
     parser.add_argument('--expected-replicas', type=int)
     parser.add_argument('--replicas', type=int)
@@ -118,7 +145,7 @@ def main():
             while True:
                 snapshot = observe()
                 report['workload'] = snapshot
-                if converged(snapshot, args.expected_uid, args.replicas):
+                if converged(snapshot, args.expected_uid, args.replicas, convergence=args.convergence):
                     break
                 time.sleep(min(1, max(0, deadline - time.monotonic())))
             report['outcome'] = 'workload_scaled'

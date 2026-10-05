@@ -9,13 +9,15 @@ from .workload_probe import KINDS, NAME
 
 
 def workload_operation(attempt, sandbox, *, label, kubectl_prefix, namespace, kind,
-                       name, expected=None, replicas=None):
+                       name, expected=None, replicas=None, convergence='ready'):
     """Inspect, or conditionally scale and wait. Caller must arrange restoration.
 
     Persist the original observation before suspension. Even a failed scale may
     have mutated the target; cleanup must inspect the same UID and restore it or
     stop the disposable grading sandbox. Use only under its lifetime guard.
     """
+    if convergence not in ('ready', 'running'):
+        raise ValueError('Invalid workload convergence mode')
     if kind not in KINDS or not all(NAME.fullmatch(v) for v in (namespace, name)):
         raise ValueError('Invalid workload identity')
     if not isinstance(label, str) or not 1 <= len(label) <= 48 or not NAME.fullmatch(label):
@@ -24,6 +26,8 @@ def workload_operation(attempt, sandbox, *, label, kubectl_prefix, namespace, ki
     argv = ['python3', '-c', probe, '--kubectl-prefix', json.dumps(kubectl_prefix),
             '--namespace', namespace, '--kind', kind, '--name', name,
             '--operation', 'scale' if expected is not None else 'inspect']
+    if convergence != 'ready':
+        argv += ['--convergence', convergence]
     if expected is not None:
         if any(expected[key] != value for key, value in (('namespace', namespace), ('kind', kind), ('name', name))):
             raise ValueError('Observation belongs to a different workload')
