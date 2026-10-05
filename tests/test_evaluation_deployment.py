@@ -384,3 +384,84 @@ class DeploymentTest(unittest.TestCase):
                 fault_workloads=unexpected,fault_service_probes=unexpected,kubectl_prefix=['kubectl'])
         self.assertEqual(report['outcome'],'grading_incomplete')
         self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def job_options(self):
+        return {key: lambda *args, **kwargs: None for key in (
+            'database_read', 'artifact_count', 'database_peer_check', 'storage_peer_check')}
+
+    def test_jobs_resolve_after_bootstrap_and_close_before_outer_guard(self):
+        events = []; broker = object(); configuration = self.job_options()
+        def resolve(box):
+            self.assertEqual(len(self.commands), 1)
+            events.append('resolve')
+            return configuration
+        class Runtime:
+            def __init__(inner, directory, box, guard, **kwargs):
+                self.assertIs(kwargs['database_read'], configuration['database_read'])
+                self.assertGreater(kwargs['monotonic_deadline'], 0)
+                self.assertGreater(kwargs['wall_deadline'], 0)
+                inner.broker = broker
+            def close(inner): events.append('close')
+        def runner(attempt, suite, target, **kwargs):
+            self.assertEqual(set(target), {'base_url'})
+            self.assertIs(kwargs['job_broker'], broker)
+            events.append('grade')
+            return {'criteria': {'AC-025': {'verdict': 'pass'}}, 'project_success': False}
+        def release(guard):
+            events.append('release')
+            return {'remote_termination_verified': True}
+        with patch.object(FakeGuard, 'release', release), Attempt(self.root/'jobs', {}) as attempt:
+            report = self.run_grade(attempt, runner=runner, job_observer=resolve, job_runtime_factory=Runtime)
+        self.assertEqual(events, ['resolve', 'grade', 'close', 'release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_failed_bootstrap_never_resolves_jobs(self):
+        def unexpected(*args): self.fail('Job resolver called without deployment')
+        with Attempt(self.root/'jobs-no-bootstrap', {}) as attempt:
+            report = self.run_grade(attempt, bootstrap='failed', job_observer=unexpected)
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_static_job_configuration_rejected_before_creation(self):
+        count = len(FakeSandbox.instances)
+        with Attempt(self.root/'jobs-static', {}) as attempt, self.assertRaises(ValueError):
+            self.run_grade(attempt, job_observer={})
+        self.assertEqual(len(FakeSandbox.instances), count)
+
+    def test_malformed_job_binding_never_constructs_runtime_or_grades(self):
+        # One redeployment per isolated fixture: use separate project directories.
+        configurations = [{}, dict(self.job_options(), artifact_count=None),
+                          dict(self.job_options(), credentials='private')]
+        for index, configuration in enumerate(configurations):
+            if index: (self.root/'project').rename(self.root/('previous-project-'+str(index)))
+            def unexpected(*args, **kwargs): self.fail('Invalid job binding was used')
+            with Attempt(self.root/('jobs-malformed-'+str(index)), {}) as attempt:
+                report = self.run_grade(attempt, job_observer=lambda box:configuration,
+                                        job_runtime_factory=unexpected, runner=unexpected)
+            self.assertEqual(report['error_type'], 'ValueError')
+            self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_job_close_failure_revokes_acceptance_and_releases_guard(self):
+        class Runtime:
+            def __init__(self, *args, **kwargs): self.broker = object()
+            def close(self): raise RuntimeError('private-job-credential')
+        self.suite.approved = True
+        with Attempt(self.root/'jobs-close-broken', {}) as attempt:
+            report = self.run_grade(attempt, job_observer=lambda box:self.job_options(), job_runtime_factory=Runtime)
+        self.assertFalse(report['project_success'])
+        self.assertEqual(report['accepted_packages'], [])
+        self.assertEqual(report['job_cleanup_error'], 'RuntimeError')
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-job-credential', str(report))
+
+    def test_later_resolver_failure_closes_job_capability(self):
+        closed = []
+        class Runtime:
+            def __init__(self, *args, **kwargs): self.broker = object()
+            def close(self): closed.append(True)
+        def broken(box): raise RuntimeError('private-browser-credential')
+        with Attempt(self.root/'jobs-later-failure', {}) as attempt:
+            report = self.run_grade(attempt, job_observer=lambda box:self.job_options(),
+                                    job_runtime_factory=Runtime, browser_resolver=broken)
+        self.assertEqual(closed, [True])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-browser-credential', str(report))

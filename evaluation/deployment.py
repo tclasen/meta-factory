@@ -6,6 +6,7 @@ import time
 from .evidence import atomic_json, collect, positive
 from .fault_runtime import FaultRuntime
 from .audit_runtime import AuditRuntime
+from .job_runtime import JobRuntime
 from .browser_binding import BrowserBinding
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
@@ -45,7 +46,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   fault_runtime_factory=FaultRuntime, fault_service_probes=None,
                   fault_audit=None, audit_observer=None, audit_runtime_factory=AuditRuntime,
                   browser_resolver=None, browser_binding_factory=BrowserBinding,
-                  fault_storage_worker_restart=False):
+                  fault_storage_worker_restart=False, job_observer=None,
+                  job_runtime_factory=JobRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -61,6 +63,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     positive(grading_seconds, 'grading timeout')
     if audit_observer is not None and not callable(audit_observer):
         raise ValueError('Audit observation requires a trusted post-bootstrap resolver')
+    if job_observer is not None and not callable(job_observer):
+        raise ValueError('Job observation requires a trusted post-bootstrap resolver')
     if browser_resolver is not None and not callable(browser_resolver):
         raise ValueError('Browser configuration requires a trusted post-bootstrap resolver')
     if fault_audit is not None and not callable(fault_audit):
@@ -89,6 +93,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     guard = None
     fault_runtime = None
     audit_runtime = None
+    job_runtime = None
     browser_binding = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
     cleanup = {'remote_termination_verified': False}
@@ -144,6 +149,16 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds, **audit_options)
             options['audit_broker'] = audit_runtime.broker
+        if job_observer is not None:
+            job_options = job_observer(box)
+            required = {'database_read', 'artifact_count', 'database_peer_check', 'storage_peer_check'}
+            if (not isinstance(job_options, dict) or set(job_options) != required
+                    or not all(callable(job_options[key]) for key in required)):
+                raise ValueError('Incomplete post-bootstrap job observation configuration')
+            job_runtime = job_runtime_factory(attempt.directory / 'job-observations', box, guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds, **job_options)
+            options['job_broker'] = job_runtime.broker
         if browser_resolver is not None:
             browser_configuration = browser_resolver(box)
             browser_binding = browser_binding_factory(box, guard, browser_configuration,
@@ -169,6 +184,12 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             except Exception as error:
                 report.update(outcome='grading_incomplete', project_success=False,
                               accepted_packages=[], browser_cleanup_error=type(error).__name__)
+        if job_runtime is not None:
+            try:
+                job_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], job_cleanup_error=type(error).__name__)
         if audit_runtime is not None:
             try:
                 audit_runtime.close()

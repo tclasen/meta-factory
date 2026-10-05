@@ -805,8 +805,7 @@ to receive the parent-owned broker configuration through `run_suite(job_broker=.
 Supplied common-target capabilities are stripped; undeclared and browser cases
 receive none. An unsettled job reader makes the case inconclusive and aborts
 later cases. Browser fixture bindings also reject job capability injection.
-Fresh-deployment attachment, actual readers and a publication barrier remain
-unimplemented. No lease-recovery or artifact-uniqueness evidence is claimed.
+Actual readers and a publication barrier remain unimplemented. No lease-recovery or artifact-uniqueness evidence is claimed.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_broker.py -v
@@ -831,9 +830,22 @@ durable lease, attempt and completion-event fields; the object enumerator must
 verify its physical storage scope independently. Neither discovery nor concrete
 readers are supplied here. Sequential reads do not establish an atomic snapshot
 across the database and object store. Protected race oracles still require a
-reviewed barrier or convergence procedure. This runtime is not yet attached to
-fresh deployment and does not establish application lease/retry evidence.
+reviewed barrier or convergence procedure. This runtime does not establish application lease/retry evidence.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_runtime.py -v
+```
+
+
+`grade_capture(..., job_observer=...)` invokes a trusted operator resolver only
+following successful fresh bootstrap. Its exact result contains four callbacks:
+`database_read`, `artifact_count`, `database_peer_check`, `storage_peer_check`.
+Static, incomplete or noncallable selections are rejected. Both grading deadlines
+and the outer guard bind the resulting `JobRuntime`; only its broker is passed to
+`run_suite`. Readers and peer configuration stay parent-side. The capability
+closes before the outer guard is released, including later resolver failures.
+A close failure prevents acceptance while sandbox cleanup still proceeds.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
 ```
