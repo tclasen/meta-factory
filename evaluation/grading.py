@@ -8,6 +8,7 @@ import sys
 import time
 
 from .evidence import atomic_json, collect, positive
+from .browser import BROWSER_MODES, run_browser_case
 
 
 VERDICTS = {"pass", "fail", "untested", "inconclusive"}
@@ -60,6 +61,11 @@ class Suite:
             if len(set(case["criteria"])) != len(case["criteria"]):
                 raise ValueError("Duplicate criterion reference")
             positive(case["timeout_seconds"], "case timeout")
+            if "browser" in case:
+                if not isinstance(case["browser"], str) or case["browser"] not in BROWSER_MODES:
+                    raise ValueError("Invalid browser invocation mode")
+                if case.get("mutates_runtime", False) or case.get("reads_audit", False):
+                    raise ValueError("Browser cases cannot receive host broker capabilities")
             for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit"):
                 if type(case.get(declaration, False)) is not bool:
                     raise ValueError("Invalid case capability declaration: " + declaration)
@@ -113,7 +119,8 @@ class Suite:
                 "limits": "Unapproved or incomplete suites cannot establish acceptance"}
 
 
-def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None):
+def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None,
+              browser_executor=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -145,20 +152,25 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
         if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
             atomic_json(worker_target, dict(target, **capabilities))
-        argv = [sys.executable, "-m", "evaluation.grade_worker", "--suite", str(suite.root),
-                "--case", case["id"], "--target", str(worker_target), "--result", str(path),
-                "--manifest-sha256", suite.digest]
-        command = collect(attempt, "grade-" + case["id"], argv, cwd=Path(__file__).resolve().parents[1],
-                          timeout=min(remaining, case["timeout_seconds"]))
-        suite.verify()
-        if command["outcome"] != "passed" or not path.is_file():
-            results[case["id"]] = {"case_id": case["id"], "verdict": "inconclusive",
-                                   "reason": "grader_" + command["outcome"]}
+        if "browser" in case:
+            results[case["id"]] = run_browser_case(browser_executor, attempt, suite, case, target,
+                                                  min(remaining, case["timeout_seconds"]))
+            atomic_json(path, results[case["id"]])
         else:
-            value = json.loads(path.read_text())
-            if value.get("case_id") != case["id"] or value.get("verdict") not in VERDICTS:
-                raise ValueError("Malformed grader result")
-            results[case["id"]] = value
+            argv = [sys.executable, "-m", "evaluation.grade_worker", "--suite", str(suite.root),
+                    "--case", case["id"], "--target", str(worker_target), "--result", str(path),
+                    "--manifest-sha256", suite.digest]
+            command = collect(attempt, "grade-" + case["id"], argv, cwd=Path(__file__).resolve().parents[1],
+                              timeout=min(remaining, case["timeout_seconds"]))
+            if command["outcome"] != "passed" or not path.is_file():
+                results[case["id"]] = {"case_id": case["id"], "verdict": "inconclusive",
+                                       "reason": "grader_" + command["outcome"]}
+            else:
+                value = json.loads(path.read_text())
+                if value.get("case_id") != case["id"] or value.get("verdict") not in VERDICTS:
+                    raise ValueError("Malformed grader result")
+                results[case["id"]] = value
+        suite.verify()
         if case.get('mutates_runtime', False) and fault_broker is not None:
             if not fault_broker.wait_idle() or fault_broker.aborted:
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',

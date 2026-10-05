@@ -25,6 +25,8 @@ def main():
         if sha256(contained_file(root, relative)) != expected:
             raise ValueError("Suite source changed before execution")
     case = next(case for case in manifest["cases"] if case["id"] == args.case)
+    if "browser" in case:
+        raise ValueError("Browser cases require an isolated browser executor")
     source = contained_file(root, case["source"])
     spec = importlib.util.spec_from_file_location("protected_case", source)
     module = importlib.util.module_from_spec(spec)

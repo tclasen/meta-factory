@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from evaluation.http_relay import RelayServer
 
@@ -168,6 +169,17 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(status, 502)
         self.assertNotIn(b'private-credential-canary', body)
         self.assertNotIn('private-credential-canary', stderr.getvalue())
+        self.assertEqual(self.app.requests, [])
+
+    def test_socket_timeout_is_recorded_when_timer_never_runs(self):
+        relay = self.relay(request_seconds=.05)
+        # Deterministically model a timer thread that loses the scheduling race
+        # to the parser's socket timeout, then is cancelled by handler cleanup.
+        with patch('evaluation.http_relay.threading.Timer'):
+            with socket.create_connection(('127.0.0.1', relay.server_port), timeout=1) as connection:
+                connection.sendall(b'GET / HTTP/1.1\r\nHost: ')
+                self.assertEqual(connection.recv(4096), b'')
+            self.assertEqual(relay.observation().get('deadline'), 1)
         self.assertEqual(self.app.requests, [])
 
     def test_listener_and_peer_configuration_is_operator_owned(self):

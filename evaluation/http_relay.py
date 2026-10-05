@@ -170,7 +170,9 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
         with self.server.lock:
             self.server.handlers.add(self)
         self.connection.settimeout(self.server.request_seconds)
+        expired = threading.Event()
         def expire():
+            expired.set()
             self.server.record('deadline')
             self.abort()
         timer = threading.Timer(self.server.request_seconds, expire)
@@ -187,6 +189,11 @@ class RelayHandler(http.server.BaseHTTPRequestHandler):
         finally:
             timer.cancel()
             timer.join()
+            # BaseHTTPRequestHandler swallows socket timeouts while parsing.
+            # The socket can expire before the timer thread gets scheduled;
+            # retain deadline evidence even when that callback was cancelled.
+            if not expired.is_set() and time.monotonic() - self.started >= self.server.request_seconds:
+                self.server.record('deadline')
             with self.server.lock:
                 self.server.handlers.discard(self)
             self.done.set()

@@ -585,3 +585,33 @@ Focused transport fixtures:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_http_relay.py -v
 ```
+
+### Browser case execution boundary
+
+Suite cases may declare `browser` as `page`, `page_request`, `browser`, or
+`browser_request`, selecting the protected journey's invocation signature. These
+cases route exclusively through an operator-provided `run_suite`
+`browser_executor`; the ordinary host worker refuses them. A missing executor
+is inconclusive. Browser cases cannot receive host audit or fault capabilities.
+
+The executor receives `(attempt, suite, case, target, timeout_seconds=...)` and
+must enforce that total budget independently, including preparation and cleanup.
+It owns container isolation, pinned browser provisioning, peer identity checks,
+both relay hops, deadline/parent-death guards and resource cleanup. This callback
+interface does not itself provide those controls; production executor and fresh
+deployment binding remain unfinished. Tests exercise the result boundary using
+synthetic callbacks, not live containment.
+
+Results require the matching `case_id`, a recognized `verdict`, exact true
+`guard_verified` and `cleanup_verified`, and `transport` counters for both
+`browser` and `upstream` hops. Each hop must have completed requests and no errors,
+refusals, limits or disconnects. Transport uncertainty overrides either pass or
+fail with inconclusive; this conservative rule may reject harmless disconnects.
+Uncertain lifetime, restoration or malformed result identity aborts the suite.
+Existing shared-state declarations still stop later cases after any non-pass.
+Only fixed reasons reach the case record; arbitrary executor observations and
+exception text are discarded. No new browser acceptance coverage is declared.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_browser.py -v
+```
