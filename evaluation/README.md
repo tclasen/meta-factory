@@ -1126,3 +1126,29 @@ Run its focused fixture checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_password_database.py -v
 ```
+
+
+### Private known-canary scanning
+
+`secret_scan.scan_secret_chunks` inspects one private byte stream for operator-known
+canaries (APP-007; AC-025). It detects literal UTF-8 and selected JSON, URL, HTML,
+base64 and hexadecimal representations, including matches split across chunks.
+Keep each source separate. It returns only a presence flag, completeness flag,
+byte count and fixed outcome code; neither chunks nor matched values are logged.
+
+A presence flag remains conclusive even if later input is truncated or fails.
+Absence requires `complete=True`; byte/chunk limits, malformed input and source
+errors never establish absence. Default limits are 8 MiB and 65,536 chunks per
+stream. The caller must enforce source/time bounds and cleanup; the scanner
+cannot interrupt an iterator blocked on a read. Bound independently observed Pod
+and container identities, source inventory, current/previous log selection and
+collection interval before assigning an application verdict. An empty stream is
+not proof that a required source was collected. Arbitrary encoding, encryption,
+partial-secret detection and complete application log history are not guaranteed.
+No deployment resolver or acceptance case is wired to this helper.
+
+Run its focused fixture checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_secret_scan.py -v
+```
