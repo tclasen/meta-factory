@@ -1098,3 +1098,31 @@ and immutable deadlines; they do not increase the initial staging reserve or tot
 grading limit. Extra observations consume that allowance, so scheduling still needs
 review. No continuous application uptime or APP-009 retry acceptance is claimed
 from protocol/fixture controls alone.
+
+
+### Private password-storage observations
+
+`password_database.PasswordDatabaseReader` reads only an independently selected
+scope of known account identities from an operator-mapped PostgreSQL account
+relation (APP-002; AC-004). Supply a guarded `DatabaseTransport`, observed relation
+OID, database/operator role identities and mappings for `identity`/`encoded_hash`;
+scalar columns and fixed JSON object paths are supported. The read holds a table
+lock through identity checks and commit, uses a fixed catalog search path and
+bounded read-only transaction, and refuses missing, duplicate, truncated,
+oversized or mismatched observations. Unsupported physical layouts need a
+reviewed adapter; the application is not required to use these column names.
+
+The return value contains credential encodings for private operator inspection.
+Never log it, pass it to a grader child/socket, or serialize it as evidence.
+`DatabaseTransport` logs command metadata and SQL digest, not SQL, observations
+or connection diagnostics. Independently bind the actual account semantics and
+captured dependency/default-cost profile before cryptographic inspection. This
+reader does not verify passwords, discover a schema, enforce hashing policy or
+establish salt uniqueness outside the supplied account scope. It is not wired to
+an acceptance case or deployment resolver.
+
+Run its focused fixture checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_password_database.py -v
+```
