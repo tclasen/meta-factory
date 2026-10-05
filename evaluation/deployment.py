@@ -5,6 +5,7 @@ import time
 
 from .evidence import atomic_json, collect, positive
 from .fault_runtime import FaultRuntime
+from .audit_runtime import AuditRuntime
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
 from .watchdog import Guard
@@ -41,7 +42,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   sandbox_factory=Sandbox, guard_factory=Guard, command_runner=collect,
                   suite_runner=run_suite, fault_workloads=None, kubectl_prefix=None,
                   fault_runtime_factory=FaultRuntime, fault_service_probes=None,
-                  fault_audit=None):
+                  fault_audit=None, audit_observer=None, audit_runtime_factory=AuditRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -51,6 +52,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     """
     positive(bootstrap_seconds, 'bootstrap timeout')
     positive(grading_seconds, 'grading timeout')
+    if audit_observer is not None and not callable(audit_observer):
+        raise ValueError('Audit observation requires a trusted post-bootstrap resolver')
     if fault_audit is not None and not callable(fault_audit):
         raise ValueError('Audit configuration requires a trusted post-bootstrap resolver')
     grading_started = time.monotonic()
@@ -76,6 +79,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     box = sandbox_factory(attempt, project, specification, repository, port=port, role='grader')
     guard = None
     fault_runtime = None
+    audit_runtime = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
     cleanup = {'remote_termination_verified': False}
     try:
@@ -120,9 +124,19 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes,
                 **audit_options)
             options['fault_broker'] = fault_runtime.broker
+        if audit_observer is not None:
+            audit_options = audit_observer(box)
+            if (not isinstance(audit_options, dict) or set(audit_options) != {
+                    'audit_binding', 'database_peer', 'database_peer_check'}
+                    or audit_options['audit_binding'] is None):
+                raise ValueError('Incomplete post-bootstrap audit observation configuration')
+            audit_runtime = audit_runtime_factory(attempt.directory / 'audit-observations', box, guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds, **audit_options)
+            options['audit_broker'] = audit_runtime.broker
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:
-            raise TimeoutError('Grading budget consumed by fault preparation')
+            raise TimeoutError('Grading budget consumed by capability preparation')
         report = suite_runner(attempt, suite, target, deadline_seconds=remaining,
                               development=development, **options)
         report['outcome'] = ('graded' if all(c['verdict'] in ('pass', 'fail') for c in report['criteria'].values())
@@ -133,6 +147,12 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     except Exception as error:
         report.update(outcome='grading_incomplete', project_success=False, error_type=type(error).__name__)
     finally:
+        if audit_runtime is not None:
+            try:
+                audit_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], audit_cleanup_error=type(error).__name__)
         if fault_runtime is not None:
             try:
                 fault_runtime.close()

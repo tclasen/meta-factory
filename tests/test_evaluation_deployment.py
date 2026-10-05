@@ -210,3 +210,73 @@ class DeploymentTest(unittest.TestCase):
         with Attempt(self.root/'audit-static', {}) as attempt, self.assertRaises(ValueError):
             self.run_grade(attempt, fault_audit={})
         self.assertEqual(len(FakeSandbox.instances), count)
+
+    def test_audit_observer_resolves_after_bootstrap_and_closes_before_guard(self):
+        events = []
+        broker = object()
+        binding = {'private': 'binding'}
+        def resolve(box):
+            self.assertEqual(len(self.commands), 1)
+            events.append('resolve')
+            return dict(audit_binding=binding, database_peer={}, database_peer_check=lambda _:None)
+        class Runtime:
+            def __init__(inner, directory, box, guard, **kwargs):
+                self.assertIs(kwargs['audit_binding'], binding)
+                self.assertGreater(kwargs['wall_deadline'], 0)
+                inner.broker = broker
+            def close(inner): events.append('close')
+        def runner(attempt, suite, target, **kwargs):
+            self.assertEqual(set(target), {'base_url'})
+            self.assertIs(kwargs['audit_broker'], broker)
+            events.append('grade')
+            return {'criteria': {'AC-016': {'verdict':'pass'}}, 'project_success':False}
+        def release(guard):
+            events.append('guard-release')
+            return {'remote_termination_verified': True}
+        with patch.object(FakeGuard, 'release', release), Attempt(self.root/'observer', {}) as attempt:
+            report = self.run_grade(attempt, runner=runner, audit_observer=resolve, audit_runtime_factory=Runtime)
+        self.assertEqual(events, ['resolve', 'grade', 'close', 'guard-release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_audit_observer_close_error_prevents_acceptance_but_releases_guard(self):
+        class Runtime:
+            def __init__(self, *args, **kwargs): self.broker = object()
+            def close(self): raise RuntimeError('private diagnostic')
+        self.suite.approved = True
+        with Attempt(self.root/'observer-close', {}) as attempt:
+            report = self.run_grade(attempt, audit_runtime_factory=Runtime, audit_observer=lambda box:
+                dict(audit_binding={}, database_peer={}, database_peer_check=lambda _:None))
+        self.assertEqual(report['outcome'], 'grading_incomplete')
+        self.assertEqual(report['audit_cleanup_error'], 'RuntimeError')
+        self.assertFalse(report['project_success'])
+        self.assertEqual(report['accepted_packages'], [])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private diagnostic', str(report))
+
+    def test_observer_is_not_resolved_after_failed_bootstrap(self):
+        def unexpected(*args): self.fail('Resolver ran before bootstrap succeeded')
+        with Attempt(self.root/'observer-bootstrap', {}) as attempt:
+            report = self.run_grade(attempt, bootstrap='failed', audit_observer=unexpected)
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_static_observer_refused_and_missing_binding_disposes_environment(self):
+        with Attempt(self.root/'observer-static', {}) as attempt, self.assertRaises(ValueError):
+            self.run_grade(attempt, audit_observer={})
+        with Attempt(self.root/'observer-missing', {}) as attempt:
+            report = self.run_grade(attempt, audit_observer=lambda _: {})
+        self.assertEqual(report['error_type'], 'ValueError')
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_observer_resolver_failure_closes_existing_fault_runtime(self):
+        closed = []
+        class Runtime:
+            def __init__(self, *args, **kwargs): self.broker = object()
+            def close(self): closed.append(True)
+        def broken(box): raise RuntimeError('private diagnostic')
+        with Attempt(self.root/'observer-failure', {}) as attempt:
+            report = self.run_grade(attempt, fault_runtime_factory=Runtime, fault_workloads={},
+                                    audit_observer=broken)
+        self.assertEqual(closed, [True])
+        self.assertEqual(report['outcome'], 'grading_incomplete')
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private diagnostic', str(report))
