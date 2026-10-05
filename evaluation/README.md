@@ -408,3 +408,38 @@ increments or arbitrary external trigger effects: mutation/fault helpers must be
 used only in an isolated disposable grading database with independent canaries
 and privileged before/after verification. Do not expose SQL or connection details
 to the builder or protected worker.
+
+### Parent audit-fault lifecycle adapter
+
+`audit_faults.audit_insert_failure` consumes an operator-created binding containing
+`schema`, `table`, `table_oid`, `database_name`, runtime `runtime_user`/`session_user`,
+operator `operator_user`/`operator_session_user`, and a `canary` mapping of column
+names to bounded synthetic string/null values. Canary values must satisfy the
+actual audit schema and its references; they are never written into controller
+evidence. The probe emits only row counts, identity and SQLSTATE/constraint metadata.
+
+The caller supplies two trusted functions, kept outside worker target data:
+
+- `execute(identity, sql, timeout=15)` selects one of two fixed connections,
+  `runtime` or `operator`, waits for the entire SQL command including commit or
+  rollback, requires a successful process/connection outcome, and returns one JSON
+  object. It must not log connection credentials, raw server diagnostics or canary
+  values. A malformed/missing reply is an incomplete command, not a safe retry.
+- `check(reserve_seconds)` verifies the exact trusted peer identity and active
+  disposable-environment guard, with sufficient time remaining. It runs before
+  every command; initial admission reserves 210 seconds, each command 20 seconds.
+  The caller must bound the protected body (the broker normally allows 60 seconds).
+
+Use a dedicated child `Attempt` when called from the broker, to avoid concurrent
+writes to grader evidence. The adapter verifies runtime/operator database/table
+identities, a successful baseline insertion, rejection by the exact installed
+constraint under the runtime identity, exact removal, recovered insertion, and
+unchanged runtime identity. It yields only `audit_insert_failure_verified: true`.
+
+A durable restoration plan precedes mutation; exact constraint identity is saved
+when received. Lost installation replies remain explicitly uncertain: the adapter
+never guesses an OID to drop. Lost/failed removal, expired guards or failed recovery
+raise `FaultRestoreError`; abort grading and dispose the environment. `finally`
+handles ordinary exceptions/interruption, while process death requires the outer
+lifetime guard. These contracts still require a concrete trusted application
+connection/peer binding; this adapter does not discover credentials or topology.

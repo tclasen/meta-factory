@@ -38,6 +38,7 @@ WITH target AS (
 SELECT pg_catalog.json_build_object(
     'server_version_num', current_setting('server_version_num')::integer,
     'session_user', session_user, 'current_user', current_user,
+    'database_name', current_database(),
     'relation_found', EXISTS (SELECT 1 FROM target),
     'relation_oid', (SELECT oid FROM target),
     'relation_kind', (SELECT relkind FROM target),
@@ -166,3 +167,50 @@ DO %s;
 %s
 COMMIT;
 """ % (relation, sql_literal(block), change, result)
+
+
+def insert_canary_sql(schema, table, values):
+    """Rollback-only insertion of operator-supplied synthetic audit metadata.
+
+    Output contains no values or exception messages. The trusted transport must
+    require successful command completion, including ROLLBACK, before using it.
+    """
+    if not isinstance(values, dict) or not 1 <= len(values) <= 32:
+        raise ValueError('Expected bounded synthetic canary fields')
+    columns, literals = [], []
+    for column, value in values.items():
+        columns.append(identifier(column))
+        if value is not None and (not isinstance(value, str) or len(value.encode()) > 4096):
+            raise ValueError('Expected bounded synthetic canary value')
+        literals.append('NULL' if value is None else sql_literal(value))
+    relation = identifier(schema) + '.' + identifier(table)
+    block = """DECLARE affected bigint; error_code text; failed_constraint text;
+    failed_schema text; failed_table text;
+BEGIN
+    BEGIN
+        INSERT INTO %s (%s) VALUES (%s);
+        GET DIAGNOSTICS affected = ROW_COUNT;
+        PERFORM pg_catalog.set_config('factory.audit_canary',
+            pg_catalog.json_build_object('outcome','insert_executed','rows',affected,
+                'session_user',session_user,'current_user',current_user,
+                'database_name',current_database())::text,true);
+    EXCEPTION WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS error_code=RETURNED_SQLSTATE,
+            failed_constraint=CONSTRAINT_NAME, failed_schema=SCHEMA_NAME,
+            failed_table=TABLE_NAME;
+        PERFORM pg_catalog.set_config('factory.audit_canary',
+            pg_catalog.json_build_object('outcome','insert_rejected','sqlstate',error_code,
+                'constraint_name',failed_constraint,'schema',failed_schema,'table',failed_table,
+                'session_user',session_user,'current_user',current_user,
+                'database_name',current_database())::text,true);
+    END;
+END;""" % (relation, ','.join(columns), ','.join(literals))
+    return """BEGIN;
+SET LOCAL statement_timeout = '5s';
+SET LOCAL lock_timeout = '2s';
+SET LOCAL search_path = pg_catalog;
+SET LOCAL client_min_messages = error;
+DO %s;
+SELECT pg_catalog.current_setting('factory.audit_canary')::json;
+ROLLBACK;
+""" % sql_literal(block)
