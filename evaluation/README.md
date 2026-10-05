@@ -899,3 +899,27 @@ convergence checks and live storage transport evidence remain required.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_storage.py -v
 ```
+
+### Ordered job staging protocol
+
+`staging_broker.StagingBroker` supplies a separate private capability for an
+operator-reviewed worker-to-storage staging sequence. Its trusted factory owns
+all phases and partial-failure restoration. It initially verifies worker suspension
+and API availability so the protected grader can enqueue and approve work safely.
+The single allowed `handoff()` must suspend/verify storage before restoring the
+worker. The grader may then request one worker restart while storage stays held.
+Only literal verified receipts cross the socket; identities, commands and other
+callback data stay parent-side. Unknown, repeated or out-of-order actions abort.
+
+`remote_staging` restores on body failure and client disconnect. `session.verify()`
+requires the parent to independently recheck the current phase. Long observations
+must request these verifications within the bounded idle window; verification
+cannot extend the outer deployment deadlines. Restoration failure is fatal.
+The protocol avoids nesting a second fault socket while the first is held.
+It is not yet backed by the concrete staging runtime or granted to suite cases;
+receipt callbacks alone do not establish a publication barrier or lease recovery.
+Actual parent-death containment still belongs to the outer sandbox watchdog.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_staging_broker.py -v
+```
