@@ -198,3 +198,22 @@ class BrokerTest(unittest.TestCase):
                         {('storage','worker'):None}, {'worker':lambda: {}}):
             with self.subTest(mapping=mapping), self.assertRaises(ValueError):
                 FaultBroker(['storage','worker'],self.factory,restart_actions=mapping)
+
+    def test_restart_client_rejects_integer_or_extra_receipts(self):
+        import json
+        from types import SimpleNamespace
+        from evaluation.fault_broker import FaultSession
+        cases=[({'workload_restarted_verified':True,'held_fault_verified':True},False),
+               ({'workload_restarted_verified':1,'held_fault_verified':True},True),
+               ({'workload_restarted_verified':True,'held_fault_verified':1},True),
+               ({'workload_restarted_verified':True,'held_fault_verified':True,'extra':True},True),
+               (None,True)]
+        for observations,rejected in cases:
+            with self.subTest(observations=observations):
+                data=json.dumps({'status':'restarted','observations':observations}).encode()+b'\n'
+                stream=SimpleNamespace(write=lambda value:len(value),flush=lambda:None,
+                                       readline=lambda limit:data)
+                session=FaultSession(stream,{})
+                if rejected:
+                    with self.assertRaises(FaultRestoreError):session.restart('worker')
+                else:self.assertEqual(session.restart('worker'),observations)

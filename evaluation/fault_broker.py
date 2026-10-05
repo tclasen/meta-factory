@@ -235,8 +235,11 @@ class FaultSession:
             response = receive(self.stream)
         except (OSError, EOFError, ValueError) as error:
             raise FaultRestoreError('Held-fault control connection lost') from error
-        if response != {'status': 'restarted', 'observations': {
-                'workload_restarted_verified': True, 'held_fault_verified': True}}:
+        observations = response.get('observations')
+        if (set(response) != {'status', 'observations'} or response.get('status') != 'restarted'
+                or not isinstance(observations, dict)
+                or set(observations) != {'workload_restarted_verified', 'held_fault_verified'}
+                or any(value is not True for value in observations.values())):
             raise FaultRestoreError('Held-fault restart not verified; abort grading')
         return response['observations']
 
