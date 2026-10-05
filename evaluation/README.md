@@ -759,3 +759,17 @@ zero replicas. This receipt is distinct from `service_outage_verified`: suspensi
 alone does not prove a particular network/service failure. Workload identities,
 Pod details and command data remain private to the parent. Worker queue/restart
 oracles must require this receipt before relying on a stopped-worker precondition.
+
+A broker may additionally register parent-owned `restart_actions` keyed by an
+exact `(held_role, restart_role)` pair. `remote_fault_session` retains the outer
+fault and allows one restart of a distinct reviewed role, followed by verified
+outer restoration. The callback must bound its operations, enforce the grading
+lifetime and verify both restart completion and continued outer fault. Only the
+literal `workload_restarted_verified` and `held_fault_verified` receipts cross the
+protocol; callback diagnostics and commands do not. Unknown actions, incomplete
+receipts, connection loss or restoration failures abort control. Ordinary
+`remote_fault` callers keep their existing observation interface.
+
+This protocol primitive does not yet bind composite actions to FaultRuntime or
+prove lease reclamation. Runtime binding and live scoped preflight are required
+before protected worker/storage journeys can use it as fault evidence.

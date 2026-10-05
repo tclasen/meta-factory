@@ -5,7 +5,7 @@ import os
 import socket
 import unittest
 
-from evaluation.fault_broker import FaultBroker, remote_fault, send, receive
+from evaluation.fault_broker import FaultBroker, remote_fault, remote_fault_session, send, receive
 from evaluation.faults import FaultRestoreError, FaultSetupError
 
 
@@ -143,3 +143,58 @@ class BrokerTest(unittest.TestCase):
                     self.assertEqual(observations, {'service_outage_verified': False,
                         'workload_suspended_verified': supplied is True})
                 self.assertFalse(broker.aborted)
+
+    def test_reviewed_restart_keeps_outer_fault_and_projects_only_receipts(self):
+        def restart():
+            self.assertEqual(self.events, [('suspend', 'storage')])
+            self.events.append(('restart', 'worker'))
+            return {'workload_restarted_verified': True, 'held_fault_verified': True,
+                    'secret': 'not-forwarded', 'command': ['not-forwarded']}
+        with FaultBroker(['storage', 'worker'], self.factory,
+                         restart_actions={('storage', 'worker'): restart}) as broker:
+            with remote_fault_session(broker.configuration, 'storage') as session:
+                self.assertEqual(session.restart('worker'), {
+                    'workload_restarted_verified': True, 'held_fault_verified': True})
+                self.assertEqual(self.events[-1], ('restart', 'worker'))
+                with self.assertRaises(FaultSetupError): session.restart('worker')
+            self.assertEqual(self.events[-1], ('restore', 'storage'))
+            self.assertFalse(broker.aborted)
+
+    def test_unknown_restart_restores_held_fault_and_aborts(self):
+        with FaultBroker(['storage', 'worker'], self.factory) as broker:
+            with self.assertRaises(FaultRestoreError):
+                with remote_fault_session(broker.configuration, 'storage') as session:
+                    session.restart('worker')
+            self.assertTrue(broker.wait_idle(2))
+            self.assertEqual(self.events, [('suspend', 'storage'), ('restore', 'storage')])
+            self.assertTrue(broker.aborted)
+
+    def test_restart_requires_both_literal_verified_receipts(self):
+        for supplied in (None, {}, {'workload_restarted_verified': True},
+                         {'workload_restarted_verified': True, 'held_fault_verified': 'true'},
+                         {'workload_restarted_verified': 1, 'held_fault_verified': True}):
+            with self.subTest(supplied=supplied), FaultBroker(['storage', 'worker'], self.factory,
+                    restart_actions={('storage', 'worker'): lambda: supplied}) as broker:
+                with self.assertRaises(FaultRestoreError):
+                    with remote_fault_session(broker.configuration, 'storage') as session:
+                        session.restart('worker')
+                self.assertTrue(broker.wait_idle(2))
+                self.assertEqual(self.events[-1], ('restore', 'storage'))
+                self.assertTrue(broker.aborted)
+
+    def test_restart_callback_failure_restores_outer_context(self):
+        def restart(): raise FaultRestoreError('Synthetic worker restoration failure')
+        with FaultBroker(['storage', 'worker'], self.factory,
+                         restart_actions={('storage', 'worker'): restart}) as broker:
+            with self.assertRaises(FaultRestoreError):
+                with remote_fault_session(broker.configuration, 'storage') as session:
+                    session.restart('worker')
+            self.assertTrue(broker.wait_idle(2))
+            self.assertEqual(self.events[-1], ('restore', 'storage'))
+            self.assertTrue(broker.aborted)
+
+    def test_restart_mapping_rejects_unreviewed_or_same_role(self):
+        for mapping in ({('storage','storage'):lambda: {}}, {('storage','other'):lambda: {}},
+                        {('storage','worker'):None}, {'worker':lambda: {}}):
+            with self.subTest(mapping=mapping), self.assertRaises(ValueError):
+                FaultBroker(['storage','worker'],self.factory,restart_actions=mapping)

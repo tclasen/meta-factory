@@ -42,11 +42,18 @@ class FaultBroker:
     It must bound all operations and prevent commands after guard expiry.
     No command strings, workload names or shell arguments cross this protocol.
     """
-    def __init__(self, roles, factory, *, idle_seconds=60, cleanup_seconds=600):
+    def __init__(self, roles, factory, *, idle_seconds=60, cleanup_seconds=600, restart_actions=None):
         if not roles or any(not isinstance(role, str) or not NAME.fullmatch(role) for role in roles):
             raise ValueError('Invalid fault roles')
         if not 0 < idle_seconds <= 600 or not 0 < cleanup_seconds <= 600:
             raise ValueError('Invalid broker bounds')
+        restart_actions = {} if restart_actions is None else restart_actions
+        if (not isinstance(restart_actions, dict) or any(
+                not isinstance(pair, tuple) or len(pair) != 2 or pair[0] == pair[1]
+                or any(role not in roles for role in pair) or not callable(action)
+                for pair, action in restart_actions.items())):
+            raise ValueError('Restart actions require distinct reviewed fault roles')
+        self.restart_actions = dict(restart_actions)
         self.roles = frozenset(roles)
         self.factory = factory
         self.idle_seconds = idle_seconds
@@ -106,9 +113,26 @@ class FaultBroker:
                                 if isinstance(observations, dict) and 'audit_insert_failure_verified' in observations:
                                     projected['audit_insert_failure_verified'] = observations['audit_insert_failure_verified'] is True
                                 send(stream, {'status': 'suspended', 'observations': projected})
-                                ending = receive(stream)
-                                if ending != {'operation': 'restore'}:
-                                    raise FaultSetupError('Invalid fault completion')
+                                restarted = False
+                                while True:
+                                    ending = receive(stream)
+                                    if ending == {'operation': 'restore'}:
+                                        break
+                                    if (set(ending) != {'operation', 'role'} or ending['operation'] != 'restart'
+                                            or not isinstance(ending['role'], str) or restarted
+                                            or self.closing.is_set() or self.aborted):
+                                        raise FaultSetupError('Invalid held-fault action')
+                                    action = self.restart_actions.get((request['role'], ending['role']))
+                                    if action is None:
+                                        raise FaultSetupError('Held-fault action unavailable')
+                                    restarted = True
+                                    receipt = action()
+                                    if (not isinstance(receipt, dict)
+                                            or receipt.get('workload_restarted_verified') is not True
+                                            or receipt.get('held_fault_verified') is not True):
+                                        raise FaultSetupError('Held-fault action was not verified')
+                                    send(stream, {'status': 'restarted', 'observations': {
+                                        'workload_restarted_verified': True, 'held_fault_verified': True}})
                             send(stream, {'status': 'restored'})
                         except FaultRestoreError:
                             self.aborted = True
@@ -150,7 +174,19 @@ class FaultBroker:
 
 
 @contextmanager
-def remote_fault(configuration, role, *, timeout=360):
+def control_stream(connection):
+    stream = connection.makefile('rwb')
+    try:
+        yield stream
+    finally:
+        try:
+            stream.close()
+        except OSError as error:
+            raise FaultRestoreError('Fault-control stream cleanup failed; abort grading') from error
+
+
+@contextmanager
+def remote_fault_session(configuration, role, *, timeout=360):
     """Request one reviewed fault; only the parent controller can execute it."""
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     connection.settimeout(timeout)
@@ -159,7 +195,7 @@ def remote_fault(configuration, role, *, timeout=360):
             connection.connect(configuration['socket'])
         except OSError as error:
             raise FaultSetupError('Fault-control connection unavailable') from error
-        with connection.makefile('rwb') as stream:
+        with control_stream(connection) as stream:
             try:
                 send(stream, {'token': configuration['token'], 'operation': 'suspend', 'role': role})
                 response = receive(stream)
@@ -170,7 +206,7 @@ def remote_fault(configuration, role, *, timeout=360):
             if response.get('status') != 'suspended':
                 raise FaultSetupError('Parent fault precondition unavailable')
             try:
-                yield response.get('observations', {})
+                yield FaultSession(stream, response.get('observations', {}))
             finally:
                 try:
                     send(stream, {'operation': 'restore'})
@@ -181,3 +217,32 @@ def remote_fault(configuration, role, *, timeout=360):
                     raise FaultRestoreError('Parent did not verify restoration')
     finally:
         connection.close()
+
+
+class FaultSession:
+    """One held fault, optionally one parent-reviewed restart of another role."""
+    def __init__(self, stream, observations):
+        self.stream = stream
+        self.observations = observations
+        self.restarted = False
+
+    def restart(self, role):
+        if self.restarted or not isinstance(role, str) or not NAME.fullmatch(role):
+            raise FaultSetupError('Invalid held-fault restart request')
+        self.restarted = True
+        try:
+            send(self.stream, {'operation': 'restart', 'role': role})
+            response = receive(self.stream)
+        except (OSError, EOFError, ValueError) as error:
+            raise FaultRestoreError('Held-fault control connection lost') from error
+        if response != {'status': 'restarted', 'observations': {
+                'workload_restarted_verified': True, 'held_fault_verified': True}}:
+            raise FaultRestoreError('Held-fault restart not verified; abort grading')
+        return response['observations']
+
+
+@contextmanager
+def remote_fault(configuration, role, *, timeout=360):
+    """Request one reviewed fault; only the parent controller can execute it."""
+    with remote_fault_session(configuration, role, timeout=timeout) as session:
+        yield session.observations
