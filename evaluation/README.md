@@ -646,3 +646,36 @@ Focused worker fixtures:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_worker.py -v
 ```
+
+### Independent browser resource cleanup
+
+`browser_guard.BrowserGuard` reserves exact random names for the browser, relay
+and private socket volume, then arms a separate-session watchdog before creation.
+Callers attach its `factory.browser` nonce label to each resource. After each
+create command exits and identity inspection succeeds, `settled(role,
+created=True, identity=...)` records the container ID or volume creation time.
+Known unattempted/failed creations can be recorded with `created=False`; a timeout
+is never a settled creation. No unrelated resource names are accepted.
+
+The watchdog acts on owner exit, bounded wall/monotonic lifetime, clock
+discontinuity or explicit release. It verifies ownership and recorded identity
+before deletion, removes containers by immutable ID, and independently lists
+resources afterward. Name collisions, replaced identities, daemon failure and
+unsettled creation cannot establish cleanup. A matching resource with no creation
+receipt is removed as a precaution, but the result stays incomplete because a
+late create cannot be ruled out. The private config, creation receipts and command
+evidence form the recovery record. Volume removal is by name after ownership and
+creation-time checks; Docker has no immutable volume ID for that operation.
+
+`check()` rejects exited, expired, released or triggered guards. `release()` waits
+for actual cleanup evidence, not just successful delivery of the release request.
+Each Docker command is bounded to 10 seconds; cleanup can take up to 120 seconds
+for three resources, and this reserve must be included within the parent grading
+budget. The caller must also impose an internal container timeout and integrate
+guard checks with browser/peer execution. This process cannot enforce a deadline
+while its host or Docker daemon is unavailable, and does not establish reboot
+containment. Parent executor wiring remains incomplete.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_guard.py -v
+```
