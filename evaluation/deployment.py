@@ -44,7 +44,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   suite_runner=run_suite, fault_workloads=None, kubectl_prefix=None,
                   fault_runtime_factory=FaultRuntime, fault_service_probes=None,
                   fault_audit=None, audit_observer=None, audit_runtime_factory=AuditRuntime,
-                  browser_resolver=None, browser_binding_factory=BrowserBinding):
+                  browser_resolver=None, browser_binding_factory=BrowserBinding,
+                  fault_storage_worker_restart=False):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -52,6 +53,10 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     never grants acceptance and is for synthetic preflights or grader development.
     Factory injection supports deterministic lifecycle/failure tests, not CLI bypasses.
     """
+    if type(fault_storage_worker_restart) is not bool:
+        raise ValueError('Compound fault selection must be a boolean')
+    if fault_storage_worker_restart and (not callable(fault_workloads) or not callable(fault_service_probes)):
+        raise ValueError('Compound faults require trusted post-bootstrap workload and service resolvers')
     positive(bootstrap_seconds, 'bootstrap timeout')
     positive(grading_seconds, 'grading timeout')
     if audit_observer is not None and not callable(audit_observer):
@@ -127,7 +132,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 selected_workloads, prefix,
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes,
-                **audit_options)
+                **audit_options, **({'storage_worker_restart': True} if fault_storage_worker_restart else {}))
             options['fault_broker'] = fault_runtime.broker
         if audit_observer is not None:
             audit_options = audit_observer(box)

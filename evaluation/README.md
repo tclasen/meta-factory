@@ -778,7 +778,13 @@ worker suspend/restore cycle. Each component keeps separate restoration evidence
 uncertain outer or inner state aborts the broker. Compound configuration reserves
 additional time for both contexts and observation/restoration commands.
 
-This runtime capability is not yet exposed through `grade_capture`, and fixture
-unit checks do not establish live Kubernetes, interrupted lease reclamation or
-storage retry evidence. Controller binding and scoped live preflight remain
-required before protected worker/storage journeys can rely on it.
+`grade_capture(fault_storage_worker_restart=True)` explicitly opts into this
+capability. It requires callable trusted `fault_workloads` and
+`fault_service_probes` resolvers, evaluated only after fresh bootstrap. Static
+compound mappings and malformed selection are rejected before sandbox creation.
+The capability stays parent-owned and is closed before the outer sandbox guard.
+The default is false, preserving ordinary single-fault setup.
+
+Fixture unit checks do not establish live Kubernetes, interrupted lease
+reclamation or storage retry evidence. Scoped live preflight remains required
+before protected worker/storage journeys can rely on this capability.

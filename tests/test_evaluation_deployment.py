@@ -339,3 +339,48 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(report['browser_cleanup_error'],'RuntimeError')
         self.assertNotIn('private-browser-cleanup',str(report))
         self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_compound_faults_resolve_fresh_and_close_before_guard(self):
+        events=[]; broker=object()
+        def workloads(box):
+            self.assertTrue(self.commands and box.creation_attempted)
+            events.append('workloads');return {'storage':'fresh-storage','worker':'fresh-worker'}
+        def services(box):
+            self.assertTrue(self.commands);events.append('services');return {'storage':'fresh-probe'}
+        class Runtime:
+            def __init__(inner,directory,box,guard,mapping,prefix,**kwargs):
+                self.assertEqual(mapping,{'storage':'fresh-storage','worker':'fresh-worker'})
+                self.assertEqual(kwargs['service_probes'],{'storage':'fresh-probe'})
+                self.assertIs(kwargs['storage_worker_restart'],True)
+                self.assertGreater(kwargs['monotonic_deadline'],0)
+                inner.broker=broker;events.append('runtime')
+            def close(inner):events.append('close')
+        def runner(attempt,suite,target,**kwargs):
+            self.assertIs(kwargs['fault_broker'],broker)
+            self.assertNotIn('storage_worker_restart',target)
+            events.append('grade');return {'criteria':{},'project_success':False,'accepted_packages':[]}
+        def release(guard):events.append('release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release), Attempt(self.root/'compound',{}) as attempt:
+            report=self.run_grade(attempt,runner=runner,fault_workloads=workloads,fault_service_probes=services,
+                fault_runtime_factory=Runtime,kubectl_prefix=['kubectl'],fault_storage_worker_restart=True)
+        self.assertEqual(events,['workloads','services','runtime','grade','close','release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_compound_static_or_malformed_selection_refused_before_creation(self):
+        cases=[dict(fault_storage_worker_restart='true'),dict(fault_storage_worker_restart=True),
+               dict(fault_storage_worker_restart=True,fault_workloads={},fault_service_probes=lambda box:{}),
+               dict(fault_storage_worker_restart=True,fault_workloads=lambda box:{},fault_service_probes={})]
+        before=len(FakeSandbox.instances)
+        for index,extras in enumerate(cases):
+            with self.subTest(index=index), Attempt(self.root/('invalid-compound-'+str(index)),{}) as attempt:
+                with self.assertRaises(ValueError):self.run_grade(attempt,**extras)
+        self.assertEqual(len(FakeSandbox.instances),before)
+        self.assertEqual(self.commands,[])
+
+    def test_failed_bootstrap_never_resolves_compound_resources(self):
+        def unexpected(box):raise AssertionError('Failed bootstrap resolved fault resources')
+        with Attempt(self.root/'compound-bootstrap-failed',{}) as attempt:
+            report=self.run_grade(attempt,bootstrap='failed',fault_storage_worker_restart=True,
+                fault_workloads=unexpected,fault_service_probes=unexpected,kubectl_prefix=['kubectl'])
+        self.assertEqual(report['outcome'],'grading_incomplete')
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
