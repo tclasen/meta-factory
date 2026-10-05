@@ -14,6 +14,8 @@ from .faults import FaultRestoreError, FaultSetupError, suspended_workload
 from .workload_probe import KINDS, NAME
 from .workloads import workload_operation
 from .services import service_operation
+from .audit_faults import audit_insert_failure, FAULT_RESERVE
+from .database_transport import DatabaseTransport
 
 
 COMMAND_ALLOWANCE = 150  # 135-second command ceiling plus scheduling allowance.
@@ -23,13 +25,24 @@ FAULT_ALLOWANCE = 630    # Four commands, 60-second body, plus scheduling allowa
 class FaultRuntime:
     def __init__(self, directory, sandbox, guard, workloads, kubectl_prefix, *,
                  monotonic_deadline, wall_deadline, operation=workload_operation,
-                 monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation):
+                 monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation,
+                 audit_binding=None, database_peer=None, database_peer_check=None):
         positive(monotonic_deadline, 'fault monotonic deadline')
         positive(wall_deadline, 'fault wall deadline')
-        if (not isinstance(workloads, dict) or not workloads
+        audit_enabled = audit_binding is not None
+        if audit_enabled:
+            if (not isinstance(audit_binding, dict) or not isinstance(database_peer, dict)
+                    or set(database_peer) != {'prefix', 'services', 'cwd'}
+                    or not callable(database_peer_check)):
+                raise ValueError('Audit faults require an operator binding and verified database peer')
+        elif database_peer is not None or database_peer_check is not None:
+            raise ValueError('Database peer requires an audit binding')
+        if (not isinstance(workloads, dict) or not (workloads or audit_enabled)
                 or not isinstance(kubectl_prefix, list) or not 1 <= len(kubectl_prefix) <= 16
                 or not all(isinstance(value, str) and 0 < len(value) <= 1024 for value in kubectl_prefix)):
             raise ValueError('Invalid operator fault configuration')
+        if audit_enabled and 'audit' in workloads:
+            raise ValueError('Audit role cannot also suspend a workload')
         for role, resource in workloads.items():
             if (not isinstance(role, str) or not NAME.fullmatch(role)
                     or set(resource) != {'namespace', 'kind', 'name', 'uid'}
@@ -41,7 +54,10 @@ class FaultRuntime:
             raise ValueError('Service probes must belong to reviewed fault roles')
         self.service_probes = copy.deepcopy(service_probes)
         self.service_runner = service_runner
-        self.fault_allowance = FAULT_ALLOWANCE + (120 if service_probes else 0)
+        self.fault_allowance = (FAULT_ALLOWANCE + (120 if service_probes else 0)) if workloads else FAULT_RESERVE
+        self.audit_binding = copy.deepcopy(audit_binding)
+        self.database_peer = copy.deepcopy(database_peer)
+        self.database_peer_check = database_peer_check
         self.directory = Path(directory)
         self.directory.mkdir(mode=0o700)
         self.sandbox, self.guard = sandbox, guard
@@ -54,9 +70,10 @@ class FaultRuntime:
         self.revoked = threading.Event()
         atomic_json(self.directory / 'scope.json', {'sandbox': sandbox.name, 'workloads': workloads,
                                                    'kubectl_prefix': kubectl_prefix,
-                                                   'wall_deadline': wall_deadline, 'service_probes': service_probes})
+                                                   'wall_deadline': wall_deadline, 'service_probes': service_probes,
+                                                   'audit_enabled': audit_enabled})
         self.check(self.fault_allowance)
-        self.broker = FaultBroker(workloads, self._fault, idle_seconds=60)
+        self.broker = FaultBroker([*workloads, *(['audit'] if audit_enabled else [])], self._fault, idle_seconds=60)
 
     def check(self, allowance):
         if (self.revoked.is_set() or os.getpid() != self.owner_pid or self.sandbox.stopped
@@ -73,6 +90,10 @@ class FaultRuntime:
 
     @contextmanager
     def _fault(self, role):
+        if role == 'audit' and self.audit_binding is not None:
+            with self._audit_fault() as observation:
+                yield observation
+            return
         self.check(self.fault_allowance)
         resource = self.workloads[role]
         with Attempt(self.directory / ('fault-' + uuid.uuid4().hex),
@@ -104,6 +125,32 @@ class FaultRuntime:
                     yield {'service_outage_verified': role in self.service_probes}
                 if role in self.service_probes:
                     verify_service('recovery', 'available')
+                result['outcome'] = 'fault_restored'
+            except BaseException as error:
+                result['error_type'] = type(error).__name__
+                raise
+            finally:
+                attempt.transition('failed')
+                attempt.finish(result)
+
+    @contextmanager
+    def _audit_fault(self):
+        def check(allowance):
+            self.check(allowance)
+            self.database_peer_check(allowance)
+            # A peer check may consume time or observe an intervening revocation.
+            self.check(allowance)
+        check(FAULT_RESERVE)
+        with Attempt(self.directory / ('fault-' + uuid.uuid4().hex),
+                     {'role': 'audit', 'sandbox': self.sandbox.name}) as attempt:
+            attempt.transition('preflight')
+            result = {'outcome': 'fault_incomplete'}
+            try:
+                peer = self.database_peer
+                transport = DatabaseTransport(attempt, peer['prefix'], peer['services'],
+                                              check=check, cwd=peer['cwd'])
+                with audit_insert_failure(attempt, self.audit_binding, execute=transport, check=check) as observation:
+                    yield observation
                 result['outcome'] = 'fault_restored'
             except BaseException as error:
                 result['error_type'] = type(error).__name__

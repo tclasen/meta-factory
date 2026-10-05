@@ -1,14 +1,17 @@
 """Fault lifetime must end before sandbox cleanup and never follow new identities."""
 
 import copy
+import json
 from pathlib import Path
+import re
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from evaluation.fault_broker import remote_fault
 from evaluation.fault_runtime import FaultRuntime
-from evaluation.faults import FaultSetupError
+from evaluation.faults import FaultSetupError, FaultRestoreError
 
 
 class FaultRuntimeTest(unittest.TestCase):
@@ -116,3 +119,95 @@ class FaultRuntimeTest(unittest.TestCase):
             with remote_fault(runtime.broker.configuration, 'storage'): pass
         self.assertEqual(self.state['replicas'], 1)
         self.assertTrue(runtime.broker.aborted)
+
+    def audit_options(self):
+        self.audit_calls = []; self.audit_gate = None; self.peer_ok = True
+        self.peer_checks = []
+        def peer_check(allowance):
+            self.peer_checks.append(allowance)
+            if not self.peer_ok:raise FaultSetupError('Peer identity changed')
+        return dict(audit_binding=dict(schema='public', table='events', table_oid=123,
+            database_name='fixture', runtime_user='app', session_user='app',
+            operator_user='migration', operator_session_user='migration',
+            canary={'message':'private canary'}),
+            database_peer={'prefix':['trusted-psql-peer'], 'services':{'runtime':'app','operator':'migration'}, 'cwd':self.root},
+            database_peer_check=peer_check)
+
+    def transport(self, attempt, prefix, services, *, check, cwd):
+        self.assertEqual(prefix, ['trusted-psql-peer'])
+        self.assertEqual(services, {'runtime':'app','operator':'migration'})
+        self.assertEqual(cwd, self.root)
+        def execute(identity, sql, *, timeout):
+            check(20)
+            self.audit_calls.append(identity)
+            role = 'app' if identity == 'runtime' else 'migration'
+            common = {'current_user':role,'session_user':role,'database_name':'fixture'}
+            if 'ADD CONSTRAINT' in sql:
+                self.audit_gate = re.search(r'factory_audit_fault_[0-9a-f]{32}', sql)[0]
+                return {'outcome':'audit_gate_installed','table_oid':123,'constraint_oid':456,'constraint_name':self.audit_gate}
+            if 'DROP CONSTRAINT' in sql:
+                self.audit_gate = None
+                return {'outcome':'audit_gate_removed','table_oid':123}
+            if 'factory.audit_canary' in sql:
+                if self.audit_gate:
+                    return dict(common,outcome='insert_rejected',sqlstate='23514',constraint_name=self.audit_gate,schema='public',table='events')
+                return dict(common,outcome='insert_executed',rows=1)
+            return dict(common,relation_found=True,relation_oid=123,relation_kind='r')
+        return execute
+
+    def test_audit_and_workload_roles_share_private_broker_and_restore(self):
+        options = self.audit_options()
+        runtime = self.runtime(**options)
+        # Caller changes cannot retarget an existing capability.
+        options['audit_binding']['table'] = 'unrelated'
+        options['database_peer']['prefix'] = ['untrusted']
+        with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
+            with remote_fault(runtime.broker.configuration, 'audit') as observation:
+                self.assertEqual(observation, {'service_outage_verified':False,'audit_insert_failure_verified':True})
+                self.assertIsNotNone(self.audit_gate)
+        self.assertIsNone(self.audit_gate)
+        self.assertEqual(len(self.audit_calls), 8)
+        self.assertEqual(self.called, [])
+        with remote_fault(runtime.broker.configuration, 'storage'):pass
+        reports = [json.loads(p.read_text()) for p in (self.root/'faults').glob('fault-*/result.json')]
+        self.assertEqual([r['outcome'] for r in reports], ['fault_restored'] * 2)
+        self.assertNotIn('private canary', (self.root/'faults/scope.json').read_text())
+
+    def test_audit_peer_mismatch_prevents_database_commands(self):
+        runtime = self.runtime(**self.audit_options()); self.peer_ok = False
+        with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
+            with self.assertRaises(FaultSetupError):
+                with remote_fault(runtime.broker.configuration, 'audit'):self.fail('Unverified peer exposed')
+        self.assertEqual(self.audit_calls, [])
+
+    def test_audit_guard_revocation_aborts_without_unbounded_restoration(self):
+        runtime = self.runtime(**self.audit_options())
+        with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
+            with self.assertRaises(FaultRestoreError):
+                with remote_fault(runtime.broker.configuration, 'audit'):runtime.revoked.set()
+        self.assertIsNotNone(self.audit_gate)
+        self.assertTrue(runtime.broker.aborted)
+
+    def test_peer_check_cannot_use_up_guard_reserve(self):
+        options = self.audit_options()
+        options['database_peer_check'] = lambda allowance: setattr(self, 'clock', 900)
+        runtime = self.runtime(**options)
+        with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
+            with self.assertRaises(FaultSetupError):
+                with remote_fault(runtime.broker.configuration, 'audit'):pass
+        self.assertEqual(self.audit_calls, [])
+
+    def test_audit_only_runtime_uses_audit_reserve(self):
+        runtime = FaultRuntime(self.root/'faults',self.box,self.guard,{},['kubectl'],
+            monotonic_deadline=300,wall_deadline=300,monotonic=lambda:0,wall=lambda:0,**self.audit_options())
+        self.addCleanup(runtime.close)
+        with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
+            with remote_fault(runtime.broker.configuration, 'audit'):pass
+        self.assertIsNone(self.audit_gate)
+
+    def test_incomplete_or_ambiguous_database_configuration_refused(self):
+        for options in ({'audit_binding':{}}, {'database_peer':{}}, {'database_peer_check':lambda _:None}):
+            with self.subTest(options=list(options)), self.assertRaises(ValueError):self.runtime(**options)
+        with self.assertRaises(ValueError):
+            FaultRuntime(self.root/'faults',self.box,self.guard,{'audit':self.resource},['kubectl'],
+                monotonic_deadline=1000,wall_deadline=1000,**self.audit_options())

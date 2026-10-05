@@ -472,3 +472,21 @@ raw SQL/stdout/stderr or command argv. Local process-group termination is record
 without claiming remote query termination. Timeout or truncated evidence during
 a mutation therefore remains uncertain and invokes the audit adapter's disposal
 path; there are no automatic retries.
+
+`FaultRuntime` can bind this adapter to its existing sandbox guard and broker.
+Supply `audit_binding` as above, `database_peer` with exactly `prefix`, `services`
+and `cwd`, and a trusted `database_peer_check(reserve_seconds)` callback. The
+prefix must address the independently verified peer in that same disposable
+grading environment; service files must remain outside application control.
+The callback verifies the peer identity and service-file integrity. The runtime
+checks both clocks, guard process, release state and revocation before and after
+each peer check. These inputs are parent configuration, never worker target data.
+
+The broker exposes the fixed `audit` role alongside configured workload roles;
+that name cannot also identify a suspended workload. An audit-only runtime may
+use an empty workload mapping (the constructor still takes a kubectl prefix).
+It requires the audit adapter's 210-second admission reserve. Each fault owns a
+separate evidence attempt and transport, and only the verified audit flag reaches
+the worker. Closing or revoking the runtime prevents further database commands;
+uncertain restoration aborts grading and requires disposal by the outer guard.
+This wiring does not discover or establish application credential/table mappings.
