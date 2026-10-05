@@ -1250,3 +1250,29 @@ Run its focused lifetime checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_security_runtime.py -v
 ```
+
+
+### Security grants in protected suites
+
+A non-browser case must declare `inspects_security: true` to receive the parent
+security capability. `run_suite(..., security_broker=...)` strips injected
+`_security_control` from base target input and writes the live capability only to
+that case's private target. An undeclared case receives none. A declared case with
+no broker is inconclusive before child launch (`security_capability_unavailable`);
+it cannot claim pass by omitting the inspection. Browser cases cannot request this
+host capability. The declaration must be an exact boolean.
+
+After the case, the security reader must settle. Otherwise the saved case verdict
+and aggregate become inconclusive (`security_reader_unsettled`), and the suite
+stops before following cases. Read-only missing-grant cases can leave unrelated
+later checks runnable; shared/runtime mutation declarations retain their existing
+abort rules. No acceptance coverage, suite approval or grading time is added.
+Private credential/log values must remain inside independently bound parent
+inspectors. The executor can receive a guarded SecurityRuntime broker, but fresh
+capture/deployment discovery and lifecycle resolution are not wired yet.
+
+Run the executor capability checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_grading.py -v
+```

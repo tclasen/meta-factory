@@ -64,9 +64,9 @@ class Suite:
             if "browser" in case:
                 if not isinstance(case["browser"], str) or case["browser"] not in BROWSER_MODES:
                     raise ValueError("Invalid browser invocation mode")
-                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False) or case.get("stages_jobs", False):
+                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False) or case.get("stages_jobs", False) or case.get("inspects_security", False):
                     raise ValueError("Browser cases cannot receive host broker capabilities")
-            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs", "stages_jobs"):
+            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs", "stages_jobs", "inspects_security"):
                 if type(case.get(declaration, False)) is not bool:
                     raise ValueError("Invalid case capability declaration: " + declaration)
             if case.get('stages_jobs', False) and not (case.get('mutates_runtime', False) and case.get('reads_jobs', False)):
@@ -122,7 +122,7 @@ class Suite:
 
 
 def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None,
-              browser_executor=None, job_broker=None, staging_broker=None):
+              browser_executor=None, job_broker=None, staging_broker=None, security_broker=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -136,6 +136,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
     target.pop('_audit_control', None)
     target.pop('_job_control', None)
     target.pop('_staging_control', None)
+    target.pop('_security_control', None)
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
@@ -157,12 +158,18 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             capabilities['_job_control'] = job_broker.configuration
         if case.get('stages_jobs', False) and staging_broker is not None:
             capabilities['_staging_control'] = staging_broker.configuration
+        if case.get('inspects_security', False) and security_broker is not None:
+            capabilities['_security_control'] = security_broker.configuration
         if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
             atomic_json(worker_target, dict(target, **capabilities))
         if case.get('stages_jobs', False) and (staging_broker is None or job_broker is None):
             results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
                                     'reason':'staging_capability_unavailable', 'abort_suite':True}
+            atomic_json(path, results[case['id']])
+        elif case.get('inspects_security', False) and security_broker is None:
+            results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
+                                    'reason':'security_capability_unavailable'}
             atomic_json(path, results[case['id']])
         elif "browser" in case:
             results[case["id"]] = run_browser_case(browser_executor, attempt, suite, case, target,
@@ -199,6 +206,11 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             if not job_broker.wait_idle():
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
                                        'reason': 'job_reader_unsettled', 'abort_suite': True}
+        if case.get('inspects_security', False) and security_broker is not None:
+            if not security_broker.wait_idle():
+                results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
+                                        'reason':'security_reader_unsettled', 'abort_suite':True}
+                atomic_json(path, results[case['id']])
         attempt.emit("grader", "case.result", results[case["id"]])
         shared_state_uncertain = (case.get("mutates_shared_state", False)
                                   and results[case["id"]]["verdict"] != "pass")

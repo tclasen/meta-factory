@@ -113,7 +113,7 @@ class GradingTest(unittest.TestCase):
                 self.assertFalse(report['project_success'])
 
     def test_mutation_declaration_requires_boolean(self):
-        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit', 'reads_jobs', 'stages_jobs'):
+        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit', 'reads_jobs', 'stages_jobs', 'inspects_security'):
             self.manifest['cases'][0][declaration] = 'false'; self.save()
             with self.assertRaises(ValueError): Suite(self.suite, self.packages)
             del self.manifest['cases'][0][declaration]
@@ -144,6 +144,57 @@ class GradingTest(unittest.TestCase):
             self.assertEqual(report['case_results']['first']['verdict'], verdict)
             self.assertEqual(report['aborted'], mode != 'pass')
             self.assertEqual('second' in report['case_results'], mode == 'pass')
+
+    def test_security_grant_is_scoped_and_untrusted_target_configuration_removed(self):
+        from evaluation.security_broker import SecurityBroker
+        self.source.write_text('from evaluation.security_broker import read_security\n'
+            'def first(target):\n'
+            '    receipt=read_security(target["_security_control"],"password_storage")\n'
+            '    assert receipt==dict(verdict="pass",reason="verified",observations_checked=2)\n'
+            'def second(target):\n'
+            '    assert "_security_control" not in target\n')
+        self.manifest['files']['cases.py']=hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.manifest['cases']=[dict(id='first',source='cases.py',function='first',criteria=['AC-001'],timeout_seconds=2,inspects_security=True),
+                               dict(id='second',source='cases.py',function='second',criteria=['AC-002'],timeout_seconds=2)]
+        self.save()
+        with SecurityBroker(lambda *_:dict(verdict='pass',reason='verified',observations_checked=2,raw_hash='private-must-not-cross')) as broker:
+            with Attempt(self.root/'security',{}) as attempt:
+                report=run_suite(attempt,Suite(self.suite,self.packages),{'_security_control':{'token':'forged'}},
+                    deadline_seconds=5,development=True,security_broker=broker)
+        self.assertEqual([r['verdict'] for r in report['case_results'].values()],['pass','pass'])
+        self.assertEqual(json.loads((self.root/'security/grading-target.json').read_text()),{})
+        for path in (self.root/'security').rglob('*'):
+            if path.is_file():self.assertNotIn(b'private-must-not-cross',path.read_bytes())
+
+    def test_missing_security_grant_cannot_self_pass_and_does_not_mutate_state(self):
+        self.manifest['cases'][0]['inspects_security']=True
+        self.manifest['cases'].append(dict(id='second',source='cases.py',function='good',criteria=['AC-002'],timeout_seconds=2))
+        self.save()
+        with Attempt(self.root/'missing-security',{}) as attempt:
+            report=run_suite(attempt,Suite(self.suite,self.packages),{'value':1,'_security_control':{'token':'forged'}},
+                deadline_seconds=5,development=True)
+            self.assertFalse((attempt.directory/'grade-first').exists())
+        self.assertEqual(report['case_results']['first']['reason'],'security_capability_unavailable')
+        self.assertEqual(report['case_results']['first']['verdict'],'inconclusive')
+        self.assertEqual(report['case_results']['second']['verdict'],'pass')
+        self.assertFalse(report['aborted'])
+
+    def test_unsettled_security_reader_suppresses_saved_pass_and_stops_later_cases(self):
+        from types import SimpleNamespace
+        self.manifest['cases'][0]['inspects_security']=True
+        self.manifest['cases'].append(dict(id='second',source='cases.py',function='good',criteria=['AC-002'],timeout_seconds=2))
+        self.save()
+        with Attempt(self.root/'unsettled-security',{}) as attempt:
+            report=run_suite(attempt,Suite(self.suite,self.packages),{'value':1},deadline_seconds=5,development=True,
+                security_broker=SimpleNamespace(configuration={},wait_idle=lambda:False))
+            saved=json.loads((attempt.directory/'first-verdict.json').read_text())
+        self.assertTrue(report['aborted']);self.assertNotIn('second',report['case_results'])
+        self.assertEqual(saved,report['case_results']['first'])
+        self.assertEqual(saved['reason'],'security_reader_unsettled')
+
+    def test_browser_cannot_receive_security_capability(self):
+        self.manifest['cases'][0].update(browser='page',inspects_security=True);self.save()
+        with self.assertRaisesRegex(ValueError,'host broker capabilities'):Suite(self.suite,self.packages)
 
     def test_worker_fault_requests_execute_in_parent_and_strip_untrusted_capability(self):
         self.source.write_text('from evaluation.fault_broker import remote_fault\ndef first(target):\n    with remote_fault(target["_fault_control"], "storage"):\n        pass\n\ndef second(target):\n    assert "_fault_control" not in target\n')
