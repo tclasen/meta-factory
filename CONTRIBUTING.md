@@ -90,3 +90,14 @@ invocations, stopping on failure, and INT/TERM handling between invocations. The
 bounded tests do not launch a model, prove task acceptance, or establish interruption
 behavior during a live sbx/model request. The empty-queue instruction remains agent
 behavior; the shell intentionally continues polling after any successful exit.
+
+The optional [PostgreSQL evaluation preflight](evaluation/README.md#postgresql-audit-probes-and-disposable-live-preflight)
+runs inside Linux sbx with Docker:
+
+```sh
+uv run --locked python scripts/test_evaluation_postgres.py
+```
+
+It caches the pinned fixture image, creates and removes one bounded synthetic
+database, and saves command/cleanup evidence under `.factory-planning/`. It is
+separate from unit-test discovery and does not grade a benchmark application.

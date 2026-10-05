@@ -369,3 +369,42 @@ and succeeds after exact restoration. Installing DDL alone is insufficient.
 Protected cases must treat absent/false verification as inconclusive. Existing
 restoration uncertainty still aborts grading. This protocol support does not yet
 provide a live database adapter or establish application rollback behavior.
+
+### PostgreSQL audit probes and disposable live preflight
+
+`database_probe.py` generates bounded SQL for an independently mapped disposable
+grading database. It observes actual session/current roles, owner/RLS settings,
+SET ROLE reachability, table/column UPDATE and DELETE/TRUNCATE privileges. It also
+supports rollback-only UPDATE/DELETE observations and an exact-identity,
+reversible audit-write fault using CHECK(false) NOT VALID. The latter blocks new
+inserts and updates while preserving existing rows; it is not an INSERT-only
+permission fault. PostgreSQL 16+ is needed for the SET membership query.
+
+Run the live fixture inside Linux sbx with Docker available:
+
+```sh
+uv run --locked python scripts/test_evaluation_postgres.py
+```
+
+The script caches a pinned PostgreSQL 17.6 image if needed, creates one uniquely
+named network-disabled container with no published ports, 2 CPUs, 512 MiB memory,
+tmpfs data and a 240-second internal lifetime, and verifies removal. It uses only
+synthetic data and local trust authentication inside that isolated container;
+no credentials, model calls, global policies or unrelated resources are involved.
+Each attempt records revision, source hashes, tool versions, command output/status
+and cleanup under `.factory-planning/postgres-preflight-logs/run-*/`. It prints
+that path and retains failures. It refuses direct execution on the host Mac.
+
+The live fixture distinguishes atomic rollback from a separate-commit defect,
+checks restoration and stale-identity refusal, and covers inherited/column-only
+permissions, RLS, error sanitization, query timeout and identifier escaping.
+This is separate from standard-library fixture discovery, which needs no Docker.
+
+These SQL helpers do not create a trusted database connection or assign acceptance
+verdicts. Operator identity/relation binding and bounded transport are still
+required. Missing tables, SQL rejection and zero affected rows are observations,
+not proof of complete append-only protection. Rollback does not undo sequence
+increments or arbitrary external trigger effects: mutation/fault helpers must be
+used only in an isolated disposable grading database with independent canaries
+and privileged before/after verification. Do not expose SQL or connection details
+to the builder or protected worker.
