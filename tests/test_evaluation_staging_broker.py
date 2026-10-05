@@ -19,7 +19,7 @@ class StagingBrokerTest(unittest.TestCase):
         self.events=[]; self.fail=None
         self.initial={field:True for field in WORKER_RECEIPT}
         self.handoff={field:True for field in STORAGE_RECEIPT}
-        self.restart={field:True for field in RESTART_RECEIPT}
+        self.restart=dict({field:True for field in RESTART_RECEIPT},restart_window={'earliest':10.0,'latest':11.0})
 
     @contextmanager
     def factory(self):
@@ -162,4 +162,21 @@ class StagingBrokerTest(unittest.TestCase):
                     session.verify()
             self.assertTrue(broker.wait_idle(2));self.assertTrue(broker.aborted)
             self.assertNotIn('worker-restarted',self.events)
+            self.assertEqual(self.events[-1],'restore-all')
+
+    def test_restart_window_is_parent_owned_bounded_and_strictly_validated(self):
+        from evaluation.staging_broker import restart_window
+        for value in (None,{}, {'earliest':1,'latest':True}, {'earliest':2,'latest':1},
+                      {'earliest':-1,'latest':1}, {'earliest':0,'latest':float('inf')},
+                      {'earliest':0,'latest':10**400}, {'earliest':0,'latest':1,'extra':0}):
+            with self.subTest(value=value),self.assertRaises(ValueError):restart_window(value)
+        self.assertEqual(restart_window({'earliest':1,'latest':2}),{'earliest':1.0,'latest':2.0})
+
+    def test_invalid_parent_restart_window_restores_and_aborts(self):
+        self.restart['restart_window']={'earliest':20,'latest':10}
+        with StagingBroker(self.factory) as broker:
+            with self.assertRaises(FaultRestoreError):
+                with remote_staging(broker.configuration) as session:
+                    session.handoff();session.restart_worker()
+            self.assertTrue(broker.wait_idle(2));self.assertTrue(broker.aborted)
             self.assertEqual(self.events[-1],'restore-all')

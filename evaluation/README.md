@@ -972,3 +972,15 @@ rejected before sandbox creation; the default is false. The staging capability
 closes before job observations and the parent fault runtime, including preparation
 failures. Cleanup failures prevent acceptance while sandbox termination proceeds.
 No protected lease/retry case is declared complete by this wiring.
+
+
+Staged restart receipts include a parent-monotonic `restart_window` with finite
+`earliest` and `latest` bounds. The first precedes the owned worker restart; the
+second follows verified restoration and precedes subsequent storage verification.
+Ordinary fault receipts continue to expose only their boolean fields. Host-side
+grading workers share the controller's monotonic clock domain; this receipt is
+not granted to browser/container graders. To prove recovery within 60 seconds,
+a completed independent observation by `earliest + 60` is sufficient. To prove
+failure, an observation beginning after `latest + 60` must still show the
+abandoned lease unreclaimed. Intermediate observations remain ambiguous. Receipt
+arrival time must not start a fresh application recovery allowance.

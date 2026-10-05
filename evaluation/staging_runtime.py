@@ -8,7 +8,7 @@ import uuid
 from .evidence import Attempt, atomic_json
 from .fault_runtime import FaultRuntime, COMMAND_ALLOWANCE
 from .faults import FaultRestoreError, FaultSetupError
-from .staging_broker import StagingBroker, WORKER_RECEIPT, STORAGE_RECEIPT, RESTART_RECEIPT
+from .staging_broker import StagingBroker, WORKER_RECEIPT, STORAGE_RECEIPT, RESTART_RECEIPT, restart_window
 from .workload_probe import converged
 
 
@@ -161,4 +161,5 @@ class StagingHandle:
                 or result.get('workload_restarted_verified') is not True):
             raise FaultRestoreError('Staged worker restart not verified')
         self.verify()
-        return {field:True for field in RESTART_RECEIPT}
+        return dict({field:True for field in RESTART_RECEIPT},
+                    restart_window=restart_window(result.get('restart_window')))

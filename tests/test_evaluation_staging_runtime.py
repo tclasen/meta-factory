@@ -192,3 +192,23 @@ class StagingRuntimeTest(unittest.TestCase):
         self.now[1]=1600
         with self.assertRaises(FaultSetupError):StagingRuntime(self.root/'insufficient',faults)
         self.assertFalse((self.root/'insufficient').exists())
+
+    def test_restart_window_excludes_later_storage_verification_time(self):
+        original_operation=self.operation;original_service=self.service
+        restarting=[False]
+        def timed_operation(*args,**kwargs):
+            result=original_operation(*args,**kwargs)
+            if restarting[0] and kwargs['name']=='worker' and kwargs['replicas'] is not None:
+                self.now[0]=10 if kwargs['replicas']==0 else 20
+            return result
+        def timed_service(*args,**kwargs):
+            result=original_service(*args,**kwargs)
+            if restarting[0] and kwargs['label']=='held-service-after':self.now[0]=100
+            return result
+        self.operation=timed_operation;self.service=timed_service
+        staging,_=self.runtime()
+        with remote_staging(staging.broker.configuration) as session:
+            session.handoff();restarting[0]=True
+            observation=session.restart_worker()
+            self.assertEqual(observation['restart_window'],{'earliest':0.0,'latest':20.0})
+            self.assertEqual(self.now[0],100)

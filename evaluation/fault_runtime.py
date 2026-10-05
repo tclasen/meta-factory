@@ -197,13 +197,17 @@ class FaultRuntime:
                     raise FaultRestoreError('Storage outage changed during worker restart')
             try:
                 held('before')
+                restart_earliest = self.monotonic()
                 with self._fault('worker') as observation:
                     if observation.get('workload_suspended_verified') is not True:
                         raise FaultSetupError('Worker suspension was not verified')
+                restart_latest = self.monotonic()
                 held('after')
                 self.check(COMMAND_ALLOWANCE)
                 result['outcome'] = 'held_restart_verified'
-                return {'workload_restarted_verified': True, 'held_fault_verified': True}
+                result['restart_window'] = {'earliest': restart_earliest, 'latest': restart_latest}
+                return {'workload_restarted_verified': True, 'held_fault_verified': True,
+                        'restart_window': dict(result['restart_window'])}
             except BaseException as error:
                 result['error_type'] = type(error).__name__
                 raise

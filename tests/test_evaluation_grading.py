@@ -274,7 +274,7 @@ class GradingTest(unittest.TestCase):
         class Handle:
             observations={field:True for field in WORKER_RECEIPT}
             def handoff(self):return {field:True for field in STORAGE_RECEIPT}
-            def restart_worker(self):return {field:True for field in RESTART_RECEIPT}
+            def restart_worker(self):return dict({field:True for field in RESTART_RECEIPT},restart_window={'earliest':0.0,'latest':0.0})
         @contextmanager
         def factory():
             events.append('held')

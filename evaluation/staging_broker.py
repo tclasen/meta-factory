@@ -1,6 +1,7 @@
 """Private ordered worker-to-storage staging; commands remain parent-owned."""
 from contextlib import contextmanager
 import hmac
+import math
 import socket
 
 from .fault_broker import FaultBroker, control_stream, receive, send
@@ -15,6 +16,24 @@ def verified(value, fields):
     if not isinstance(value, dict) or any(value.get(field) is not True for field in fields):
         raise FaultSetupError('Staging transition was not independently verified')
     return {field: True for field in sorted(fields)}
+
+
+def restart_window(value):
+    if not isinstance(value, dict) or set(value) != {'earliest', 'latest'}:
+        raise ValueError('Invalid parent restart window')
+    try:
+        if (any(type(value[key]) not in (int, float) or not math.isfinite(value[key])
+                or value[key] < 0 for key in value) or value['latest'] < value['earliest']):
+            raise ValueError('Invalid parent restart window')
+        return {key: float(value[key]) for key in ('earliest', 'latest')}
+    except OverflowError:
+        raise ValueError('Invalid parent restart window') from None
+
+
+def verified_restart(value):
+    observation = verified(value, RESTART_RECEIPT)
+    observation['restart_window'] = restart_window(value.get('restart_window'))
+    return observation
 
 
 class StagingBroker(FaultBroker):
@@ -69,7 +88,7 @@ class StagingBroker(FaultBroker):
                                         send(stream, {'status': 'storage_held', 'observations': observation})
                                     elif request['operation'] == 'restart_worker' and handed_off and not restarted:
                                         restarted = True
-                                        observation = verified(handle.restart_worker(), RESTART_RECEIPT)
+                                        observation = verified_restart(handle.restart_worker())
                                         send(stream, {'status': 'worker_restarted', 'observations': observation})
                                     else:
                                         raise FaultSetupError('Invalid staging order or repeated action')
@@ -88,10 +107,16 @@ class StagingBroker(FaultBroker):
 
 def receipt(response, status, fields):
     observations = response.get('observations')
+    expected = fields | {'restart_window'} if status == 'worker_restarted' else fields
     if (set(response) != {'status', 'observations'} or response['status'] != status
-            or not isinstance(observations, dict) or set(observations) != fields
-            or any(value is not True for value in observations.values())):
+            or not isinstance(observations, dict) or set(observations) != expected
+            or any(observations[field] is not True for field in fields)):
         raise FaultRestoreError('Staging receipt unavailable; abort grading')
+    if status == 'worker_restarted':
+        try:
+            return verified_restart(observations)
+        except ValueError as error:
+            raise FaultRestoreError('Parent restart window unavailable; abort grading') from error
     return observations
 
 
