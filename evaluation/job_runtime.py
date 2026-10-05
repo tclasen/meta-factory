@@ -6,10 +6,11 @@ import time
 import uuid
 
 from .evidence import Attempt, atomic_json, positive
-from .job_broker import JobBroker, JobObservationError, export_identity, project
+from .job_broker import JobBroker, JobObservationError, export_identity, project, project_lease
 
 READ_RESERVE = 40
 READ_TIMEOUT = 15
+LEASE_READ_RESERVE = 25
 DATABASE_FIELDS = {'export_id', 'status', 'processing_attempts', 'active_lease',
                    'lease_fingerprint', 'completion_events'}
 
@@ -43,7 +44,7 @@ class JobRuntime:
         self.directory = Path(directory)
         self.directory.mkdir(mode=0o700)
         atomic_json(self.directory / 'scope.json', {'sandbox': sandbox.name, 'wall_deadline': wall_deadline})
-        self.broker = JobBroker(self._read)
+        self.broker = JobBroker(self._read, durable_reader=self._read_lease)
 
     def check(self, allowance):
         if (self.revoked.is_set() or os.getpid() != self.owner_pid or self.sandbox.stopped
@@ -74,7 +75,7 @@ class JobRuntime:
                     raise JobObservationError('Durable job observation incomplete')
                 # Validate durable data before invoking the physical enumerator.
                 durable = {key: value[key] for key in DATABASE_FIELDS}
-                project(dict(durable, published_artifacts=0), export_id)
+                project_lease(durable, export_id)
                 count = self.artifact_count(export_id, timeout=READ_TIMEOUT)
                 self.checked_peers(1)
                 observation = project(dict(durable, published_artifacts=count), export_id)
@@ -85,6 +86,30 @@ class JobRuntime:
                 raise
             finally:
                 # No job identity, lease data, credentials or callback text in logs.
+                attempt.transition('failed')
+                attempt.finish(result)
+
+    def _read_lease(self, export_id):
+        export_identity(export_id)
+        def database(allowance):
+            self.check(allowance)
+            self.database_peer_check(timeout=1)
+            self.check(allowance)
+        database(LEASE_READ_RESERVE)
+        with Attempt(self.directory / ('lease-' + uuid.uuid4().hex),
+                     {'sandbox': self.sandbox.name, 'operation': 'durable_lease_read'}) as attempt:
+            attempt.transition('preflight')
+            result = {'outcome': 'lease_observation_incomplete'}
+            try:
+                value = self.database_read(export_id, timeout=READ_TIMEOUT)
+                database(5)
+                observation = project_lease(value, export_id)
+                result['outcome'] = 'lease_observed'
+                return observation
+            except BaseException as error:
+                result['error_type'] = type(error).__name__
+                raise
+            finally:
                 attempt.transition('failed')
                 attempt.finish(result)
 

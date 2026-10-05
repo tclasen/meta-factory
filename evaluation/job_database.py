@@ -7,7 +7,7 @@ need independently reviewed adapters; no normalized application schema is requir
 import copy
 
 from .database_probe import identifier, sql_literal
-from .job_broker import export_identity, project
+from .job_broker import export_identity, project_lease
 
 JOB_FIELDS = {'export_id', 'status', 'processing_attempts', 'lease_owner',
               'lease_token', 'lease_expires_at'}
@@ -109,6 +109,4 @@ class JobDatabaseReader:
             raise ValueError('Job database identity or unique observation unavailable')
         row = value['jobs'][0]
         if not isinstance(row, dict): raise ValueError('Invalid durable job observation')
-        observation = project(dict(row, published_artifacts=0), export_id)
-        del observation['published_artifacts']
-        return observation
+        return project_lease(row, export_id)

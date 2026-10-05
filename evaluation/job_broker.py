@@ -22,14 +22,16 @@ def export_identity(value):
     return value
 
 
-def project(value, export_id):
-    fields = {'export_id', 'status', 'processing_attempts', 'active_lease',
-              'lease_fingerprint', 'published_artifacts', 'completion_events'}
-    if not isinstance(value, dict) or not fields <= value.keys() or value['export_id'] != export_id:
-        raise ValueError('Incomplete or mismatched job observation')
+LEASE_FIELDS = {'export_id', 'status', 'processing_attempts', 'active_lease',
+                'lease_fingerprint', 'completion_events'}
+
+
+def project_lease(value, export_id):
+    if not isinstance(value, dict) or not LEASE_FIELDS <= value.keys() or value['export_id'] != export_id:
+        raise ValueError('Incomplete or mismatched durable job observation')
     if value['status'] not in ('pending', 'rejected', 'queued', 'running', 'ready', 'failed'):
         raise ValueError('Invalid normalized job status')
-    for key in ('processing_attempts', 'published_artifacts', 'completion_events'):
+    for key in ('processing_attempts', 'completion_events'):
         if type(value[key]) is not int or not 0 <= value[key] <= 2**31 - 1:
             raise ValueError('Invalid bounded job count')
     fingerprint = value['lease_fingerprint']
@@ -37,9 +39,18 @@ def project(value, export_id):
             or fingerprint is not None and (not isinstance(fingerprint, str) or not re.fullmatch(r'[0-9a-f]{64}', fingerprint))
             or value['active_lease'] and fingerprint is None):
         raise ValueError('Invalid normalized lease observation')
-    # Counts above application limits remain observations, not infrastructure
-    # errors: protected oracles must be able to detect retries/duplicate publication.
-    return {key: value[key] for key in sorted(fields)}
+    return {key: value[key] for key in sorted(LEASE_FIELDS)}
+
+
+def project(value, export_id):
+    observation = project_lease(value, export_id)
+    count = value.get('published_artifacts')
+    if type(count) is not int or not 0 <= count <= 2**31 - 1:
+        raise ValueError('Invalid independent physical artifact count')
+    observation['published_artifacts'] = count
+    # Above-limit counts remain visible to the oracle rather than being hidden
+    # as infrastructure errors. Durable-only reads never fabricate this field.
+    return {key: observation[key] for key in sorted(observation)}
 
 
 class JobBroker(AuditBroker):
@@ -48,6 +59,12 @@ class JobBroker(AuditBroker):
     The inherited endpoint owns authentication, permissions and cleanup mechanics.
     Requests/exception text are never logged; only the fixed projection is sent.
     """
+    def __init__(self, reader, *, durable_reader=None, **bounds):
+        if durable_reader is not None and not callable(durable_reader):
+            raise ValueError('Trusted durable job reader required')
+        self.durable_reader = durable_reader
+        super().__init__(reader, **bounds)
+
     def _serve(self):
         while not self.closing.is_set():
             try:connection, _ = self.socket.accept()
@@ -59,7 +76,8 @@ class JobBroker(AuditBroker):
                     connection.settimeout(self.request_seconds)
                     with connection.makefile('rwb') as stream:
                         request = receive(stream)
-                        if (set(request) != {'token', 'export_id'} or not isinstance(request['token'], str)
+                        durable = set(request) == {'token', 'export_id', 'operation'} and request.get('operation') == 'read_lease'
+                        if (not (set(request) == {'token', 'export_id'} or durable) or not isinstance(request['token'], str)
                                 or not hmac.compare_digest(request['token'], self.token)):
                             send(stream, {'status': 'refused'}); continue
                         try:
@@ -67,7 +85,11 @@ class JobBroker(AuditBroker):
                             if self.closing.is_set() or self.remaining <= 0:
                                 raise ValueError('Job capability unavailable')
                             self.remaining -= 1
-                            observation = project(self.reader(export_id), export_id)
+                            if durable:
+                                if self.durable_reader is None:raise ValueError('Durable capability unavailable')
+                                observation = project_lease(self.durable_reader(export_id), export_id)
+                            else:
+                                observation = project(self.reader(export_id), export_id)
                             if self.closing.is_set():raise ValueError('Job capability revoked')
                             send(stream, {'status': 'observed', 'observation': observation})
                         except Exception:
@@ -83,18 +105,29 @@ class JobBroker(AuditBroker):
             raise JobObservationError('Job reader cleanup incomplete') from None
 
 
-def read_job(configuration, export_id, *, timeout=45):
+def _read(configuration, export_id, *, timeout, durable):
     export_identity(export_id)
     if not 0 < timeout <= 60:raise ValueError('Invalid job request timeout')
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); connection.settimeout(timeout)
     try:
         connection.connect(configuration['socket'])
         with connection.makefile('rwb') as stream:
-            send(stream, {'token': configuration['token'], 'export_id': export_id})
+            request = {'token': configuration['token'], 'export_id': export_id}
+            if durable:request['operation'] = 'read_lease'
+            send(stream, request)
             response = receive(stream)
             if set(response) != {'status', 'observation'} or response['status'] != 'observed':
                 raise JobObservationError('Job observation unavailable')
-            return project(response['observation'], export_id)
+            return (project_lease if durable else project)(response['observation'], export_id)
     except (OSError, ValueError, KeyError):
         raise JobObservationError('Job observation unavailable') from None
     finally:connection.close()
+
+
+def read_job(configuration, export_id, *, timeout=45):
+    return _read(configuration, export_id, timeout=timeout, durable=False)
+
+
+def read_lease(configuration, export_id, *, timeout=45):
+    """Durable lease/attempt/event data only; no physical artifact count is returned."""
+    return _read(configuration, export_id, timeout=timeout, durable=True)

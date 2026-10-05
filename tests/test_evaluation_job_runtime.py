@@ -124,3 +124,35 @@ class JobRuntimeTest(unittest.TestCase):
         self.now[1] = 161
         with self.assertRaises(JobObservationError): self.runtime()
         self.assertEqual(list(self.root.glob('jobs-*')), [])
+
+    def test_durable_read_survives_storage_outage_without_fabricating_counts(self):
+        from evaluation.job_broker import read_lease
+        runtime=self.runtime()
+        def offline():raise RuntimeError('Storage is intentionally suspended')
+        self.actions['storage-peer']=offline;self.actions['objects']=offline
+        value=read_lease(runtime.broker.configuration,self.export_id)
+        self.assertNotIn('published_artifacts',value)
+        self.assertEqual(value['completion_events'],2)
+        self.assertEqual([call[0] for call in self.calls],['database-peer','database','database-peer'])
+        with self.assertRaises(JobObservationError):self.read(runtime)
+        result=next(runtime.directory.glob('lease-*/result.json'))
+        self.assertEqual(json.loads(result.read_text())['outcome'],'lease_observed')
+
+    def test_durable_read_checks_database_and_lifetime_after_query(self):
+        from evaluation.job_broker import read_lease
+        runtime=self.runtime();self.actions['database']=runtime.revoked.set
+        with self.assertRaises(JobObservationError):read_lease(runtime.broker.configuration,self.export_id)
+        self.assertNotIn('storage-peer',[call[0] for call in self.calls])
+
+    def test_durable_reserve_and_database_failure_are_independent_of_storage(self):
+        from evaluation.job_broker import read_lease
+        runtime=self.runtime();self.now[1]=174
+        self.assertTrue(read_lease(runtime.broker.configuration,self.export_id)['active_lease'])
+        self.now[1]=176
+        with self.assertRaises(JobObservationError):read_lease(runtime.broker.configuration,self.export_id)
+        self.now[1]=100
+        def unavailable():raise RuntimeError('private-database-credential')
+        self.actions['database-peer']=unavailable
+        with self.assertRaises(JobObservationError):read_lease(runtime.broker.configuration,self.export_id)
+        for path in runtime.directory.rglob('*'):
+            if path.is_file():self.assertNotIn('private-database-credential',path.read_text())

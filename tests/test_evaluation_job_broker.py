@@ -59,3 +59,38 @@ class JobBrokerTest(unittest.TestCase):
         with JobBroker(reader) as broker:
             response=self.request(broker,dict(token=broker.token,export_id=self.identity))
             self.assertEqual(response,{'status':'inconclusive'})
+
+    def test_durable_read_uses_distinct_reader_and_never_returns_artifact_count(self):
+        from evaluation.job_broker import read_lease
+        calls=[]
+        def durable(identity):calls.append(identity);return dict(self.observation,published_artifacts=999,password='private')
+        with JobBroker(self.reader,durable_reader=durable) as broker:
+            value=read_lease(broker.configuration,self.identity)
+            self.assertNotIn('published_artifacts',value);self.assertNotIn('password',value)
+            self.assertEqual(value['active_lease'],True);self.assertEqual(calls,[self.identity])
+            self.assertEqual(self.calls,[])
+            self.assertEqual(read_job(broker.configuration,self.identity)['published_artifacts'],0)
+
+    def test_missing_durable_callback_cannot_fall_back_to_combined_reader(self):
+        from evaluation.job_broker import read_lease
+        with JobBroker(self.reader) as broker:
+            with self.assertRaises(JobObservationError):read_lease(broker.configuration,self.identity)
+        self.assertEqual(self.calls,[])
+
+    def test_unreviewed_read_modes_and_extra_arguments_never_execute_either_reader(self):
+        from evaluation.job_broker import read_lease
+        calls=[]
+        with JobBroker(self.reader,durable_reader=lambda identity:calls.append(identity)) as broker:
+            for operation in ('sql','read_job',None):
+                response=self.request(broker,dict(token=broker.token,export_id=self.identity,operation=operation))
+                self.assertEqual(response,{'status':'refused'})
+            response=self.request(broker,dict(token=broker.token,export_id=self.identity,operation='read_lease',table='app'))
+            self.assertEqual(response,{'status':'refused'})
+        self.assertEqual(calls,[]);self.assertEqual(self.calls,[])
+
+    def test_combined_and_durable_reads_share_the_same_request_budget(self):
+        from evaluation.job_broker import read_lease
+        with JobBroker(self.reader,durable_reader=self.reader,max_requests=1) as broker:
+            read_lease(broker.configuration,self.identity)
+            with self.assertRaises(JobObservationError):read_job(broker.configuration,self.identity)
+        self.assertEqual(self.calls,[self.identity])

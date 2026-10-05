@@ -984,3 +984,16 @@ a completed independent observation by `earliest + 60` is sufficient. To prove
 failure, an observation beginning after `latest + 60` must still show the
 abandoned lease unreclaimed. Intermediate observations remain ambiguous. Receipt
 arrival time must not start a fresh application recovery allowance.
+
+
+`read_lease` uses the same private job capability but selects a separate durable
+reader. It returns job status, attempts, lease metadata and completion-event count;
+there is no `published_artifacts` field. `JobRuntime` checks only the database peer
+and lifetime for this mode, so deliberately suspended storage does not prevent
+lease observations. Its 25-second control reserve and 15-second database timeout
+remain bounded. Combined `read_job` still requires the independent physical
+storage read and refuses unavailable storage. Missing durable callbacks cannot
+fall back to the combined reader, and both modes share one request budget.
+Physical cardinality must be checked after storage restoration; a missing count
+must never be interpreted as zero. These modes do not establish job recovery by
+themselves.
