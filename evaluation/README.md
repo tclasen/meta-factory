@@ -788,3 +788,22 @@ The default is false, preserving ordinary single-fault setup.
 Fixture unit checks do not establish live Kubernetes, interrupted lease
 reclamation or storage retry evidence. Scoped live preflight remains required
 before protected worker/storage journeys can rely on this capability.
+
+`JobBroker` supplies a private read-only boundary for independently normalized job
+observations. `read_job` accepts only a canonical export UUID. A parent-owned
+reader returns export status, durable processing-attempt count, active lease and
+a fixed SHA-256 lease fingerprint, physical published-artifact count and successful
+completion-event count. Credentials, schema/SQL, lease owner/token and arbitrary
+callback fields do not cross the socket. Missing observations stay inconclusive;
+counts above application limits remain data so protected oracles can fail them.
+
+The reader must independently bind live database/object-store peers and enforce
+guard lifetime and bounded operations. Status from the public application API is
+insufficient to establish a claimed lease; database metadata alone cannot prove
+physical artifact cardinality. This boundary is not yet attached to suite cases
+or fresh-deployment orchestration and does not implement those readers or a
+publication barrier. No lease-recovery or artifact-uniqueness evidence is claimed.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_job_broker.py -v
+```

@@ -1,0 +1,61 @@
+"""Real private-socket controls for normalized independent job observations."""
+import socket
+import unittest
+import uuid
+from evaluation.job_broker import JobBroker, JobObservationError, read_job
+from evaluation.fault_broker import send, receive
+
+
+class JobBrokerTest(unittest.TestCase):
+    def setUp(self):
+        self.identity=str(uuid.uuid4());self.calls=[]
+        self.observation=dict(export_id=self.identity,status='running',processing_attempts=1,
+            active_lease=True,lease_fingerprint='a'*64,published_artifacts=0,completion_events=0)
+    def reader(self, identity):
+        self.calls.append(identity)
+        return dict(self.observation,connection_password='parent-only',sql='parent-only')
+    def request(self, broker, value):
+        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
+            connection.settimeout(2);connection.connect(str(broker.path))
+            with connection.makefile('rwb') as stream:send(stream,value);return receive(stream)
+    def test_projection_permissions_identity_and_cleanup(self):
+        with JobBroker(self.reader) as broker:
+            self.assertEqual(read_job(broker.configuration,self.identity),self.observation)
+            self.assertEqual(self.calls,[self.identity])
+            self.assertEqual(broker.path.stat().st_mode & 0o777,0o600)
+            self.assertEqual(broker.directory.stat().st_mode & 0o777,0o700)
+        self.assertFalse(broker.directory.exists())
+    def test_invalid_identity_token_and_sql_cannot_reach_reader(self):
+        with JobBroker(self.reader) as broker:
+            for value in (dict(token='wrong',export_id=self.identity),
+                          dict(token=broker.token,export_id=self.identity,sql='DELETE'),
+                          dict(token=broker.token,export_id='not-a-uuid')):
+                self.assertIn(self.request(broker,value)['status'],('refused','inconclusive'))
+        self.assertEqual(self.calls,[])
+    def test_missing_and_wrong_identity_or_truthy_lease_are_inconclusive(self):
+        for changes in ({'export_id':str(uuid.uuid4())},{'active_lease':1},
+                        {'lease_fingerprint':'private-raw-owner'}, {'processing_attempts':True}):
+            with self.subTest(changes=changes):
+                self.observation.update(changes)
+                with JobBroker(self.reader) as broker:
+                    with self.assertRaises(JobObservationError):read_job(broker.configuration,self.identity)
+                self.setUp()
+        del self.observation['published_artifacts']
+        with JobBroker(self.reader) as broker:
+            with self.assertRaises(JobObservationError):read_job(broker.configuration,self.identity)
+    def test_requirement_violating_counts_are_not_hidden_by_projection(self):
+        self.observation.update(processing_attempts=4,published_artifacts=2,completion_events=2)
+        with JobBroker(self.reader) as broker:
+            self.assertEqual(read_job(broker.configuration,self.identity),self.observation)
+    def test_budget_and_endpoint_revocation_do_not_read_again(self):
+        with JobBroker(self.reader,max_requests=1) as broker:
+            configuration=broker.configuration
+            read_job(configuration,self.identity)
+            with self.assertRaises(JobObservationError):read_job(configuration,self.identity)
+        with self.assertRaises(JobObservationError):read_job(configuration,self.identity)
+        self.assertEqual(self.calls,[self.identity])
+    def test_exception_details_are_redacted(self):
+        def reader(identity):raise RuntimeError('secret-password-and-schema')
+        with JobBroker(reader) as broker:
+            response=self.request(broker,dict(token=broker.token,export_id=self.identity))
+            self.assertEqual(response,{'status':'inconclusive'})
