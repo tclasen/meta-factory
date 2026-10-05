@@ -849,3 +849,28 @@ A close failure prevents acceptance while sandbox cleanup still proceeds.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
 ```
+
+### Durable PostgreSQL job adapter
+
+`job_database.JobDatabaseReader` supplies the database callback for a reviewed
+operator mapping of one job-state relation and one audit relation. Each mapped
+field selects a physical column or bounded JSON-object path. Bindings include
+observed relation OIDs, database name and both operator role identities. Reads
+lock both relations, verify their OIDs and use a read-only transaction with a
+five-second statement timeout and two-second lock timeout. Missing, duplicate
+or mismatched job observations stay inconclusive. Opaque owner/token material is
+hashed inside PostgreSQL and never returned; lease activity requires an owner,
+token and future timestamp. Successful `export.ready` audit events are counted
+from the independently mapped audit relation in the same statement snapshot.
+
+The operator must verify that the mapped attempt counter counts all processing
+attempts durably and that owner/token/expiry fields represent actual claiming.
+This adapter supports that lease-expiration representation; other queue/storage
+layouts require reviewed adapters. It does not impose table or column names on
+the application, discover relations, enumerate S3 objects or establish abandoned
+lease recovery. Supply an independently guarded `DatabaseTransport` as its client.
+The physical object count still comes from the separate storage callback.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
+```
