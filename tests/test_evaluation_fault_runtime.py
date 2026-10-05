@@ -27,7 +27,7 @@ class FaultRuntimeTest(unittest.TestCase):
         self.clock = 0; self.wall = 0
         self.resource = {'namespace': 'incident-app', 'kind': 'statefulset', 'name': 'storage', 'uid': 'storage-uid'}
         self.state = dict(self.resource, replicas=1, generation=1, observed_generation=1,
-                          pods=[{'ready': True, 'terminating': False}])
+                          pods=[{'ready': True, 'running': True, 'terminating': False}])
         self.called = []
 
     def operation(self, attempt, transport, **kwargs):
@@ -35,7 +35,7 @@ class FaultRuntimeTest(unittest.TestCase):
         self.called.append(kwargs['label'])
         if kwargs['replicas'] is not None:
             self.state['replicas'] = kwargs['replicas']
-            self.state['pods'] = [] if kwargs['replicas'] == 0 else [{'ready': True, 'terminating': False}]
+            self.state['pods'] = [] if kwargs['replicas'] == 0 else [{'ready': True, 'running': True, 'terminating': False}]
         return {'outcome': 'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
                 'observation': {'workload': copy.deepcopy(self.state)}}
 
@@ -226,7 +226,7 @@ class CompoundFaultRuntimeTest(unittest.TestCase):
         self.resources = {role:dict(namespace='incident-app', kind='deployment', name=role, uid=role+'-uid')
                           for role in ('storage','worker')}
         self.states = {role:dict(resource, replicas=1, generation=1, observed_generation=1,
-                                pods=[{'ready':True,'terminating':False}])
+                                pods=[{'ready':True,'running':True,'terminating':False}])
                        for role,resource in self.resources.items()}
 
     def operation(self, attempt, transport, **kwargs):
@@ -236,10 +236,10 @@ class CompoundFaultRuntimeTest(unittest.TestCase):
         if role=='worker' and label=='workload-restore' and self.variant=='restore-fails':
             return {'outcome':'incomplete'}
         if kwargs['replicas'] is not None:
-            state['replicas']=kwargs['replicas'];state['pods']=[] if kwargs['replicas']==0 else [{'ready':True,'terminating':False}]
+            state['replicas']=kwargs['replicas'];state['pods']=[] if kwargs['replicas']==0 else [{'ready':True,'running':True,'terminating':False}]
         if role=='worker' and label=='workload-restore' and self.variant=='hold-lost':
             self.states['storage']['replicas']=1
-            self.states['storage']['pods']=[{'ready':True,'terminating':False}]
+            self.states['storage']['pods']=[{'ready':True,'running':True,'terminating':False}]
         return {'outcome':'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
                 'observation':{'workload':copy.deepcopy(state)}}
 
@@ -285,7 +285,7 @@ class CompoundFaultRuntimeTest(unittest.TestCase):
                 self.assertEqual(self.states['storage']['replicas'],1)
                 self.assertFalse(runtime.held_workloads)
                 self.states['worker']['uid']='worker-uid';self.states['worker']['replicas']=1
-                self.states['worker']['pods']=[{'ready':True,'terminating':False}]
+                self.states['worker']['pods']=[{'ready':True,'running':True,'terminating':False}]
                 self.root=Path(self.temp.name)
 
     def test_insufficient_restart_reserve_prevents_worker_commands(self):

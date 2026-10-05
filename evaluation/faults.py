@@ -17,7 +17,7 @@ class FaultRestoreError(RuntimeError):
 
 @contextmanager
 def suspended_workload(attempt, sandbox, *, label, kubectl_prefix, namespace, kind,
-                       name, operation=workload_operation):
+                       name, operation=workload_operation, convergence='ready', restore_convergence=None):
     """Suspend one selected workload and verify restoration on every exit path.
 
     This must run under the disposable sandbox's lifetime guard. Process death
@@ -27,21 +27,27 @@ def suspended_workload(attempt, sandbox, *, label, kubectl_prefix, namespace, ki
     if not isinstance(label, str) or len(label) > 20 or not NAME.fullmatch(label):
         raise ValueError('Invalid fault label')
 
-    def run(phase, expected=None, replicas=None):
+    if convergence not in ('ready', 'running') or (restore_convergence is not None
+            and not callable(restore_convergence) and restore_convergence not in ('ready', 'running')):
+        raise ValueError('Invalid trusted fault convergence policy')
+
+    def run(phase, expected=None, replicas=None, mode='ready'):
+        options = {'convergence': mode} if mode != 'ready' else {}
         report = operation(attempt, sandbox, label=label + '-' + phase,
                            kubectl_prefix=kubectl_prefix, namespace=namespace, kind=kind,
-                           name=name, expected=expected, replicas=replicas)
+                           name=name, expected=expected, replicas=replicas, **options)
         wanted = 'workload_observed' if expected is None else 'workload_scaled'
         if report.get('outcome') != wanted:
             raise FaultSetupError('Workload operation incomplete: ' + phase)
         return report['observation']['workload']
 
     original = run('baseline')
-    if original['replicas'] <= 0 or not converged(original, original['uid'], original['replicas']):
+    if original['replicas'] <= 0 or not converged(original, original['uid'], original['replicas'], convergence=convergence):
         raise FaultSetupError('Selected workload is not running and ready')
     atomic_json(attempt.directory / (label + '-restoration-plan.json'), original)
     result = {'restoration_verified': False, 'uid': original['uid'],
-              'original_replicas': original['replicas'], 'fault_established': False}
+              'original_replicas': original['replicas'], 'fault_established': False,
+              'baseline_convergence': convergence}
     try:
         suspended = run('suspend', original, 0)
         if not converged(suspended, original['uid'], 0):
@@ -56,8 +62,11 @@ def suspended_workload(attempt, sandbox, *, label, kubectl_prefix, namespace, ki
             current = run('before-restore')
             if current['uid'] != original['uid'] or current['replicas'] not in (0, original['replicas']):
                 raise FaultRestoreError('Selected workload changed independently')
-            restored = run('restore', current, original['replicas'])
-            if not converged(restored, original['uid'], original['replicas']):
+            mode = restore_convergence() if callable(restore_convergence) else (restore_convergence or convergence)
+            if mode not in ('ready', 'running'):raise FaultRestoreError('Invalid restoration convergence policy')
+            result['restore_convergence'] = mode
+            restored = run('restore', current, original['replicas'], mode)
+            if not converged(restored, original['uid'], original['replicas'], convergence=mode):
                 raise FaultRestoreError('Restored workload is not ready')
             result['restoration_verified'] = True
         except BaseException as error:

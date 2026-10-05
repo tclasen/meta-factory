@@ -145,12 +145,16 @@ class FaultRuntime:
                 if report.get('outcome') != 'service_' + mode + '_verified':
                     error = FaultRestoreError if phase == 'recovery' else FaultSetupError
                     raise error('Independent service observation incomplete: ' + phase)
+            def worker_convergence():
+                return ('running' if role == 'worker' and self.storage_worker_restart
+                        and 'storage' in self.held_workloads else 'ready')
             try:
                 if role in self.service_probes:
                     verify_service('baseline', 'available')
                 with suspended_workload(attempt, self, label='workload', kubectl_prefix=self.kubectl_prefix,
                                         namespace=resource['namespace'], kind=resource['kind'],
-                                        name=resource['name'], operation=checked_operation) as suspended:
+                                        name=resource['name'], operation=checked_operation,
+                                        convergence=worker_convergence(), restore_convergence=worker_convergence) as suspended:
                     self.held_workloads[role] = copy.deepcopy(suspended)
                     try:
                         if role in self.service_probes:

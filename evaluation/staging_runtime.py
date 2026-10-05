@@ -43,7 +43,7 @@ class StagingRuntime:
         self.closed = False
         # Reserve both full workload contexts, compound restart and observations.
         # This is a control reserve, never an extension of the grading deadline.
-        self.reserve = 2*faults.workload_fault_allowance + faults.fault_allowance + 4*COMMAND_ALLOWANCE
+        self.reserve = 2*faults.workload_fault_allowance + faults.fault_allowance + 6*COMMAND_ALLOWANCE
         if job_runtime is not None:self.reserve += 3*COMMAND_ALLOWANCE + LEASE_READ_RESERVE
         self.check(self.reserve)
         self.directory = Path(directory); self.directory.mkdir(mode=0o700)
@@ -59,10 +59,10 @@ class StagingRuntime:
             raise FaultSetupError('Staging capability revoked or binding changed')
         self.faults.check(allowance)
 
-    def _observe(self, attempt, role, replicas=None):
+    def _observe(self, attempt, role, replicas=None, *, convergence='ready', label=None):
         self.check(COMMAND_ALLOWANCE)
         resource = self.resources[role]
-        report = self.faults.operation(attempt, self.faults, label='observe-'+role,
+        report = self.faults.operation(attempt, self.faults, label=label or 'observe-'+role,
             kubectl_prefix=self.faults.kubectl_prefix, namespace=resource['namespace'],
             kind=resource['kind'], name=resource['name'], expected=None, replicas=None)
         self.check(COMMAND_ALLOWANCE)
@@ -70,10 +70,26 @@ class StagingRuntime:
         expected = observed.get('replicas') if replicas is None else replicas
         try:
             valid = (report.get('outcome')=='workload_observed' and type(expected) is int
-                     and (replicas is not None or expected>0) and converged(observed,resource['uid'],expected))
+                     and (replicas is not None or expected>0) and converged(observed,resource['uid'],expected,convergence=convergence))
         except (KeyError,ValueError,TypeError): valid=False
         if not valid: raise FaultRestoreError('Staged workload state changed')
         return observed
+
+    def _ready_after_restore(self, attempt, replicas):
+        # Same-replica conditional operation waits for readiness without scaling
+        # a changed UID/replica target. This runs after owned storage cleanup.
+        observed = self._observe(attempt, 'worker', replicas, convergence='running', label='worker-before-ready')
+        self.check(2*COMMAND_ALLOWANCE)
+        resource = self.resources['worker']
+        report = self.faults.operation(attempt, self.faults, label='worker-ready-after-storage',
+            kubectl_prefix=self.faults.kubectl_prefix, namespace=resource['namespace'],
+            kind=resource['kind'], name=resource['name'], expected=observed, replicas=replicas)
+        self.check(COMMAND_ALLOWANCE)
+        try:
+            valid = (report.get('outcome') == 'workload_scaled'
+                and converged(report['observation']['workload'], resource['uid'], replicas))
+        except (KeyError, TypeError, ValueError):valid = False
+        if not valid:raise FaultRestoreError('Worker readiness did not recover after storage restoration')
 
     def _service(self, attempt, role, mode):
         self.check(COMMAND_ALLOWANCE)
@@ -89,24 +105,30 @@ class StagingRuntime:
         with Attempt(self.directory/('stage-'+uuid.uuid4().hex),
                      {'sandbox':self.faults.sandbox.name,'operation':'job_staging'}) as attempt:
             attempt.transition('preflight');result={'outcome':'staging_incomplete'}
+            acquired = self.faults.mutation_lock.acquire(blocking=False)
             try:
+                if not acquired:raise FaultSetupError('Another parent fault lifetime is active')
                 api = self._observe(attempt,'api')
                 worker = self._observe(attempt,'worker')
-                with ExitStack() as cleanup:
-                    # On a partial handoff failure, restore storage before worker.
-                    # After a successful handoff the worker stack is already empty.
-                    worker_stack = cleanup.enter_context(ExitStack())
-                    storage_stack = cleanup.enter_context(ExitStack())
-                    observation = worker_stack.enter_context(self.faults._fault('worker'))
-                    if observation.get('workload_suspended_verified') is not True:
-                        raise FaultSetupError('Initial staged worker hold unavailable')
-                    handle = StagingHandle(self,worker_stack,storage_stack,api['replicas'],worker['replicas'])
-                    handle.observations = handle.verify()
-                    yield handle
+                try:
+                    with ExitStack() as cleanup:
+                        # On a partial handoff failure, restore storage before worker.
+                        # After a successful handoff the worker stack is already empty.
+                        worker_stack = cleanup.enter_context(ExitStack())
+                        storage_stack = cleanup.enter_context(ExitStack())
+                        observation = worker_stack.enter_context(self.faults._fault('worker'))
+                        if observation.get('workload_suspended_verified') is not True:
+                            raise FaultSetupError('Initial staged worker hold unavailable')
+                        handle = StagingHandle(self,worker_stack,storage_stack,api['replicas'],worker['replicas'])
+                        handle.observations = handle.verify()
+                        yield handle
+                finally:
+                    self._ready_after_restore(attempt, worker['replicas'])
                 result['outcome']='staging_restored'
             except BaseException as error:
                 result['error_type']=type(error).__name__;raise
             finally:
+                if acquired:self.faults.mutation_lock.release()
                 attempt.transition('failed');attempt.finish(result)
 
     def close(self):
@@ -131,7 +153,7 @@ class StagingHandle:
             try:
                 if self.handed_off:
                     runtime._observe(attempt,'storage',0)
-                    runtime._observe(attempt,'worker',self.worker_replicas)
+                    runtime._observe(attempt,'worker',self.worker_replicas,convergence='running')
                     runtime._service(attempt,'storage','unavailable')
                     fields=STORAGE_RECEIPT
                 else:

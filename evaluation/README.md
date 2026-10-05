@@ -956,7 +956,7 @@ under the still-active guard after new staging authority is revoked. Different
 broker threads cannot concurrently mutate the deployment: `FaultRuntime` now
 uses a nonblocking, reentrant mutation lock for its entire fault context.
 
-The initial conservative reserve is 4500 seconds with the standard service-probed
+The initial conservative reserve is 4800 seconds with the standard service-probed
 compound configuration. It consumes the existing grading allowance and does not
 increase the proposed grading limit. Fresh-deployment staging is opt-in as described
 below. Fixture controls do not establish live Kubernetes, actual job claiming, lease recovery or a frozen acceptance suite.
@@ -1025,7 +1025,7 @@ The parent rechecks zero worker replicas and the unchanged suspension generation
 after the paused database query, and reverifies the held storage state before
 restoring the worker. Changed holds suppress the receipt. A bound paused reader
 adds 475 seconds of conservative command/read reserve, making the initial standard
-staging reserve 4975 seconds. This consumes the existing grading allowance; it
+staging reserve 5275 seconds. This consumes the existing grading allowance; it
 requires scheduling review and does not authorize increasing the proposed limit.
 
 The trusted workload probe offers separate `ready` (default) and `running`
@@ -1039,7 +1039,18 @@ configuration and diagnostics remain excluded.
 
 `workload_operation(..., convergence='running')` lets a reviewed parent lifecycle
 wait for processes during an intentional dependency outage. Ordinary calls retain
-ready convergence. This transport primitive is not yet wired into staging/fault
-restoration; it does not alone establish queue progress, continuous uptime or
-APP-009 retry timing. The same command deadlines and UID/replica conditional writes
+ready convergence. Owned compound worker lifetimes use running convergence while storage is held;
+ordinary restoration requires readiness. These process observations do not alone
+establish queue progress, continuous uptime or APP-009 retry timing. The same command deadlines and UID/replica conditional writes
 apply to either mode.
+
+Staging begins with ready workers. When the parent owns a verified storage hold,
+worker baseline/restart restoration uses process-running convergence; the fixed
+wire protocol does not let a case select this policy. Restoration evaluates the
+parent's current hold at cleanup time, so partial handoff cleanup that restores
+storage first requires ready worker restoration. After storage cleanup, staging
+also waits for worker readiness using an unchanged UID/replica conditional
+operation. Failed readiness recovery suppresses the restored receipt and aborts
+later grading. Additional checks reserve 300 seconds of the existing allowance:
+standard initial staging reserve is 4800 seconds, or 5275 with the bound paused
+reader. The grading deadline is unchanged and scheduling remains unresolved.

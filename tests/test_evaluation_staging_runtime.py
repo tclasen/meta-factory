@@ -23,20 +23,20 @@ class StagingRuntimeTest(unittest.TestCase):
         self.resources={role:dict(namespace='incident-app',kind='deployment',name=role,uid=role+'-uid')
                         for role in ('api','worker','storage')}
         self.states={role:dict(resource,replicas=1,generation=1,observed_generation=1,
-                               pods=[dict(ready=True,terminating=False)]) for role,resource in self.resources.items()}
+                               pods=[dict(ready=True,running=True,terminating=False)]) for role,resource in self.resources.items()}
 
     def operation(self,attempt,transport,**kwargs):
         transport.exec_argv(['trusted-probe'])
         role=kwargs['name'];state=self.states[role]
         if kwargs['replicas'] is not None:
             replicas=kwargs['replicas']
-            self.events.append((role,replicas))
+            if state['replicas'] != replicas:self.events.append((role,replicas))
             if self.fail=='storage-suspend' and role=='storage' and replicas==0:
                 state['replicas']=0;state['pods']=[]
                 return {'outcome':'incomplete'}
             if self.fail=='worker-restore' and role=='worker' and replicas==1:
                 return {'outcome':'incomplete'}
-            state['replicas']=replicas;state['pods']=[] if replicas==0 else [dict(ready=True,terminating=False)]
+            state['replicas']=replicas;state['pods']=[] if replicas==0 else [dict(ready=True,running=True,terminating=False)]
         return {'outcome':'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
                 'observation':{'workload':copy.deepcopy(state)}}
 
@@ -222,6 +222,51 @@ class StagingRuntimeTest(unittest.TestCase):
         self.addCleanup(jobs.close)
         return jobs
 
+    def test_worker_dependency_readiness_can_fail_only_during_owned_storage_hold(self):
+        base=self.operation
+        def operation(attempt,transport,**kwargs):
+            report=base(attempt,transport,**kwargs)
+            if kwargs['name']=='worker' and self.states['storage']['replicas']==0:
+                for pod in report['observation']['workload']['pods']:pod['ready']=False
+                if kwargs['replicas']==1:self.assertEqual(kwargs.get('convergence'),'running')
+            return report
+        self.operation=operation
+        staging,faults=self.runtime()
+        with remote_staging(staging.broker.configuration) as session:
+            session.handoff();session.verify();session.restart_worker()
+        results=[json.loads(p.read_text()) for p in faults.directory.glob('fault-*/workload-result.json')]
+        self.assertIn('running',[r['restore_convergence'] for r in results])
+        self.assertEqual(self.states['storage']['replicas'],1)
+        self.assertTrue(any(json.loads(p.read_text())['outcome']=='staging_restored' for p in staging.directory.glob('stage-*/result.json')))
+
+    def test_waiting_worker_never_counts_as_running_under_storage_hold(self):
+        base=self.operation
+        def operation(attempt,transport,**kwargs):
+            report=base(attempt,transport,**kwargs)
+            if kwargs['name']=='worker' and self.states['storage']['replicas']==0:
+                for pod in report['observation']['workload']['pods']:pod['running']=False
+            return report
+        self.operation=operation
+        staging,_=self.runtime()
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:session.handoff()
+        self.assertTrue(staging.broker.wait_idle(2))
+        self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_worker_must_regain_readiness_after_storage_restoration(self):
+        base=self.operation
+        def operation(attempt,transport,**kwargs):
+            report=base(attempt,transport,**kwargs)
+            if kwargs['label']=='worker-ready-after-storage':
+                report['observation']['workload']['pods'][0]['ready']=False
+            return report
+        self.operation=operation
+        staging,_=self.runtime()
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:session.handoff()
+        self.assertTrue(staging.broker.wait_idle(2));self.assertTrue(staging.broker.aborted)
+        self.assertEqual(self.states['storage']['replicas'],1)
+
     def test_requested_job_is_observed_after_worker_zero_before_restore(self):
         import uuid
         identity=str(uuid.uuid4());staging,faults=self.runtime();staging.close()
@@ -278,3 +323,27 @@ class StagingRuntimeTest(unittest.TestCase):
                 session.handoff();session.restart_worker(str(uuid.uuid4()))
         self.assertTrue(staging.broker.wait_idle(2));self.assertTrue(staging.broker.aborted)
         self.assertEqual(self.states['worker']['replicas'],1);self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_competing_fault_is_refused_until_post_storage_readiness_finishes(self):
+        base=self.operation;holder={};checked=[]
+        def operation(attempt,transport,**kwargs):
+            if kwargs['label']=='worker-ready-after-storage':
+                with self.assertRaises(FaultSetupError):
+                    with remote_fault(holder['faults'].broker.configuration,'api'):pass
+                checked.append(True)
+            return base(attempt,transport,**kwargs)
+        self.operation=operation
+        staging,faults=self.runtime();holder['faults']=faults
+        with remote_staging(staging.broker.configuration) as session:session.handoff()
+        self.assertEqual(checked,[True])
+
+    def test_post_restore_observations_have_exclusive_command_directories(self):
+        base=self.operation
+        def operation(attempt,transport,**kwargs):
+            (attempt.directory/kwargs['label']).mkdir()
+            return base(attempt,transport,**kwargs)
+        self.operation=operation
+        staging,_=self.runtime()
+        with remote_staging(staging.broker.configuration) as session:
+            session.handoff();session.restart_worker()
+        self.assertFalse(staging.broker.aborted)

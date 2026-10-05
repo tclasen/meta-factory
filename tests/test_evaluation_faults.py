@@ -17,7 +17,7 @@ class FaultTest(unittest.TestCase):
         self.addCleanup(self.attempt.close)
         self.state = {'namespace': 'incident-app', 'kind': 'deployment', 'name': 'worker',
                       'uid': 'worker-uid', 'replicas': 1, 'generation': 1, 'observed_generation': 1,
-                      'pods': [{'name': 'worker-pod', 'ready': True, 'terminating': False}]}
+                      'pods': [{'name': 'worker-pod', 'ready': True, 'running': True, 'terminating': False}]}
         self.calls = []; self.mode = 'good'
 
     def operation(self, attempt, sandbox, **kwargs):
@@ -29,15 +29,16 @@ class FaultTest(unittest.TestCase):
             if phase == 'restore' and self.mode == 'restore-fails':
                 return {'outcome': 'workload_operation_incomplete'}
             self.state['replicas'] = kwargs['replicas']
-            self.state['pods'] = [] if kwargs['replicas'] == 0 else [{'name': 'new-pod', 'ready': True, 'terminating': False}]
+            self.state['pods'] = [] if kwargs['replicas'] == 0 else [{'name': 'new-pod', 'ready': True, 'running': True, 'terminating': False}]
+            if phase == 'restore' and self.mode == 'restore-unready':self.state['pods'][0]['ready'] = False
             if phase == 'suspend' and self.mode == 'failed-after-mutation':
                 return {'outcome': 'workload_operation_incomplete'}
         return {'outcome': 'workload_observed' if kwargs['expected'] is None else 'workload_scaled',
                 'observation': {'workload': copy.deepcopy(self.state)}}
 
-    def fault(self):
+    def fault(self, **options):
         return suspended_workload(self.attempt, object(), label='test', kubectl_prefix=['kubectl'],
-                                  namespace='incident-app', kind='deployment', name='worker', operation=self.operation)
+                                  namespace='incident-app', kind='deployment', name='worker', operation=self.operation, **options)
 
     def result(self):
         return json.loads((self.attempt.directory / 'test-result.json').read_text())
@@ -95,3 +96,17 @@ class FaultTest(unittest.TestCase):
         with self.assertRaises(FaultSetupError):
             with self.fault(): self.fail('Unready body ran')
         self.assertEqual(self.calls, ['baseline'])
+
+    def test_ready_restoration_default_refuses_running_but_unready_worker(self):
+        self.mode = 'restore-unready'
+        with self.assertRaises(FaultRestoreError):
+            with self.fault():pass
+        self.assertEqual(self.result()['restore_convergence'], 'ready')
+        self.assertFalse(self.result()['restoration_verified'])
+
+    def test_trusted_restore_policy_is_evaluated_after_body(self):
+        mode = ['ready'];self.mode = 'restore-unready'
+        with self.fault(restore_convergence=lambda:mode[0]):mode[0] = 'running'
+        self.assertTrue(self.result()['restoration_verified'])
+        self.assertEqual(self.result()['baseline_convergence'], 'ready')
+        self.assertEqual(self.result()['restore_convergence'], 'running')
