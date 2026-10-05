@@ -1054,3 +1054,14 @@ operation. Failed readiness recovery suppresses the restored receipt and aborts
 later grading. Additional checks reserve 300 seconds of the existing allowance:
 standard initial staging reserve is 4800 seconds, or 5275 with the bound paused
 reader. The grading deadline is unchanged and scheduling remains unresolved.
+
+Workload Pod projections include an opaque `process_fingerprint` when running
+container-instance metadata is complete. It hashes declared container names,
+container IDs, restart counts and running start timestamps, including restartable
+init sidecars. Replaced containers, changed start timestamps or restart counts
+change the fingerprint. Raw container IDs and configuration are excluded; missing
+or invalid metadata yields no fingerprint rather than invented continuity.
+A parent continuity observer must also compare Pod UIDs and the exact Pod set.
+These are identity observations, not a bound running-service clock by themselves.
+No retry oracle should substitute sampled HTTP health or raw wall time for that
+clock, or count preclaim latency as proven storage-retry duration.

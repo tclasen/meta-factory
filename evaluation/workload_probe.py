@@ -1,6 +1,7 @@
 """Trusted sandbox-side workload observation and conditional replica changes."""
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -40,6 +41,23 @@ def pod_running(pod):
                and bool(c['state']['running']['startedAt']) for c in observed)
 
 
+def pod_process_fingerprint(pod):
+    """Opaque instance continuity evidence, separate from current running state."""
+    if not pod_running(pod):
+        return None
+    spec, status = pod['spec'], pod['status']
+    sidecars = {c['name'] for c in spec.get('initContainers', []) if c.get('restartPolicy') == 'Always'}
+    observed = status.get('containerStatuses', []) + [c for c in status.get('initContainerStatuses', []) if c.get('name') in sidecars]
+    instances = []
+    for container in observed:
+        identity, restarts = container.get('containerID'), container.get('restartCount')
+        if (not isinstance(identity, str) or not identity or len(identity) > 1024
+                or type(restarts) is not int or not 0 <= restarts <= 2**31 - 1):
+            return None
+        instances.append([container['name'], identity, restarts, container['state']['running']['startedAt']])
+    return hashlib.sha256(json.dumps(sorted(instances), separators=(',', ':')).encode()).hexdigest()
+
+
 def project(workload, replica_sets, pods, namespace, kind, name):
     meta = workload['metadata']
     if meta['namespace'] != namespace or meta['name'] != name or workload['kind'] != KINDS[kind]:
@@ -68,6 +86,7 @@ def project(workload, replica_sets, pods, namespace, kind, name):
             selected.append({'name': metadata['name'], 'uid': metadata['uid'],
                              'terminating': bool(metadata.get('deletionTimestamp')),
                              'running': pod_running(pod),
+                             'process_fingerprint': pod_process_fingerprint(pod),
                              'ready': any(c.get('type') == 'Ready' and c.get('status') == 'True'
                                           for c in pod.get('status', {}).get('conditions', []))})
     return {'namespace': namespace, 'kind': kind, 'name': name, 'uid': uid,

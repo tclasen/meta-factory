@@ -6,7 +6,7 @@ import subprocess
 import sys
 import unittest
 
-from evaluation.workload_probe import project, scale_patch, converged, pod_running
+from evaluation.workload_probe import project, scale_patch, converged, pod_running, pod_process_fingerprint
 
 
 class WorkloadTest(unittest.TestCase):
@@ -137,3 +137,31 @@ class WorkloadTest(unittest.TestCase):
         del self.workload['metadata']['deletionTimestamp']
         self.workload['metadata']['namespace'] = 'other'
         with self.assertRaises(ValueError): self.snapshot()
+
+    def test_process_fingerprint_detects_restarts_and_replacements_without_raw_metadata(self):
+        self.running_pod()
+        container = self.pod['status']['containerStatuses'][0]
+        container.update(containerID='containerd://private-container-identity', restartCount=0)
+        original = pod_process_fingerprint(self.pod)
+        self.assertEqual(len(original), 64)
+        self.assertEqual(self.snapshot()['pods'][0]['process_fingerprint'], original)
+        self.assertNotIn('private-container-identity', json.dumps(self.snapshot()))
+        container['restartCount'] = 1
+        self.assertNotEqual(pod_process_fingerprint(self.pod), original)
+        container['restartCount'] = 0
+        container['containerID'] = 'containerd://replacement'
+        self.assertNotEqual(pod_process_fingerprint(self.pod), original)
+        container['containerID'] = 'containerd://private-container-identity'
+        container['state']['running']['startedAt'] = '2026-01-01T00:01:00Z'
+        self.assertNotEqual(pod_process_fingerprint(self.pod), original)
+
+    def test_unknown_instance_metadata_never_fabricates_continuity(self):
+        self.running_pod()
+        self.assertTrue(pod_running(self.pod))
+        self.assertIsNone(pod_process_fingerprint(self.pod))
+        container = self.pod['status']['containerStatuses'][0]
+        for changes in ({'containerID': 'id', 'restartCount': True},
+                        {'containerID': 'id', 'restartCount': -1},
+                        {'containerID': '', 'restartCount': 0}):
+            container.update(changes)
+            self.assertIsNone(pod_process_fingerprint(self.pod))
