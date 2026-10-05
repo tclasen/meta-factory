@@ -100,8 +100,10 @@ class FaultBroker:
                                 # forward arbitrary callback data or diagnostics.
                                 verified = (isinstance(observations, dict)
                                             and observations.get('service_outage_verified') is True)
-                                send(stream, {'status': 'suspended',
-                                              'observations': {'service_outage_verified': verified}})
+                                projected = {'service_outage_verified': verified}
+                                if isinstance(observations, dict) and 'audit_insert_failure_verified' in observations:
+                                    projected['audit_insert_failure_verified'] = observations['audit_insert_failure_verified'] is True
+                                send(stream, {'status': 'suspended', 'observations': projected})
                                 ending = receive(stream)
                                 if ending != {'operation': 'restore'}:
                                     raise FaultSetupError('Invalid fault completion')

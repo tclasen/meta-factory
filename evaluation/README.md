@@ -353,3 +353,19 @@ This declaration does not grant the parent fault-control capability. Only
 Ordinary tests that create isolated records need neither declaration unless they
 also change shared state or runtime infrastructure. This protects REQ-012/015/020;
 it does not prove the application's own authorization or transaction behavior.
+
+
+### Audit persistence fault observations
+
+A parent fault callback can additionally report `audit_insert_failure_verified`.
+The broker forwards only an explicit Boolean true as verified, and never forwards
+connection details, SQL, table/constraint identities or other callback fields.
+This reports audit-insert failure separately from a service outage; an available
+database can reject audit writes while other operations remain available.
+
+The parent must independently demonstrate audit insertion succeeds before the
+fault, fails under the actual mapped runtime identity while the fault is active,
+and succeeds after exact restoration. Installing DDL alone is insufficient.
+Protected cases must treat absent/false verification as inconclusive. Existing
+restoration uncertainty still aborts grading. This protocol support does not yet
+provide a live database adapter or establish application rollback behavior.

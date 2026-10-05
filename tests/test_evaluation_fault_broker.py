@@ -117,3 +117,17 @@ class BrokerTest(unittest.TestCase):
             with FaultBroker(['storage'], factory) as broker:
                 with remote_fault(broker.configuration, 'storage') as observations:
                     self.assertEqual(observations, {'service_outage_verified': expected})
+
+    def test_audit_fault_observation_excludes_database_capabilities_and_requires_true(self):
+        for supplied in (True, False, 'true', 1, None):
+            @contextmanager
+            def factory(role):
+                self.assertEqual(role, 'audit')
+                yield {'audit_insert_failure_verified': supplied,
+                       'connection': 'must-not-cross-broker', 'sql': 'must-not-cross-broker',
+                       'table_oid': 1234, 'constraint_oid': 5678}
+            with self.subTest(supplied=supplied), FaultBroker(['audit'], factory) as broker:
+                with remote_fault(broker.configuration, 'audit') as observations:
+                    self.assertEqual(observations, {'service_outage_verified': False,
+                        'audit_insert_failure_verified': supplied is True})
+                self.assertFalse(broker.aborted)
