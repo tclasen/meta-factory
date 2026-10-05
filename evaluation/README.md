@@ -923,3 +923,37 @@ Actual parent-death containment still belongs to the outer sandbox watchdog.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_staging_broker.py -v
 ```
+
+### Verified worker-to-storage handoff runtime
+
+`staging_runtime.StagingRuntime` attaches to an explicitly compound-enabled
+`FaultRuntime` with distinct operator-observed API, worker and storage workloads
+and independent API/storage service probes. It captures ready API/worker replica
+counts, suspends the worker and checks its zero-replica convergence while the API
+remains ready and reachable. The grader must successfully enqueue and approve
+work in that phase; connectivity alone does not prove authenticated API success.
+
+Handoff rechecks that phase, enters an owned storage suspension context and
+verifies its outage before closing the worker context. It then independently
+checks storage remains suspended/unreachable and the original worker replicas
+are ready. A single optional restart uses the verified storage-held restart
+runtime and checks the held state again. Current-phase verification observes
+live state rather than returning cached receipts. Binding changes, UID replacement,
+guard loss, revocation and either expired clock refuse further actions.
+
+Separate context stacks restore storage before worker on partial handoff failure;
+a successful handoff leaves only storage to restore at session end. The staging
+capability must close before its parent fault runtime, permitting owned restoration
+under the still-active guard after new staging authority is revoked. Different
+broker threads cannot concurrently mutate the deployment: `FaultRuntime` now
+uses a nonblocking, reentrant mutation lock for its entire fault context.
+
+The initial conservative reserve is 4500 seconds with the standard service-probed
+compound configuration. It consumes the existing grading allowance and does not
+increase the proposed grading limit. This runtime is not yet granted to suite
+cases or bound by fresh deployment. Fixture controls do not establish live
+Kubernetes, actual job claiming, lease recovery or a frozen acceptance suite.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_staging_runtime.py -v
+```

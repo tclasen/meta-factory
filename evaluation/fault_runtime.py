@@ -63,6 +63,7 @@ class FaultRuntime:
                 raise ValueError('Compound restart requires distinct workload identities')
         self.storage_worker_restart = storage_worker_restart
         self.held_workloads = {}
+        self.mutation_lock = threading.RLock()
         self.service_probes = copy.deepcopy(service_probes)
         self.service_runner = service_runner
         self.fault_allowance = (FAULT_ALLOWANCE + (120 if service_probes else 0)) if workloads else FAULT_RESERVE
@@ -107,6 +108,18 @@ class FaultRuntime:
 
     @contextmanager
     def _fault(self, role):
+        # Different broker threads cannot mutate the same deployment concurrently.
+        # Nested owned contexts in one staging thread remain permitted.
+        if not self.mutation_lock.acquire(blocking=False):
+            raise FaultSetupError('Another parent fault lifetime is active')
+        try:
+            with self._owned_fault(role) as observation:
+                yield observation
+        finally:
+            self.mutation_lock.release()
+
+    @contextmanager
+    def _owned_fault(self, role):
         if role == 'audit' and self.audit_binding is not None:
             with self._audit_fault() as observation:
                 yield observation
