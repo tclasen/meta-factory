@@ -490,3 +490,15 @@ separate evidence attempt and transport, and only the verified audit flag reache
 the worker. Closing or revoking the runtime prevents further database commands;
 uncertain restoration aborts grading and requires disposal by the outer guard.
 This wiring does not discover or establish application credential/table mappings.
+
+For fresh redeployment, `grade_capture(..., fault_audit=resolver)` calls the
+trusted `resolver(box)` only after bootstrap succeeds. It must use bounded,
+operator-owned inspection to return exactly `audit_binding`, `database_peer`,
+and `database_peer_check` for that fresh sandbox. Static dictionaries are refused:
+old table/container identities are not a valid binding for a new deployment.
+Resolver errors or missing bindings leave grading incomplete and still dispose
+the sandbox. These values go only to `FaultRuntime`; the protected worker receives
+its broker capability, never database connections, SQL or credential mappings.
+Audit-only grading does not require a workload suspension mapping. Providing a
+resolver remains an integration obligation, not evidence that its observations
+are independently correct.

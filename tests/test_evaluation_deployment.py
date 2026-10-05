@@ -147,3 +147,66 @@ class DeploymentTest(unittest.TestCase):
         self.assertFalse(report['project_success'])
         self.assertEqual(report['accepted_packages'], [])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_audit_resolves_after_bootstrap_and_stays_out_of_worker_target(self):
+        events = []; broker = object(); peer_check = lambda _: None
+        binding = {'canary': {'message': 'private fixture'}}
+        peer = {'prefix': ['trusted-peer'], 'services': {}, 'cwd': self.root}
+        def resolve(box):
+            self.assertTrue(box.creation_attempted)
+            self.assertEqual(len(self.commands), 1)
+            events.append('resolve')
+            return dict(audit_binding=binding, database_peer=peer, database_peer_check=peer_check)
+        class Runtime:
+            def __init__(inner, directory, box, guard, workloads, prefix, **kwargs):
+                self.assertEqual(workloads, {})
+                self.assertEqual(prefix, ['kubectl'])
+                self.assertIs(kwargs['audit_binding'], binding)
+                self.assertIs(kwargs['database_peer'], peer)
+                self.assertIs(kwargs['database_peer_check'], peer_check)
+                events.append('runtime'); inner.broker = broker
+            def close(inner):events.append('close')
+        def runner(attempt, suite, target, **kwargs):
+            self.assertEqual(set(target), {'base_url'})
+            self.assertIs(kwargs['fault_broker'], broker)
+            events.append('grade')
+            return {'criteria': {'AC-018': {'verdict':'pass'}}, 'project_success':False, 'accepted_packages':[]}
+        with Attempt(self.root/'audit', {}) as attempt:
+            report = self.run_grade(attempt, runner=runner, fault_audit=resolve, fault_runtime_factory=Runtime)
+        self.assertEqual(events, ['resolve','runtime','grade','close'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertFalse(report['project_success'])
+
+    def test_failed_bootstrap_does_not_resolve_audit_credentials(self):
+        def unexpected(*args):self.fail('Resolver ran before successful bootstrap')
+        with Attempt(self.root/'audit-no-bootstrap', {}) as attempt:
+            report = self.run_grade(attempt, bootstrap='failed', fault_audit=unexpected)
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_audit_resolver_failure_disposes_environment_without_grading(self):
+        def broken(box):raise RuntimeError('private credential diagnostic')
+        def unexpected(*args, **kwargs):self.fail('Unbound database reached grader')
+        with Attempt(self.root/'audit-broken', {}) as attempt:
+            report = self.run_grade(attempt, fault_audit=broken, runner=unexpected)
+        self.assertEqual(report['error_type'], 'RuntimeError')
+        self.assertNotIn('private credential diagnostic', str(report))
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_incomplete_audit_resolution_never_constructs_runtime(self):
+        def unexpected(*args, **kwargs):self.fail('Incomplete mapping reached runtime')
+        for index, value in enumerate((None, {}, {'unexpected':True},
+                {'audit_binding':None,'database_peer':{},'database_peer_check':lambda _:None})):
+            with self.subTest(value=value), Attempt(self.root/('audit-missing-'+str(index)), {}) as attempt:
+                # Each run needs a fresh copied project directory.
+                if (self.root/'project').exists():
+                    import shutil
+                    shutil.rmtree(self.root/'project')
+                report = self.run_grade(attempt, fault_audit=lambda box:value, fault_runtime_factory=unexpected)
+                self.assertEqual(report['error_type'], 'ValueError')
+                self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_static_audit_configuration_rejected_before_sandbox_creation(self):
+        count = len(FakeSandbox.instances)
+        with Attempt(self.root/'audit-static', {}) as attempt, self.assertRaises(ValueError):
+            self.run_grade(attempt, fault_audit={})
+        self.assertEqual(len(FakeSandbox.instances), count)

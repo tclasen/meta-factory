@@ -40,7 +40,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   port, bootstrap_seconds=1800, grading_seconds=5400, development=False,
                   sandbox_factory=Sandbox, guard_factory=Guard, command_runner=collect,
                   suite_runner=run_suite, fault_workloads=None, kubectl_prefix=None,
-                  fault_runtime_factory=FaultRuntime, fault_service_probes=None):
+                  fault_runtime_factory=FaultRuntime, fault_service_probes=None,
+                  fault_audit=None):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -50,6 +51,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     """
     positive(bootstrap_seconds, 'bootstrap timeout')
     positive(grading_seconds, 'grading timeout')
+    if fault_audit is not None and not callable(fault_audit):
+        raise ValueError('Audit configuration requires a trusted post-bootstrap resolver')
     grading_started = time.monotonic()
     grading_wall_started = time.time()
     lifetime = grading_seconds + 120
@@ -95,16 +98,27 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         if remaining <= 0:
             raise TimeoutError('Grading budget consumed by deployment')
         options = {}
-        if fault_workloads is not None:
+        if fault_workloads is not None or fault_audit is not None:
             # Fresh workload UIDs exist only after bootstrap. An operator-owned
             # resolver may inspect the live deployment here; never use app output
             # as executable configuration or as an authoritative role mapping.
             selected_workloads = fault_workloads(box) if callable(fault_workloads) else fault_workloads
+            if selected_workloads is None:
+                selected_workloads = {}
             service_probes = fault_service_probes(box) if callable(fault_service_probes) else fault_service_probes
+            audit_options = {} if fault_audit is None else fault_audit(box)
+            if (not isinstance(audit_options, dict)
+                    or fault_audit is not None and set(audit_options) != {
+                        'audit_binding', 'database_peer', 'database_peer_check'}):
+                raise ValueError('Incomplete post-bootstrap audit configuration')
+            if fault_audit is not None and audit_options['audit_binding'] is None:
+                raise ValueError('Post-bootstrap audit binding unavailable')
+            prefix = ['kubectl'] if kubectl_prefix is None and fault_workloads is None else kubectl_prefix
             fault_runtime = fault_runtime_factory(attempt.directory / 'faults', box, guard,
-                selected_workloads, kubectl_prefix,
+                selected_workloads, prefix,
                 monotonic_deadline=grading_started + grading_seconds,
-                wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes)
+                wall_deadline=grading_wall_started + grading_seconds, service_probes=service_probes,
+                **audit_options)
             options['fault_broker'] = fault_runtime.broker
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:
