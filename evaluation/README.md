@@ -752,3 +752,10 @@ file-sharing/transport, or application acceptance. Those remain preflight work.
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_binding.py -v
 uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
 ```
+
+The fault broker projects `workload_suspended_verified: true` only after the
+runtime has verified the selected workload's unchanged UID and convergence to
+zero replicas. This receipt is distinct from `service_outage_verified`: suspension
+alone does not prove a particular network/service failure. Workload identities,
+Pod details and command data remain private to the parent. Worker queue/restart
+oracles must require this receipt before relying on a stopped-worker precondition.

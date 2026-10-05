@@ -101,6 +101,8 @@ class FaultBroker:
                                 verified = (isinstance(observations, dict)
                                             and observations.get('service_outage_verified') is True)
                                 projected = {'service_outage_verified': verified}
+                                if isinstance(observations, dict) and 'workload_suspended_verified' in observations:
+                                    projected['workload_suspended_verified'] = observations['workload_suspended_verified'] is True
                                 if isinstance(observations, dict) and 'audit_insert_failure_verified' in observations:
                                     projected['audit_insert_failure_verified'] = observations['audit_insert_failure_verified'] is True
                                 send(stream, {'status': 'suspended', 'observations': projected})

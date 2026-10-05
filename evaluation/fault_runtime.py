@@ -122,7 +122,8 @@ class FaultRuntime:
                                         name=resource['name'], operation=checked_operation):
                     if role in self.service_probes:
                         verify_service('outage', 'unavailable')
-                    yield {'service_outage_verified': role in self.service_probes}
+                    yield {'service_outage_verified': role in self.service_probes,
+                           'workload_suspended_verified': True}
                 if role in self.service_probes:
                     verify_service('recovery', 'available')
                 result['outcome'] = 'fault_restored'

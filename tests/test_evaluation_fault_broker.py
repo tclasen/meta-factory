@@ -131,3 +131,15 @@ class BrokerTest(unittest.TestCase):
                     self.assertEqual(observations, {'service_outage_verified': False,
                         'audit_insert_failure_verified': supplied is True})
                 self.assertFalse(broker.aborted)
+
+    def test_workload_receipt_requires_literal_true_and_excludes_identity_details(self):
+        for supplied in (True, False, 'true', 1, None):
+            @contextmanager
+            def factory(role):
+                yield {'workload_suspended_verified': supplied, 'uid': 'private-identity',
+                       'pods': ['private-pod'], 'command': ['must-not-cross-broker']}
+            with self.subTest(supplied=supplied), FaultBroker(['worker'], factory) as broker:
+                with remote_fault(broker.configuration, 'worker') as observations:
+                    self.assertEqual(observations, {'service_outage_verified': False,
+                        'workload_suspended_verified': supplied is True})
+                self.assertFalse(broker.aborted)

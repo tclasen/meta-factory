@@ -48,8 +48,10 @@ class FaultRuntimeTest(unittest.TestCase):
 
     def test_scoped_context_uses_separate_evidence_and_restores(self):
         runtime = self.runtime()
-        with remote_fault(runtime.broker.configuration, 'storage'):
+        with remote_fault(runtime.broker.configuration, 'storage') as observations:
             self.assertEqual(self.state['replicas'], 0)
+            self.assertEqual(observations, {'service_outage_verified': False,
+                                            'workload_suspended_verified': True})
         self.assertTrue(runtime.broker.wait_idle(2))
         self.assertEqual(self.state['replicas'], 1)
         self.assertEqual(len(list((self.root / 'faults').glob('fault-*/result.json'))), 1)
