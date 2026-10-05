@@ -40,6 +40,14 @@ class JobDatabaseTest(unittest.TestCase):
         self.assertIn('BEGIN READ ONLY', args[1])
         self.assertIn('100::oid', args[1])
 
+    def test_expired_claim_fingerprint_survives_normalized_projection(self):
+        self.row['active_lease'] = False
+        observation = self.reader(IDENTITY, timeout=15)
+        self.assertEqual(observation['lease_fingerprint'], 'a'*64)
+        self.assertFalse(observation['active_lease'])
+        self.row['lease_fingerprint'] = None
+        self.assertIsNone(self.reader(IDENTITY, timeout=15)['lease_fingerprint'])
+
     def test_both_relations_database_and_roles_must_match(self):
         for field in ('database_name', 'current_user', 'session_user', 'job_relation_oid', 'audit_relation_oid'):
             previous = self.value[field]

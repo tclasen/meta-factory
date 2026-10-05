@@ -51,7 +51,8 @@ def job_read_sql(binding, export_id):
     # The opaque lease material is hashed in PostgreSQL and never returned.
     # Timestamp casts fail closed if the independently mapped representation is
     # unsupported. This is a lease-expiration representation adapter, not discovery.
-    lease = "(NULLIF(lease_owner,'') IS NOT NULL AND NULLIF(lease_token,'') IS NOT NULL AND lease_expires_at::timestamptz > CURRENT_TIMESTAMP)"
+    lease_material = "(NULLIF(lease_owner,'') IS NOT NULL AND NULLIF(lease_token,'') IS NOT NULL)"
+    lease = "(" + lease_material + " AND lease_expires_at::timestamptz > CURRENT_TIMESTAMP)"
     return """BEGIN READ ONLY;
 SET LOCAL statement_timeout = '5s';
 SET LOCAL lock_timeout = '2s';
@@ -77,7 +78,7 @@ SELECT pg_catalog.json_build_object(
     'jobs',COALESCE((SELECT json_agg(observed) FROM observed),'[]'::json));
 COMMIT;
 """ % (jobs, audit, sql_literal(identity_check), selection, jobs, fields['export_id'], sql_literal(export_id),
-       lease, lease, audit, events['target_id'], sql_literal(export_id), events['action'], events['result'],
+       lease, lease_material, audit, events['target_id'], sql_literal(export_id), events['action'], events['result'],
        binding['jobs']['table_oid'], binding['audit']['table_oid'])
 
 

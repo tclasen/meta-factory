@@ -811,6 +811,14 @@ Actual readers and a publication barrier remain unimplemented. No lease-recovery
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_broker.py -v
 ```
 
+The lease fingerprint identifies the retained owner/token pair even when its
+expiry has passed. An inactive lease with the same fingerprint is an expired
+claim, not proof that the application processed its abandonment. `None` means
+no complete owner/token pair remains. Trusted adapters must preserve this
+meaning; expiry alone must not erase the fingerprint. This allows an oracle to
+separate timestamp expiry from explicit claim clearing without disclosing lease
+material. Active lease observations still require a fingerprint.
+
 ### Guarded job observation callbacks
 
 `job_runtime.JobRuntime` brackets durable database reads and independent physical
