@@ -598,9 +598,10 @@ The executor receives `(attempt, suite, case, target, timeout_seconds=...)` and
 must enforce that total budget independently, including preparation and cleanup.
 It owns container isolation, pinned browser provisioning, peer identity checks,
 both relay hops, deadline/parent-death guards and resource cleanup. This callback
-interface does not itself provide those controls; production executor and fresh
-deployment binding remain unfinished. Tests exercise the result boundary using
-synthetic callbacks, not live containment.
+interface does not itself provide those controls; the Docker executor below
+implements them for the tested Linux topology. Fresh deployment binding remains
+unfinished. Boundary tests use synthetic callbacks; separate live executor
+preflights exercise the Docker topology.
 
 Results require the matching `case_id`, a recognized `verdict`, exact true
 `guard_verified` and `cleanup_verified`, and `transport` counters for both
@@ -674,8 +675,51 @@ for three resources, and this reserve must be included within the parent grading
 budget. The caller must also impose an internal container timeout and integrate
 guard checks with browser/peer execution. This process cannot enforce a deadline
 while its host or Docker daemon is unavailable, and does not establish reboot
-containment. Parent executor wiring remains incomplete.
+containment. The Docker executor below connects this lifecycle to `run_suite`.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_guard.py -v
+```
+
+### Guarded Docker browser executor
+
+`browser_runtime.BrowserExecutor` is the `run_suite` callback for the isolated
+worker. Supply an immutable browser image ID, seccomp file/hash, immutable relay
+network ID, numeric peer IP/port, and a trusted bounded `peer_check` callback. No
+image pull/build, host networking, Docker socket mount, or application command is
+performed by this adapter. The operator must provision the pinned browser image
+and resolve the peer from the fresh deployment; that deployment binding remains
+unfinished. Current live evidence is Linux nested Docker with a synthetic app.
+
+Each case snapshots hashed suite files and controller modules into private
+readonly mounts, gives only the browser its synthetic target and protected cases,
+and gives only the trusted relay a fixed TCP destination. Docker creates each
+container without starting it; the parent verifies the immutable ID, ownership,
+image, nonroot user, dropped capabilities, seccomp, no-new-privileges, readonly
+root, resource bounds, private IPC, network and exact mounts before starting code.
+Container logging is disabled; worker evidence is structured and redacted.
+Temporary target inputs are removed in finally. Directory/file permissions permit
+the unprivileged container to read its specific mounts while the containing
+attempt remains private. Mac file-sharing behavior is not yet verified.
+
+The parent checks peer identity and the independent resource guard before
+renewing a two-second relay lease, normally every 250 ms. The relay checks this
+lease before connecting and during delivery; expiration or invalid identity
+closes the transport. This allows up to the lease interval before peer-check
+failure revokes traffic; it is not instantaneous endpoint authentication.
+`peer_check` must bound its own calls and verify the outer grading sandbox guard.
+It is trusted operator code and receives no browser-selected commands.
+
+The executor imposes an internal container timeout and reserves 130 seconds of
+each supplied case budget for watchdog cleanup and join overhead; it refuses
+to start with 135 seconds or less. That reserve stays inside the caller's budget,
+not an extension of the proposed 90-minute grading ceiling. A completed browser
+worker must also have a clean upstream relay shutdown, live peer/guard checks,
+error-free counters from both hops and verified resource cleanup. Setup failures,
+worker timeout or lost peer checks cannot pass; uncertainty aborts following
+cases through the browser result boundary. The protected suite remains
+unapproved and browser journey registration is still incomplete.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_runtime.py -v
 ```

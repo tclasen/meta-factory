@@ -151,7 +151,7 @@ class RelayTest(unittest.TestCase):
         started = time.monotonic()
         try:
             self.assertEqual(self.request(relay, path='/slow')[0], 502)
-        except (http.client.RemoteDisconnected, ConnectionResetError):
+        except (http.client.RemoteDisconnected, http.client.IncompleteRead, ConnectionResetError):
             pass
         self.assertLess(time.monotonic() - started, 1)
         with socket.create_connection(('127.0.0.1', relay.server_port), timeout=1) as connection:

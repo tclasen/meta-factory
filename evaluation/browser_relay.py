@@ -1,0 +1,65 @@
+"""Trusted Unix-to-TCP relay, gated by the parent's short-lived peer lease."""
+
+import argparse
+import json
+from pathlib import Path
+import threading
+import time
+
+from .evidence import atomic_json
+from .http_relay import RelayServer
+
+
+def serve(config, lease_directory, output):
+    lease_directory, output = Path(lease_directory), Path(output)
+    server = thread = None
+    result = {'closed': False, 'transport': {}}
+    def check():
+        lease = json.loads((lease_directory / 'lease.json').read_text())
+        now = time.time()
+        if (lease.get('nonce') != config['nonce'] or not now < lease['expires_at'] <= now + 5
+                or now >= config['wall_deadline']):
+            raise RuntimeError('Browser peer lease unavailable')
+    try:
+        check()
+        server = RelayServer('/channel/app.sock', config['upstream'], config['authority'], check=check,
+                             request_seconds=min(30, max(.01, config['wall_deadline'] - time.time())))
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': .05}, daemon=True)
+        thread.start()
+        atomic_json(output / 'ready.json', {'nonce': config['nonce']})
+        while True:
+            check()
+            stop = lease_directory / 'stop.json'
+            if stop.exists():
+                if json.loads(stop.read_text()).get('nonce') != config['nonce']:
+                    raise RuntimeError('Invalid relay stop identity')
+                break
+            time.sleep(.05)
+    except Exception:
+        result['reason'] = 'relay_incomplete'
+    finally:
+        if server is not None:
+            try:
+                if thread is not None and thread.is_alive():
+                    server.shutdown()
+                    thread.join(2)
+                server.server_close()
+                result['closed'] = not (thread and thread.is_alive()) and 'reason' not in result
+            except Exception:
+                result['reason'] = 'relay_cleanup_incomplete'
+            result['transport'] = server.observation()
+        atomic_json(output / 'result.json', result)
+    return 0 if result['closed'] else 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', required=True)
+    parser.add_argument('--lease', required=True)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args()
+    return serve(json.loads(Path(args.config).read_text()), args.lease, args.output)
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
