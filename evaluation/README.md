@@ -528,3 +528,21 @@ failure cannot establish a passing audit criterion. The reader supplies
 observations only: the caller must establish the actual application/table/role
 binding and compare events with independently observed HTTP actions. It does not
 prove runtime append-only privileges, inspect general logs, or grant acceptance.
+
+`AuditBroker` provides a separate private Unix-socket capability for these
+read-only observations. `read_audit(configuration, correlations, forbidden_values)`
+can submit bounded request UUIDs and known text controls, never SQL, relation
+names, connection aliases or commands. The parent supplies a guarded, bounded
+reader callback and verifies its database/table identity before returning data.
+The broker strips connection metadata and extra callback fields; only bounded
+audit fields, redaction flags and the truncation flag reach the worker.
+
+The socket is owner-only inside a private directory and requires a random token.
+Messages are capped at 64 KiB; duplicate JSON keys, invalid UUIDs, oversized text
+controls and exhausted request budgets are refused. Callback exceptions return
+only an inconclusive status; requests, canaries and exception text are not logged.
+Revocation suppresses in-flight replies, and unfinished callback cleanup raises
+an explicit observation error. Callbacks must enforce their own execution bounds
+and sandbox/peer lifetime checks: a socket timeout does not terminate a remote
+database command. Grader injection and live application binding remain separate
+integration steps; this capability alone grants no audit acceptance.
