@@ -1,4 +1,4 @@
-"""Bounded private streaming checks for known APP-007/AC-025 secret canaries.
+"""Bounded private streaming checks for known APP-007/AC-018 secret canaries.
 
 Inputs stay operator-side. Receipts contain no raw chunks, values or matched
 representations. Log/source coverage and transport identity are separate trusted

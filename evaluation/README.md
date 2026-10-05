@@ -1131,7 +1131,7 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_password
 ### Private known-canary scanning
 
 `secret_scan.scan_secret_chunks` inspects one private byte stream for operator-known
-canaries (APP-007; AC-025). It detects literal UTF-8 and selected JSON, URL, HTML,
+canaries (APP-007; AC-018). It detects literal UTF-8 and selected JSON, URL, HTML,
 base64 and hexadecimal representations, including matches split across chunks.
 Keep each source separate. It returns only a presence flag, completeness flag,
 byte count and fixed outcome code; neither chunks nor matched values are logged.
