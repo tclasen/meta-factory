@@ -1188,3 +1188,36 @@ Run its focused lifecycle checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_log_transport.py -v
 ```
+
+
+### Sanitized parent security observations
+
+`security_broker.SecurityBroker` provides two fixed read-only parent operations:
+`password_storage` (APP-002; AC-004) and `log_canaries` (APP-007; AC-018). Its trusted
+`reader(operation, canaries)` must independently bind the actual inspection scope,
+verify the active guard/deadlines and use bounded private readers. Password
+requests accept no account/profile selection. Log requests accept only bounded
+known canary strings; they cannot select Pods, history, paths or commands.
+Requests, callback exceptions and raw callback extras are discarded.
+
+The response contains only `verdict`, an enumerated `reason` and a finite integer
+`observations_checked`. Pass requires `verified` and at least two password-account
+observations or one log-source observation. Fail requires a fixed applicable
+reason (`plaintext`, `forbidden_algorithm`, `wrong_defaults`, `reused_salt`,
+`password_mismatch` or `canary_present`); incompleteness uses `unavailable`.
+These fields are a protocol, not independent evidence of successful inspection.
+The trusted parent must establish actual default/dependency/account bindings and
+log-source inventory/completeness before emitting a pass. Missing bindings,
+unsupported layouts or collection failures remain inconclusive. Raw credential
+rows/hashes/logs must never enter the response or evidence serializers.
+
+`read_security` validates exact response fields; unknown extra wire fields are
+refused. The authenticated private socket inherits bounded requests/cleanup,
+request budgeting, close revocation and socket removal from the audit channel.
+This broker is not yet wired into deployment, grading or an acceptance case.
+
+Run its focused channel/lifecycle checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_security_broker.py -v
+```
