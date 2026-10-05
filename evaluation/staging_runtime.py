@@ -12,6 +12,7 @@ from .job_runtime import JobRuntime, LEASE_READ_RESERVE
 from .job_broker import export_identity, project_lease
 from .staging_broker import StagingBroker, WORKER_RECEIPT, STORAGE_RECEIPT, RESTART_RECEIPT, restart_window
 from .workload_probe import converged
+from .running_clock import RunningClock
 
 
 class StagingRuntime:
@@ -72,6 +73,8 @@ class StagingRuntime:
             valid = (report.get('outcome')=='workload_observed' and type(expected) is int
                      and (replicas is not None or expected>0) and converged(observed,resource['uid'],expected,convergence=convergence))
         except (KeyError,ValueError,TypeError): valid=False
+        held = self.faults.held_workloads.get(role)
+        if held is not None and observed.get('generation') != held.get('generation'):valid = False
         if not valid: raise FaultRestoreError('Staged workload state changed')
         return observed
 
@@ -142,7 +145,7 @@ class StagingHandle:
     def __init__(self,runtime,worker_stack,storage_stack,api_replicas,worker_replicas):
         self.runtime,self.worker_stack,self.storage_stack=runtime,worker_stack,storage_stack
         self.api_replicas,self.worker_replicas=api_replicas,worker_replicas
-        self.handed_off=False;self.restarted=False
+        self.handed_off=False;self.restarted=False;self.running_clock=None;self.running_earliest=None
         self.observations={}
 
     def verify(self):
@@ -179,12 +182,40 @@ class StagingHandle:
             raise FaultSetupError('Staged storage outage unavailable')
         # A released worker may immediately claim queued work. Storage has already
         # been independently proved unavailable, preventing fast publication.
+        self.running_earliest=runtime.faults.monotonic()
         self.worker_stack.close()
         self.handed_off=True
         return self.verify()
 
-    def restart_worker(self, export_id=None):
+    def observe_running(self):
         if not self.handed_off or self.restarted:
+            raise FaultSetupError('Running clock requires an uninterrupted handoff')
+        self.verify()
+        runtime=self.runtime
+        runtime.check(2*COMMAND_ALLOWANCE)
+        def observe(role):
+            with Attempt(runtime.directory/('running-'+uuid.uuid4().hex), {'operation':'running_observation'}) as attempt:
+                attempt.transition('preflight');result={'outcome':'running_observation_incomplete'}
+                try:
+                    value=runtime._observe(attempt,role,convergence='running')
+                    result['outcome']='running_observation_verified'
+                    return value
+                finally:
+                    attempt.transition('failed');attempt.finish(result)
+        if self.running_clock is None:
+            self.running_clock=RunningClock({role:runtime.resources[role] for role in ('api','worker')},
+                observe,lambda:runtime.check(COMMAND_ALLOWANCE),earliest=self.running_earliest,
+                monotonic=runtime.faults.monotonic)
+        try:
+            value=self.running_clock.sample()
+            self.verify()
+            return value
+        except BaseException:
+            self.running_clock.invalidate()
+            raise
+
+    def restart_worker(self, export_id=None):
+        if not self.handed_off or self.restarted or self.running_clock is not None:
             raise FaultSetupError('Staged restart requires a single completed handoff')
         if export_id is not None:
             export_identity(export_id)

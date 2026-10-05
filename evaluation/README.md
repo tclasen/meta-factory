@@ -1080,5 +1080,21 @@ an independently bracketed earliest possible handoff through the final clock rea
 This assumes the reviewed operator envelope excludes external process/container
 pauses. Kubernetes container continuity does not prove internal subprocess identity,
 CPU scheduling or useful queue progress; worker-command semantics need independent
-binding. Retry-start uncertainty is separate from process duration. This primitive
-is not yet attached to staging receipts or granted to protected retry cases.
+binding. Retry-start uncertainty is separate from process duration. The private staging protocol now attaches this primitive to explicit timing
+requests; the protected retry draft still needs its API wrapper and live controls.
+
+`session.observe_running()` is available after verified storage/worker handoff.
+The parent brackets fresh API/worker process observations with current hold checks
+and returns only finite, nonnegative, ordered `minimum`/`maximum` duration bounds.
+Changed hold generations suppress receipts; process continuity or guard loss
+invalidates the clock. The possible-start anchor precedes owned worker restoration;
+verified lower duration begins only after the first complete role observations.
+Unknown container metadata is inconclusive. Client receipts reject extra fields.
+
+Timing and worker restart are mutually exclusive within a staging session, enforced
+by both the client and parent before mutation. Verification/restoration remain
+available in either procedure. Timing requests use existing guarded command reserves
+and immutable deadlines; they do not increase the initial staging reserve or total
+grading limit. Extra observations consume that allowance, so scheduling still needs
+review. No continuous application uptime or APP-009 retry acceptance is claimed
+from protocol/fixture controls alone.

@@ -38,6 +38,18 @@ def verified_restart(value, export_id=None):
     return observation
 
 
+def running_duration(value):
+    if not isinstance(value, dict) or not {'minimum', 'maximum'} <= value.keys():
+        raise ValueError('Running duration unavailable')
+    projected = {key:value[key] for key in ('minimum', 'maximum')}
+    try:
+        if (any(type(number) not in (int, float) or not math.isfinite(number) or number < 0
+                for number in projected.values()) or projected['minimum'] > projected['maximum']):
+            raise ValueError('Invalid running duration')
+    except OverflowError:raise ValueError('Invalid running duration') from None
+    return projected
+
+
 class StagingBroker(FaultBroker):
     """factory() owns the entire staged lifetime, including partial-failure cleanup.
 
@@ -74,7 +86,7 @@ class StagingBroker(FaultBroker):
                             with self.factory() as handle:
                                 send(stream, {'status': 'worker_held',
                                     'observations': verified(handle.observations, WORKER_RECEIPT)})
-                                handed_off = False; restarted = False
+                                handed_off = False; restarted = False; timed = False
                                 while True:
                                     request = receive(stream)
                                     if request == {'operation': 'restore'}: break
@@ -89,7 +101,11 @@ class StagingBroker(FaultBroker):
                                         handed_off = True
                                         observation = verified(handle.handoff(), STORAGE_RECEIPT)
                                         send(stream, {'status': 'storage_held', 'observations': observation})
-                                    elif request['operation'] == 'restart_worker' and handed_off and not restarted:
+                                    elif request['operation'] == 'observe_running' and handed_off and not restarted:
+                                        timed = True
+                                        send(stream, {'status':'running_observed',
+                                            'observations':running_duration(handle.observe_running())})
+                                    elif request['operation'] == 'restart_worker' and handed_off and not restarted and not timed:
                                         restarted = True
                                         export_id = export_identity(request['export_id']) if paused else None
                                         value = handle.restart_worker(export_id) if paused else handle.restart_worker()
@@ -132,7 +148,7 @@ def receipt(response, status, fields, export_id=None):
 class StagingSession:
     def __init__(self, stream, observations):
         self.stream, self.observations = stream, observations
-        self.handed_off = False; self.restarted = False
+        self.handed_off = False; self.restarted = False; self.timed = False
 
     def _action(self, operation, status, fields, export_id=None):
         try:
@@ -154,8 +170,22 @@ class StagingSession:
         self.handed_off = True
         return self._action('handoff', 'storage_held', STORAGE_RECEIPT)
 
-    def restart_worker(self, export_id=None):
+    def observe_running(self):
         if not self.handed_off or self.restarted:
+            raise FaultSetupError('Running observation requires handoff without a restart')
+        self.timed = True
+        try:
+            send(self.stream, {'operation':'observe_running'}); response = receive(self.stream)
+            if (set(response) != {'status', 'observations'} or response['status'] != 'running_observed'
+                    or not isinstance(response['observations'], dict)
+                    or set(response['observations']) != {'minimum', 'maximum'}):
+                raise ValueError('Invalid running receipt')
+            return running_duration(response['observations'])
+        except (OSError, EOFError, ValueError) as error:
+            raise FaultRestoreError('Running duration receipt unavailable') from error
+
+    def restart_worker(self, export_id=None):
+        if not self.handed_off or self.restarted or self.timed:
             raise FaultSetupError('Worker restart requires a single completed staging handoff')
         if export_id is not None:export_identity(export_id)
         self.restarted = True

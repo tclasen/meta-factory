@@ -36,6 +36,9 @@ class StagingBrokerTest(unittest.TestCase):
                 test.events.extend(['storage-held','worker-restored'])
                 if test.fail=='handoff':raise RuntimeError('private-detail')
                 return dict(test.handoff,commands=['private'])
+            def observe_running(self):
+                test.events.append('running-observed')
+                return dict(minimum=5,maximum=8,private='must-not-cross')
             def restart_worker(self):
                 test.events.append('worker-restarted')
                 return dict(test.restart,uid='private')
@@ -203,3 +206,38 @@ class StagingBrokerTest(unittest.TestCase):
         stream=SimpleNamespace(write=lambda value:len(value),flush=lambda:None,readline=lambda limit:data)
         session=StagingSession(stream,self.initial);session.handed_off=True
         with self.assertRaises(FaultRestoreError):session.restart_worker(identity)
+
+    def test_running_receipts_are_scoped_and_exclude_worker_restart(self):
+        with StagingBroker(self.factory) as broker:
+            with remote_staging(broker.configuration) as session:
+                with self.assertRaises(FaultSetupError):session.observe_running()
+                session.handoff()
+                self.assertEqual(session.observe_running(),{'minimum':5,'maximum':8})
+                self.assertEqual(session.observe_running(),{'minimum':5,'maximum':8})
+                with self.assertRaises(FaultSetupError):session.restart_worker()
+            self.assertTrue(broker.wait_idle(2));self.assertFalse(broker.aborted)
+        self.assertNotIn('worker-restarted',self.events)
+        self.assertEqual(self.events[-1],'restore-all')
+
+    def test_parent_refuses_restart_after_timing_even_for_raw_client(self):
+        with StagingBroker(self.factory) as broker:
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as connection:
+                connection.connect(str(broker.path))
+                with connection.makefile('rwb') as stream:
+                    send(stream,dict(token=broker.token,operation='stage'));receive(stream)
+                    send(stream,dict(operation='handoff'));receive(stream)
+                    send(stream,dict(operation='observe_running'));receive(stream)
+                    send(stream,dict(operation='restart_worker'))
+                    self.assertEqual(receive(stream),{'status':'inconclusive'})
+            self.assertTrue(broker.wait_idle(2));self.assertTrue(broker.aborted)
+        self.assertNotIn('worker-restarted',self.events)
+
+    def test_client_rejects_extra_or_invalid_running_bounds(self):
+        from types import SimpleNamespace
+        for observation in ({'minimum':0,'maximum':1,'private':'secret'},
+                            {'minimum':True,'maximum':1},{'minimum':2,'maximum':1},
+                            {'minimum':0,'maximum':float('inf')}):
+            data=json.dumps(dict(status='running_observed',observations=observation)).encode()+b'\n'
+            stream=SimpleNamespace(write=lambda value:len(value),flush=lambda:None,readline=lambda limit:data)
+            session=StagingSession(stream,self.initial);session.handed_off=True
+            with self.assertRaises(FaultRestoreError):session.observe_running()

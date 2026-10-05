@@ -347,3 +347,50 @@ class StagingRuntimeTest(unittest.TestCase):
         with remote_staging(staging.broker.configuration) as session:
             session.handoff();session.restart_worker()
         self.assertFalse(staging.broker.aborted)
+
+    def test_parent_running_clock_uses_fresh_api_worker_process_identities(self):
+        base=self.operation
+        def operation(attempt,transport,**kwargs):
+            report=base(attempt,transport,**kwargs)
+            role=kwargs['name']
+            for pod in report['observation']['workload']['pods']:
+                pod.update(name=role+'-pod',uid=role+'-pod-uid',process_fingerprint='a'*64)
+                if self.states['storage']['replicas']==0:pod['ready']=False
+            return report
+        self.operation=operation
+        staging,_=self.runtime()
+        with remote_staging(staging.broker.configuration) as session:
+            session.handoff()
+            self.assertEqual(session.observe_running(),{'minimum':0,'maximum':0})
+            self.now[:]=[10,10]
+            self.assertEqual(session.observe_running(),{'minimum':10,'maximum':10})
+            with self.assertRaises(FaultSetupError):session.restart_worker()
+        self.assertFalse(staging.broker.aborted)
+
+    def test_missing_continuity_metadata_aborts_timing_and_restores(self):
+        staging,_=self.runtime()
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:
+                session.handoff();session.observe_running()
+        self.assertTrue(staging.broker.wait_idle(2));self.assertTrue(staging.broker.aborted)
+        self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_storage_generation_change_during_timing_suppresses_receipt(self):
+        base=self.operation;changed=[]
+        def operation(attempt,transport,**kwargs):
+            report=base(attempt,transport,**kwargs)
+            role=kwargs['name']
+            for pod in report['observation']['workload']['pods']:
+                pod.update(name=role+'-pod',uid=role+'-pod-uid',process_fingerprint='a'*64)
+            if attempt.directory.name.startswith('running-') and role=='worker' and not changed:
+                self.states['storage']['generation']+=1
+                self.states['storage']['observed_generation']+=1
+                changed.append(True)
+            return report
+        self.operation=operation
+        staging,_=self.runtime()
+        with self.assertRaises(FaultRestoreError):
+            with remote_staging(staging.broker.configuration) as session:
+                session.handoff();session.observe_running()
+        self.assertEqual(changed,[True]);self.assertTrue(staging.broker.wait_idle(2))
+        self.assertTrue(staging.broker.aborted)
