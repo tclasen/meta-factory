@@ -60,9 +60,9 @@ class Suite:
             if len(set(case["criteria"])) != len(case["criteria"]):
                 raise ValueError("Duplicate criterion reference")
             positive(case["timeout_seconds"], "case timeout")
-            for declaration in ("mutates_runtime", "mutates_shared_state"):
+            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit"):
                 if type(case.get(declaration, False)) is not bool:
-                    raise ValueError("Invalid mutation declaration: " + declaration)
+                    raise ValueError("Invalid case capability declaration: " + declaration)
             if case["source"] not in self.manifest["files"] or not re.fullmatch(r"[a-z][a-z0-9_]*", case["function"]):
                 raise ValueError("Unhashed source or invalid function")
         covered = set(self.manifest.get("coverage_complete", []))
@@ -113,7 +113,7 @@ class Suite:
                 "limits": "Unapproved or incomplete suites cannot establish acceptance"}
 
 
-def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None):
+def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -124,6 +124,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
         raise ValueError("Independent human suite approval required")
     target = dict(target)
     target.pop('_fault_control', None)
+    target.pop('_audit_control', None)
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
@@ -136,9 +137,14 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             break
         path = attempt.directory / (case["id"] + "-verdict.json")
         worker_target = target_path
+        capabilities = {}
         if case.get('mutates_runtime', False) and fault_broker is not None:
+            capabilities['_fault_control'] = fault_broker.configuration
+        if case.get('reads_audit', False) and audit_broker is not None:
+            capabilities['_audit_control'] = audit_broker.configuration
+        if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
-            atomic_json(worker_target, dict(target, _fault_control=fault_broker.configuration))
+            atomic_json(worker_target, dict(target, **capabilities))
         argv = [sys.executable, "-m", "evaluation.grade_worker", "--suite", str(suite.root),
                 "--case", case["id"], "--target", str(worker_target), "--result", str(path),
                 "--manifest-sha256", suite.digest]
@@ -157,6 +163,10 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             if not fault_broker.wait_idle() or fault_broker.aborted:
                 results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
                                        'reason': 'fault_control_aborted', 'abort_suite': True}
+        if case.get('reads_audit', False) and audit_broker is not None:
+            if not audit_broker.wait_idle():
+                results[case['id']] = {'case_id': case['id'], 'verdict': 'inconclusive',
+                                       'reason': 'audit_reader_unsettled', 'abort_suite': True}
         attempt.emit("grader", "case.result", results[case["id"]])
         shared_state_uncertain = (case.get("mutates_shared_state", False)
                                   and results[case["id"]]["verdict"] != "pass")

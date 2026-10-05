@@ -113,7 +113,7 @@ class GradingTest(unittest.TestCase):
                 self.assertFalse(report['project_success'])
 
     def test_mutation_declaration_requires_boolean(self):
-        for declaration in ('mutates_runtime', 'mutates_shared_state'):
+        for declaration in ('mutates_runtime', 'mutates_shared_state', 'reads_audit'):
             self.manifest['cases'][0][declaration] = 'false'; self.save()
             with self.assertRaises(ValueError): Suite(self.suite, self.packages)
             del self.manifest['cases'][0][declaration]
@@ -162,3 +162,43 @@ class GradingTest(unittest.TestCase):
         self.assertEqual(events, [('suspend', 'storage'), ('restore', 'storage')])
         self.assertEqual([v['verdict'] for v in report['case_results'].values()], ['pass', 'pass'])
         self.assertFalse(report['aborted'])
+
+    def test_audit_capability_is_injected_only_for_declared_cases(self):
+        from evaluation.audit_broker import AuditBroker
+        self.source.write_text(
+            'from evaluation.audit_broker import read_audit\n'
+            'def first(target):\n'
+            '    value = read_audit(target["_audit_control"], ["00000000-0000-0000-0000-000000000001"])\n'
+            '    assert value == {"events": [], "truncated": False}\n'
+            '    assert "_fault_control" in target\n'
+            'def second(target):\n'
+            '    assert "_audit_control" not in target\n'
+            '    assert "_fault_control" not in target\n')
+        self.manifest['files']['cases.py'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.manifest['cases'] = [dict(id='first', source='cases.py', function='first', criteria=['AC-001'],
+                                       timeout_seconds=2, reads_audit=True, mutates_runtime=True),
+                                  dict(id='second', source='cases.py', function='second', criteria=['AC-002'], timeout_seconds=2)]
+        self.save()
+        @contextmanager
+        def fault(role): yield
+        with AuditBroker(lambda *_: {'events': [], 'truncated': False}) as audit, FaultBroker(['storage'], fault) as faults:
+            with Attempt(self.root / 'audit', {}) as attempt:
+                report = run_suite(attempt, Suite(self.suite, self.packages),
+                    {'_audit_control': {'token': 'forged'}, '_fault_control': {'token': 'forged'}},
+                    deadline_seconds=5, development=True, audit_broker=audit, fault_broker=faults)
+        self.assertEqual([v['verdict'] for v in report['case_results'].values()], ['pass', 'pass'])
+        self.assertEqual(json.loads((self.root / 'audit/grading-target.json').read_text()), {})
+
+    def test_unsettled_audit_reader_aborts_following_cases(self):
+        from types import SimpleNamespace
+        self.manifest['cases'][0]['reads_audit'] = True
+        self.manifest['cases'].append(dict(id='second', source='cases.py', function='good',
+                                          criteria=['AC-002'], timeout_seconds=2))
+        self.save()
+        with Attempt(self.root / 'unsettled-audit', {}) as attempt:
+            report = run_suite(attempt, Suite(self.suite, self.packages), {'value': 1},
+                deadline_seconds=5, development=True,
+                audit_broker=SimpleNamespace(configuration={}, wait_idle=lambda: False))
+        self.assertTrue(report['aborted'])
+        self.assertEqual(report['case_results']['first']['reason'], 'audit_reader_unsettled')
+        self.assertNotIn('second', report['case_results'])
