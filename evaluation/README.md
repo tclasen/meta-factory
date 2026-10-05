@@ -615,3 +615,34 @@ exception text are discarded. No new browser acceptance coverage is declared.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser.py -v
 ```
+
+`evaluation.browser_worker` now provides the container-side journey adapter. It
+checks the manifest and all source hashes before import, dispatches the four
+signatures, and accepts `None` or a dictionary of journey observations (discarded
+from results). Local protected `BrowserFixtureUnavailable` signals are
+inconclusive; `BrowserRestorationError` aborts the suite. Assertion messages,
+observations and exception text are not retained. Browser/context/relay cleanup
+failures cannot pass. Playwright infrastructure errors currently stay inconclusive.
+
+The worker requires a nonroot process, zero effective capabilities, no-new-privileges
+and only the loopback network interface. It starts a fixed loopback-to-Unix relay,
+requires an exact `http://127.0.0.1:PORT` origin, launches Chromium with its sandbox
+enabled and returns that hop's counters. It does not certify container identity,
+readonly mounts, the upstream hop or parent-death containment; those remain the
+parent executor's responsibility. It cannot forcibly bound Playwright or cleanup
+calls, so a separately enforced container lifetime is mandatory.
+
+Container-side invocation (paths are private operator mounts):
+
+```sh
+python3 -m evaluation.browser_worker \
+  --suite /protected --manifest-sha256 "$SUITE_DIGEST" --case content \
+  --target /input/target.json --socket /channel/app.sock \
+  --wall-deadline "$CASE_WALL_DEADLINE" --result /output/worker.json
+```
+
+Focused worker fixtures:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_worker.py -v
+```
