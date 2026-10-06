@@ -2345,3 +2345,40 @@ builder termination; this change does not introduce that executor.
 uv run --locked python -m unittest discover -s tests -p test_evaluation_plan.py -v
 uv run --locked python -m unittest discover -s tests -p test_evaluation_workspace.py -v
 ```
+
+### Binding the inspected plan during grading
+
+`planned_grading.grade_planned_stages(attempt, preparation_attempt, plan, workload,
+suite, configurations, inventory, termination_verified=True,
+monotonic_deadline=..., wall_deadline=..., ...)` hands an owned staged workspace
+to `grade_stages`. It requires the matching successful preparation and subsequent
+reinspection receipts for that exact plan. Configurations are an ordered list of
+`id`, independent `target`, and optional trusted `options`; names, projects,
+case assignments, origin and the shared proposed grading budget come only from
+the inspected plan. Resource, origin, budget and sequence-check overrides refuse.
+
+Before execution and around each stage, the handoff checks the original ordinary
+workspace/builder/specification directory identities and permissions, unchanged
+receipt bytes, current controller/workload/suite identities, independently loaded
+suite approval/cache, complete reviewed specification bytes/permissions, and
+captured inventory on its original directory. Unexpected workspace children
+refuse. Builder files may have changed during building; this check does not run
+or inspect their Git configuration on the operator host. Grader projects may
+appear only at the planned paths and their individual lifetime remains checked
+by the stage owner. Caller data is detached before use; callback objects remain
+trusted operator adapters. The binding receipt records hashes and resource IDs,
+not targets or credentials. Loss after an observed pass makes the sequence
+inconclusive, retains the raw observation and prevents the next deployment.
+
+This handoff does not acquire a builder, independently stop it, establish capture
+provenance, reserve native names, approve an acceptance suite or confer launch
+permission. Its caller must verify builder termination before source capture,
+supply native source/fixture/runtime adapters and enforce outer interruption of
+callbacks and filesystem I/O. The exact-True termination argument records that
+caller obligation; it is not independent termination evidence. Both the binding
+and stage budgets must remain live; no clock reset extends grading. Read-only
+plans remain `planned_not_ready` with launch disabled.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_planned_grading.py -v
+```

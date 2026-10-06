@@ -60,6 +60,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                  grading_seconds=5400, development=False, sandbox_factory=Sandbox,
                  guard_factory=Guard, command_runner=collect, deployment=grade_capture,
                  stop_resource=stop_and_verify,
+                 sequence_check=None,
                  monotonic=time.monotonic, wall=time.time):
     """Operator API only; no model/launch entrypoint or readiness override.
 
@@ -80,6 +81,8 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
     if not all(callable(value) for value in (sandbox_factory, guard_factory, command_runner,
                                               deployment, stop_resource, monotonic, wall)):
         raise ValueError('Trusted grading adapters and clocks required')
+    if sequence_check is not None and not callable(sequence_check):
+        raise ValueError('Trusted sequence identity check required')
     suite.verify()
     frozen = copy.deepcopy(suite)
     expected_suite = suite_identity(frozen)
@@ -143,6 +146,8 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
     if remaining() <= 0:
         raise Inconclusive('Shared grading budget unavailable')
     def common_check():
+        if sequence_check is not None and sequence_check() is not True:
+            raise Inconclusive('Planned grading sequence binding unavailable')
         suite.verify()
         frozen.verify()
         if suite_identity(suite) != expected_suite or suite_identity(frozen) != expected_suite:
