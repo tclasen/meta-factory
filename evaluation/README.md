@@ -2096,3 +2096,32 @@ verify remaining readiness gates and obtain separate launch authorization. The
 plan binds the exact approval bytes it validated and checks the complete controller
 source inventory again before returning, including added or removed files. A plan
 cannot freeze or approve the protected suite.
+
+
+### Reviewed specification preparation
+
+`preparation.prepare_specification(attempt, workload, destination,
+monotonic_deadline=..., wall_deadline=...)` copies only the files identified by the
+operator's `review/WORKLOAD-APPROVAL.json`, stripping their `builder/` prefix.
+The exclusively created destination must be outside the workload, controller and
+evidence paths. Approval and specification bytes are checked before and after
+copying; operator review records and protected holdouts are excluded. Files are
+written without execution permission and with mode `0444`. After verification,
+directories use `0555` so a different sandbox UID can traverse the specification
+without write access. Copying starts with private directories; verified bytes
+are made traversable before the final receipt is settled. Future readonly mount
+isolation still requires the sandbox adapter and separate verification.
+
+Preparation rejects unreviewed/missing/changed files, duplicate approval keys,
+path traversal, symlinks, hardlinks and special files. Defaults bound the reviewed
+copy to 64 MiB and 256 files, with a separate 64-KiB approval-record bound. It
+checks both deadlines around regular-file reads and writes. Filesystem I/O itself
+cannot be interrupted by these checks; an outer owner must enforce its overall
+preparation interval and revalidate before mounting or launching.
+
+Each attempt may prepare its specification only once. The private
+`specification-preparation.json` receipt records observed copied files/bytes and
+sanitized failure type. Existing destinations are never overwritten or claimed;
+owned incomplete copies are retained with their exact path for inspection. No
+application/specification code executes, no sandbox is created, and no source
+copy receipt grants suite approval, readiness or launch authorization.
