@@ -89,29 +89,38 @@ class PrivateCRIEventReceiver:
     the connection transfers to this receiver after static input validation; the
     caller must keep no aliases and must not use it thereafter. Duplicate opens of the same entry/
     inode are acknowledged without inventing another generation. Any reused
-    inode, replacement generation, malformed/overflow/lost packet, peer loss,
+    inode, unapproved replacement generation, malformed/overflow/lost packet, peer loss,
     EOF, guard/limit or staging failure closes this receiver and staging together.
     Prior bound positives survive; unbound data is discarded. Native helper must
     report queue overflow by closing/refusing its stream, never silently resume.
+
+    Replacements refuse by default. An optional trusted successor_check receives
+    the event proof plus independently checked old/new boundary proof. It must
+    authenticate order and the final old boundary separately from this open
+    packet; FAN_OPEN/EOF alone cannot establish either or writer completion.
+    Each successor is separately staged; old identities can never be reused.
 
     No bytes/path/peer IDs appear in public receipts. poll is nonblocking; use an
     owned bounded child for /proc/filesystem/guard callbacks. This does not prove
     bootstrap, runtime births, writer closure, API/time fences or owner-death
     containment. Every receipt explicitly retains history_complete=False.
     """
-    def __init__(self, staging, connection, *, peer, node_uid, check, event_check, deadline):
+    def __init__(self, staging, connection, *, peer, node_uid, check, event_check, deadline,
+                 successor_check=None):
         positive(deadline, 'Private event deadline')
         if (not sys.platform.startswith('linux') or type(staging) is not PrivateCRIStaging
                 or not isinstance(connection, socket.socket) or connection.family != socket.AF_UNIX
-                or not callable(check) or not callable(event_check) or deadline > staging._deadline):
+                or not callable(check) or not callable(event_check) or deadline > staging._deadline
+                or successor_check is not None and not callable(successor_check)):
             raise ValueError('Private event receiver inputs required')
         staging._owned()
         _file_identity(dict(node_uid=node_uid, device=0, inode=1))
         self._staging, self._peer, self._node = staging, _peer(peer), node_uid
         self._check, self._event_check, self._deadline = check, event_check, deadline
+        self._successor_check = successor_check
         self._owner, self._lock = os.getpid(), threading.RLock()
         self._connection, self._seen, self._used = None, {}, set()
-        self._events = self._duplicates = self._polls = 0
+        self._events = self._duplicates = self._polls = self._successors = 0
         self._valid, self._closed, self._cleanup_ok = True, False, True
         try:
             self._connection = connection
@@ -185,8 +194,21 @@ class PrivateCRIEventReceiver:
             key, file_key = _key(entry), _file_identity(identity)
             if key in self._seen:
                 if self._seen[key] != file_key:
-                    raise ValueError('Private event generation replaced')
-                self._duplicates += 1
+                    if (self._successor_check is None or file_key in self._used
+                            or len(self._used) >= MAX_FILES):
+                        raise ValueError('Private event generation replaced')
+                    def boundary_check(boundary, reserve):
+                        self._verify()
+                        result = self._successor_check(dict(event=copy.deepcopy(proof),
+                            boundary=copy.deepcopy(boundary)), reserve)
+                        self._verify()
+                        return result
+                    self._staging.rotate_descriptor(entry, descriptor, node_uid=self._node,
+                        check=boundary_check)
+                    self._seen[key] = file_key; self._used.add(file_key)
+                    self._successors += 1
+                else:
+                    self._duplicates += 1
             else:
                 if file_key in self._used or len(self._used) >= MAX_FILES:
                     raise ValueError('Private event inode reused')
@@ -233,6 +255,7 @@ class PrivateCRIEventReceiver:
         with self._lock:
             return dict(outcome='private_cri_event_receiver', events=self._events,
                         sources=len(self._seen), duplicate_opens=self._duplicates, polls=self._polls,
+                        successors=self._successors,
                         valid=self._valid and not self._closed,
                         descriptors_closed=self._closed and self._cleanup_ok, history_complete=False)
 
