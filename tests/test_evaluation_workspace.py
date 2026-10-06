@@ -9,6 +9,7 @@ import test_evaluation_plan as plan_fixtures
 from evaluation.evidence import Attempt
 from evaluation.plan import build_plan, controller_identities
 from evaluation.preparation import prepare_specification
+from evaluation.sandbox import Sandbox
 from evaluation.workspace import prepare_workspace
 
 
@@ -42,6 +43,17 @@ class WorkspaceTest(unittest.TestCase):
         self.assertEqual(result['model_calls'],0)
         self.assertEqual(result['readiness_outcome'],'not_ready')
         self.assertEqual(result,self.receipt())
+
+    def test_prepared_builder_command_matches_inspected_resource_exactly(self):
+        prepared=self.prepare();resource=self.plan['resources']['builder']
+        repository=Path(__file__).resolve().parents[1]
+        with patch('subprocess.Popen',side_effect=AssertionError('No provisioning allowed')):
+            box=Sandbox(self.attempt,prepared['paths']['builder-project'],
+                prepared['paths']['specification'],repository,
+                port=resource['host_port'],planned_name=resource['name'])
+            self.assertEqual(box.create_argv(),resource['create_argv'])
+            self.assertEqual(box.name,resource['name'])
+        self.assertFalse(box.creation_attempted)
 
     def test_acquisition_intent_is_durable_before_directory_creation(self):
         original=Path.mkdir

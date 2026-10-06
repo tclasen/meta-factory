@@ -2156,3 +2156,18 @@ in force. This helper creates no sandbox, reserves no port, executes no code,
 and grants no readiness or launch authority. Dual deadline checks do not interrupt
 filesystem I/O; the outer owner must enforce the overall preparation interval.
 Any later execution must revalidate sources, ownership and all readiness gates.
+
+For that handoff, `Sandbox(..., planned_name=resource['name'])` preserves the
+inspected builder or grader name and therefore its exact create command. Names
+must match the selected role and the controller's UUID namespace. Constructing
+the adapter only renders commands; it grants no readiness or launch authority.
+Before creating a sandbox with an explicit planned name, the adapter requires a
+successful bounded `sbx ls` with a recognized table and no existing row for that
+name. Existing stopped resources also refuse. A failed or ambiguous check cannot
+claim ownership, create a resource record or permit cleanup of that name; neither
+the availability check nor creation may be retried in the attempt.
+
+This availability check is a snapshot, not an atomic name reservation. Native
+validation of the planned-name path and concurrent collision behavior remains
+necessary before using it for execution. Without `planned_name`, the adapter
+continues to allocate a fresh random name as in earlier scoped preflights.

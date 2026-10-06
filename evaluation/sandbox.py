@@ -52,7 +52,7 @@ def sandbox_create_argv(project, specification, *, name, port, role,
 
 class Sandbox:
     def __init__(self, attempt, project, specification, controller, *, port, role="builder",
-                 project_readonly=False, primary_workspace=None):
+                 project_readonly=False, primary_workspace=None, planned_name=None):
         if role not in ("builder", "grader") or isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
             raise ValueError("Invalid sandbox role/port")
         self.project_readonly = bool(project_readonly)
@@ -72,7 +72,12 @@ class Sandbox:
         if any(":" in str(p) for p in mounts):
             raise ValueError("Mount paths cannot contain sbx mode separators")
         self.attempt, self.port, self.role = attempt, port, role
-        self.name = f"factory-eval-{role}-{uuid.uuid4().hex[:16]}"
+        if planned_name is not None and (not isinstance(planned_name, str)
+                or not re.fullmatch('factory-eval-'+role+'-[0-9a-f]{16}', planned_name)):
+            raise ValueError('Invalid inspected sandbox name')
+        self.name = planned_name if planned_name is not None else f"factory-eval-{role}-{uuid.uuid4().hex[:16]}"
+        self.planned_name = planned_name
+        self.creation_checked = False
         self.creation_attempted = False
         self.stopped = False
 
@@ -82,8 +87,22 @@ class Sandbox:
             primary_workspace=self.primary_workspace)
 
     def create(self):
-        if self.creation_attempted:
+        if self.creation_attempted or self.creation_checked:
             raise ValueError("Sandbox creation cannot be retried in this attempt")
+        if self.planned_name is not None:
+            self.creation_checked = True
+            checked = collect(self.attempt, f'{self.role}-name-check', ['sbx', 'ls'],
+                              cwd=self.project, timeout=30)
+            if (checked.get('outcome') != 'passed' or type(checked.get('exit_code')) is not int
+                    or checked['exit_code'] != 0):
+                raise ValueError('Inspected sandbox name availability unverified')
+            rows = (self.attempt.directory / f'{self.role}-name-check/stdout.log').read_text().splitlines()
+            entries = [row.split() for row in rows[1:] if row.split()]
+            if (not rows or rows[0].split()[:3] != ['SANDBOX', 'AGENT', 'STATUS']
+                    or any(len(row) < 3 for row in entries)
+                    or len({row[0] for row in entries}) != len(entries)
+                    or any(row[0] == self.name for row in entries)):
+                raise ValueError('Inspected sandbox name is present or listing is unknown')
         self.creation_attempted = True
         atomic_json(self.attempt.directory / f"{self.role}-resource.json", {
             "name": self.name, "project": str(self.project), "specification": str(self.specification),

@@ -170,3 +170,56 @@ assert changed
             box.stopped = True
             with self.assertRaises(ValueError):
                 box.exec_argv(["true"])
+
+    def test_inspected_name_must_match_role_and_owned_format(self):
+        spec=self.root/'spec';spec.mkdir();control=self.root/'control';control.mkdir()
+        with Attempt(control/'logs',{}) as attempt:
+            for name in ('',True,'unrelated','factory-eval-grader-0123456789abcdef',
+                         'factory-eval-builder-0123456789abcdeF','factory-eval-builder-1234'):
+                with self.subTest(name=name):
+                    with self.assertRaises(ValueError):
+                        Sandbox(attempt,self.project,spec,control,port=18080,planned_name=name)
+
+    def test_absent_inspected_name_checked_before_exact_creation(self):
+        spec=self.root/'spec';spec.mkdir();control=self.root/'control';control.mkdir()
+        name='factory-eval-builder-0123456789abcdef'
+        with Attempt(control/'logs',{}) as attempt:
+            box=Sandbox(attempt,self.project,spec,control,port=18080,planned_name=name)
+            commands=[]
+            def collect(owner,label,argv,**kwargs):
+                commands.append(argv)
+                if argv==['sbx','ls']:
+                    folder=owner.directory/label;folder.mkdir()
+                    (folder/'stdout.log').write_text('SANDBOX AGENT STATUS PORTS WORKSPACE\nunrelated shell stopped - /tmp/other\n')
+                return dict(outcome='passed',exit_code=0)
+            with patch('evaluation.sandbox.collect',side_effect=collect):
+                self.assertEqual(box.create()['outcome'],'passed')
+            self.assertEqual(commands,[['sbx','ls'],box.create_argv()])
+            self.assertTrue(box.creation_attempted)
+            with self.assertRaises(ValueError):box.create()
+
+    def test_present_or_unknown_listing_never_claims_or_stops_named_resource(self):
+        spec=self.root/'spec';spec.mkdir();control=self.root/'control';control.mkdir()
+        name='factory-eval-builder-0123456789abcdef'
+        header='SANDBOX AGENT STATUS PORTS WORKSPACE\n'
+        cases=[('running',header+name+' codex running - /tmp/project\n','passed',0),
+               ('stopped',header+name+' codex stopped - /tmp/project\n','passed',0),
+               ('failed',header,'failed',1),('boolean-exit',header,'passed',False),
+               ('unknown','NAME STATUS\n','passed',0),('malformed',header+'unparsed\n','passed',0),
+               ('duplicate',header+'other shell stopped\nother shell stopped\n','passed',0)]
+        for label,output,outcome,status in cases:
+            with self.subTest(label=label):
+                with Attempt(control/label,{}) as attempt:
+                    box=Sandbox(attempt,self.project,spec,control,port=18080,planned_name=name)
+                    calls=[]
+                    def collect(owner,check,argv,**kwargs):
+                        calls.append(argv);folder=owner.directory/check;folder.mkdir()
+                        (folder/'stdout.log').write_text(output)
+                        return dict(outcome=outcome,exit_code=status)
+                    with patch('evaluation.sandbox.collect',side_effect=collect):
+                        with self.assertRaises(ValueError):box.create()
+                        with self.assertRaises(ValueError):box.create()
+                        with self.assertRaises(ValueError):box.stop()
+                    self.assertEqual(calls,[['sbx','ls']])
+                    self.assertFalse(box.creation_attempted)
+                    self.assertFalse((attempt.directory/'builder-resource.json').exists())
