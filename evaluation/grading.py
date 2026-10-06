@@ -123,8 +123,23 @@ class Suite:
                 "limits": "Unapproved or incomplete suites cannot establish acceptance"}
 
 
+
+def select_cases(suite, case_ids=None):
+    """Select only known operator cases, preserving the hashed registry order."""
+    if case_ids is None:
+        return list(suite.cases)
+    if (not isinstance(case_ids, (list, tuple)) or not case_ids
+            or not all(isinstance(identifier, str) for identifier in case_ids)
+            or len(set(case_ids)) != len(case_ids)
+            or not set(case_ids) <= {case['id'] for case in suite.cases}):
+        raise ValueError('Nonempty unique registered case selection required')
+    selected = set(case_ids)
+    return [case for case in suite.cases if case['id'] in selected]
+
+
 def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None,
-              browser_executor=None, job_broker=None, staging_broker=None, security_broker=None, ops_broker=None):
+              browser_executor=None, job_broker=None, staging_broker=None, security_broker=None, ops_broker=None,
+              case_ids=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -133,6 +148,8 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
     positive(deadline_seconds, "grading deadline")
     if not suite.approved and not development:
         raise ValueError("Independent human suite approval required")
+    suite.verify()
+    selected_cases = select_cases(suite, case_ids)
     target = dict(target)
     target.pop('_fault_control', None)
     target.pop('_audit_control', None)
@@ -145,7 +162,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
     results = {}
     aborted = False
     started = time.monotonic()
-    for case in suite.cases:
+    for case in selected_cases:
         suite.verify()
         remaining = deadline_seconds - (time.monotonic() - started)
         if remaining <= 0:
@@ -247,6 +264,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             break
     report = suite.aggregate(results)
     report["case_results"] = results
+    report["selected_case_ids"] = [case["id"] for case in selected_cases]
     report["aborted"] = aborted
     report["elapsed_seconds"] = time.monotonic() - started
     atomic_json(attempt.directory / "grading.json", report)

@@ -2239,3 +2239,23 @@ entrypoint, protected-suite approval or AC-035 acceptance claim.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_source_binding.py -v
 ```
+
+
+### Operator-selected cases within one protected registry
+
+`run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
+unique subset of the hashed case registry for a separately prepared deployment.
+Unknown IDs or malformed selections refuse before target/worker creation. Cases
+run in registry order; shared-state/runtime abort behavior is preserved. Results
+record `selected_case_ids`. The default runs the entire registry as before.
+
+Selection does not alter the criterion/package denominator or coverage approval.
+The report still aggregates against the full registry, so required skipped cases
+remain untested and prevent acceptance even with an approved suite. An isolated
+multi-deployment owner must separately verify an exact case partition, every
+resource cleanup and the common source/suite/deadline before aggregating all
+observations. This primitive alone supplies no orchestration or launch authority.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_grading.py -v
+```

@@ -79,6 +79,42 @@ class GradingTest(unittest.TestCase):
             report = run_suite(attempt, Suite(self.suite, self.packages), {}, deadline_seconds=5, development=True)
         self.assertEqual(report["criteria"]["AC-001"]["verdict"], "inconclusive")
 
+    def test_selected_cases_cannot_accept_skipped_required_cases(self):
+        self.manifest['cases'].append(dict(id='second', source='cases.py', function='good',
+                                           criteria=['AC-002'], timeout_seconds=2))
+        self.save()
+        suite = Suite(self.suite, self.packages, approval=self.approval())
+        with Attempt(self.root / 'selected', {}) as attempt:
+            report = run_suite(attempt, suite, {'value':1}, deadline_seconds=5, case_ids=['first'])
+        self.assertEqual(set(report['case_results']), {'first'})
+        self.assertEqual(report['selected_case_ids'], ['first'])
+        self.assertEqual(report['criteria']['AC-002']['cases'], ['first', 'second'])
+        self.assertEqual(report['criteria']['AC-002']['verdict'], 'untested')
+        self.assertFalse(report['project_success'])
+        self.assertEqual(report['accepted_packages'], [])
+
+    def test_selection_preserves_registry_order_and_shared_state_abort(self):
+        self.manifest['cases'][0].update(mutates_shared_state=True)
+        self.manifest['cases'].append(dict(id='second', source='cases.py', function='good',
+                                           criteria=['AC-002'], timeout_seconds=2))
+        self.save()
+        with Attempt(self.root / 'selected-abort', {}) as attempt:
+            report = run_suite(attempt, Suite(self.suite, self.packages), {'value':2},
+                               deadline_seconds=5, development=True, case_ids=['second', 'first'])
+        self.assertEqual(report['selected_case_ids'], ['first', 'second'])
+        self.assertEqual(set(report['case_results']), {'first'})
+        self.assertTrue(report['aborted'])
+
+    def test_invalid_selection_refuses_before_target_or_worker_creation(self):
+        suite = Suite(self.suite, self.packages)
+        for index, selection in enumerate(([], ['unknown'], ['first', 'first'], 'first', [1], [{}], {'first'})):
+            with self.subTest(selection=selection), Attempt(self.root / ('selection-' + str(index)), {}) as attempt:
+                with self.assertRaises(ValueError):
+                    run_suite(attempt, suite, {'value':1}, deadline_seconds=5,
+                              development=True, case_ids=selection)
+                self.assertFalse((attempt.directory / 'grading-target.json').exists())
+                self.assertFalse((attempt.directory / 'grade-first').exists())
+
     def test_uncertain_runtime_fault_stops_following_cases(self):
         for mode in ('restore-error', 'timeout', 'exception'):
             source = {'restore-error': 'from evaluation.faults import FaultRestoreError\ndef first(target):\n    raise FaultRestoreError("fixture")\n',
