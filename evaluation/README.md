@@ -151,7 +151,9 @@ uv run --isolated --locked python -m evaluation.recovery --attempt RUN
 ```
 
 Recovery logs to a new `.factory-planning/evaluation-recovery-logs/run-*/` directory.
-It validates exact recorded resource names against original creation events, stops
+Manifest, resource, event and creation-result reads reject symlinks in every
+relative path component using held directory descriptors and bounded regular-file
+reads. It validates exact recorded resource names against original creation events, stops
 only those resources, verifies their stopped/absent status, and preserves original
 evidence. A missing or unavailable daemon cannot establish cleanup. It never resumes
 the builder or restarts a sandbox. This explicit recovery command does not provide

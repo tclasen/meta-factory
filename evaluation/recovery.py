@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 import argparse
 import platform
@@ -16,18 +18,39 @@ from .watchdog import NAME
 def resources(directory):
     """Read only protected controller records; never discover resources by prefix."""
     directory = Path(directory).resolve(strict=True)
-    manifest = json.loads((directory / 'manifest.json').read_text())
+    def read_evidence(path, maximum_bytes):
+        # Walk held directory FDs: checking is_symlink before a later open
+        # would still follow an input replaced between the check and read.
+        descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            parts = path.relative_to(directory).parts
+            for component in parts[:-1]:
+                child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = child
+            child = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                            dir_fd=descriptor)
+            with os.fdopen(child, 'rb') as stream:
+                metadata = os.fstat(stream.fileno())
+                if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > maximum_bytes:
+                    raise ValueError('Invalid or oversized recovery evidence')
+                data = stream.read(maximum_bytes + 1)
+                if len(data) > maximum_bytes:
+                    raise ValueError('Oversized recovery evidence')
+                return data
+        except OSError:
+            raise ValueError('Recovery evidence unavailable or symlinked') from None
+        finally:
+            os.close(descriptor)
+    manifest = json.loads(read_evidence(directory / 'manifest.json', 65536))
     if manifest.get('schema_version') != 1 or not manifest.get('attempt_id'):
         raise ValueError('Source must be a controller attempt directory')
     records = {}
     for path in directory.rglob('*-resource.json'):
         if len(records) >= 100:
             raise ValueError('Recovery resource bound exceeded')
-        if any(part.is_symlink() for part in (path, *path.parents) if directory in part.parents):
-            raise ValueError('Symlink in recovery evidence')
-        if path.stat().st_size > 65536:
-            raise ValueError('Oversized resource record')
-        raw = path.read_bytes()
+        raw = read_evidence(path, 65536)
         record = json.loads(raw)
         name = record.get('name', '')
         if not NAME.fullmatch(name) or record.get('manual_stop') != ['sbx', 'stop', name]:
@@ -36,24 +59,21 @@ def resources(directory):
             raise ValueError('Duplicate recovery resource identity')
         # Require the matching creation command evidence, not merely a name file.
         role = name.split('-')[2]
-        events = path.parent / 'events.jsonl'
-        if events.stat().st_size > 64 * 1024 * 1024:
-            raise ValueError('Oversized creation evidence')
+        events = read_evidence(path.parent / 'events.jsonl', 64 * 1024 * 1024)
         started = False
-        with events.open() as stream:
-            for line in stream:
-                event = json.loads(line)
-                payload = event.get('payload', {})
-                argv = payload.get('argv', [])
-                if (event.get('type') == 'command.start' and payload.get('check') == role + '-create'
-                        and argv[:4] == ['sbx', 'create', '--name', name]):
-                    started = True
+        for line in events.splitlines():
+            event = json.loads(line)
+            payload = event.get('payload', {})
+            argv = payload.get('argv', [])
+            if (event.get('type') == 'command.start' and payload.get('check') == role + '-create'
+                    and argv[:4] == ['sbx', 'create', '--name', name]):
+                started = True
         if not started:
             raise ValueError('Resource has no matching creation attempt')
         creation_result = path.parent / (role + '-create') / 'result.json'
         settled = False
-        if creation_result.is_file() and not creation_result.is_symlink():
-            result = json.loads(creation_result.read_text())
+        if creation_result.exists() or creation_result.is_symlink():
+            result = json.loads(read_evidence(creation_result, 65536))
             settled = (result.get('outcome') in ('passed', 'failed')
                        and type(result.get('exit_code')) is int and bool(result.get('ended')))
         records[name] = {'record': str(path.relative_to(directory)),
