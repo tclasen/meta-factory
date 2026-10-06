@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluation.evidence import Attempt,atomic_json
-from evaluation.preparation import prepare_specification,write_file
+from evaluation.preparation import prepare_specification,read_regular,write_file
 
 
 class PreparationTest(unittest.TestCase):
@@ -145,3 +145,51 @@ class PreparationTest(unittest.TestCase):
             value=prepare_specification(self.attempt,workload,self.destination,monotonic_deadline=100,wall_deadline=100,monotonic=lambda:10,wall=lambda:10)
         self.assertEqual(value['outcome'],'specification_prepared')
         self.assertEqual(set(value['files']),{'APPLICATION.md','public/check.py'})
+
+    def test_parent_link_inserted_between_inventory_and_read_is_refused(self):
+        directory=self.workload/'builder/public'
+        saved=self.workload/'builder/saved-public'
+        external=self.root/'external';external.mkdir()
+        (external/'check.py').write_text('unreviewed external bytes')
+        original=read_regular
+        def replace_parent(path,limit,check):
+            if Path(path)==directory/'check.py' and not directory.is_symlink():
+                directory.rename(saved);directory.symlink_to(external,target_is_directory=True)
+            return original(path,limit,check)
+        try:
+            with patch('evaluation.preparation.read_regular',side_effect=replace_parent):
+                with self.assertRaises(OSError):self.prepare()
+            self.assertFalse(self.destination.exists())
+            self.assertEqual(self.receipt()['outcome'],'specification_preparation_incomplete')
+        finally:
+            directory.unlink();saved.rename(directory)
+
+    def test_held_parent_handle_cannot_be_redirected_before_file_open(self):
+        directory=self.root/'read-parent';directory.mkdir()
+        (directory/'file').write_bytes(b'original held bytes')
+        external=self.root/'external';external.mkdir()
+        (external/'file').write_bytes(b'unreviewed replacement')
+        saved=self.root/'saved-parent';original_open=os.open
+        def replace_after_parent_open(path,flags,*args,**kwargs):
+            descriptor=original_open(path,flags,*args,**kwargs)
+            if path=='read-parent':
+                directory.rename(saved);directory.symlink_to(external,target_is_directory=True)
+            return descriptor
+        with patch('evaluation.preparation.os.open',side_effect=replace_after_parent_open):
+            self.assertEqual(read_regular(directory/'file',1024,lambda:None),b'original held bytes')
+
+    def test_approval_parent_link_replacement_is_refused(self):
+        review=self.workload/'review';saved=self.workload/'saved-review'
+        external=self.root/'external-review';external.mkdir()
+        (external/'WORKLOAD-APPROVAL.json').write_bytes(self.approval.read_bytes())
+        original=read_regular
+        def replace_parent(path,limit,check):
+            if Path(path)==self.approval:
+                review.rename(saved);review.symlink_to(external,target_is_directory=True)
+            return original(path,limit,check)
+        try:
+            with patch('evaluation.preparation.read_regular',side_effect=replace_parent):
+                with self.assertRaises(OSError):self.prepare()
+            self.assertFalse(self.destination.exists())
+        finally:
+            review.unlink();saved.rename(review)

@@ -2115,7 +2115,10 @@ isolation still requires the sandbox adapter and separate verification.
 Preparation rejects unreviewed/missing/changed files, duplicate approval keys,
 path traversal, symlinks, hardlinks and special files. Defaults bound the reviewed
 copy to 64 MiB and 256 files, with a separate 64-KiB approval-record bound. It
-checks both deadlines around regular-file reads and writes. Filesystem I/O itself
+opens approval and specification files through held directory handles, refusing
+symlinks at every parent as well as the final file. Replacing an opened directory
+cannot redirect that read into a different tree.
+It checks both deadlines around regular-file reads and writes. Filesystem I/O itself
 cannot be interrupted by these checks; an outer owner must enforce its overall
 preparation interval and revalidate before mounting or launching.
 

@@ -13,7 +13,21 @@ from .sandbox import disjoint
 
 def read_regular(path, limit, check):
     check()
-    descriptor=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    # Keep each parent open while opening its child. O_NOFOLLOW on only the
+    # final file would still follow a directory replaced with a symlink.
+    absolute=Path(os.path.abspath(path))
+    parent=os.open(absolute.anchor,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        for component in absolute.parts[1:-1]:
+            check()
+            child=os.open(component,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,
+                          dir_fd=parent)
+            os.close(parent);parent=child
+        check()
+        descriptor=os.open(absolute.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,
+                           dir_fd=parent)
+    finally:
+        os.close(parent)
     with os.fdopen(descriptor,'rb') as stream:
         metadata=os.fstat(stream.fileno())
         if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink!=1 or metadata.st_size>limit:
