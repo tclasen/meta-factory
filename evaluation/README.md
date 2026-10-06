@@ -2194,3 +2194,44 @@ This availability check is a snapshot, not an atomic name reservation. Native
 validation of the planned-name path and concurrent collision behavior remains
 necessary before using it for execution. Without `planned_name`, the adapter
 continues to allocate a fresh random name as in earlier scoped preflights.
+
+### Independently selected immutable source checks
+
+`source_binding.SourceBinding(project, expected, lifetime_check=...)` binds a
+nonempty reviewed selection of ordinary files to the original project directory.
+Pass file records from the independent completed capture inventory (`sha256`,
+`size`, `executable`, optional `kind: file`), rather than hashes learned from the
+running application. It copies the selection and bounds it to 4,096 files and
+64 MiB by default. Larger limits require an explicit operator choice.
+
+Its `check(reserve=0)` returns exact `True` only when the owner and supplied
+lifetime check remain valid, selected file hashes/sizes/executable bits match,
+files have no hard links, and the original named root remains present. Held
+parent descriptors and `O_NOFOLLOW` refuse symlink ancestors and selected links;
+before/after descriptor and named-path identities refuse replacement during
+reading. Unavailable, drifting or mismatched source observations are inconclusive.
+No source bytes or credentials are emitted.
+
+An operator fixture loader can compose it with the deployment callback:
+
+```python
+binding = SourceBinding(box.project, reviewed_file_records,
+                        lifetime_check=context['lifetime_check'])
+loaded = load_scale_sample(target, independent_identities,
+    guard_check=binding.check, identity_observer=independent_identity_reader,
+    monotonic_deadline=context['monotonic_deadline'],
+    wall_deadline=context['wall_deadline'])
+binding.check()
+```
+
+Selection review must distinguish immutable source from generated configuration
+such as `ops/fixture-ids.json`. This checks only selected files; it does not detect
+unselected additions or prove an exhaustive source classification, a simultaneous
+filesystem snapshot, runtime images, execution paths or fixture-bypass absence.
+The synchronous reader cannot interrupt hanging filesystem I/O or callbacks;
+the outer grading owner must enforce its deadline. This primitive adds no launch
+entrypoint, protected-suite approval or AC-035 acceptance claim.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_source_binding.py -v
+```
