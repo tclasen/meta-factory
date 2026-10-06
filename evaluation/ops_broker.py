@@ -55,9 +55,13 @@ class OpsBroker:
     no shell, path, SQL, snapshot, fixture-edit or arbitrary-operation interface.
     The outer deployment must close this capability and dispose its resources.
     """
-    def __init__(self, execute, *, request_seconds=5, cleanup_seconds=45):
+    def __init__(self, execute, *, request_seconds=5, cleanup_seconds=45, bind_case=None, settle_check=None):
         if (not callable(execute) or any(type(v) not in (int,float) or not math.isfinite(v) or v<=0 for v in (request_seconds,cleanup_seconds))
                 or request_seconds>30 or cleanup_seconds>60):raise ValueError('Invalid operations broker configuration')
+        if bind_case is not None and not callable(bind_case):raise ValueError("Invalid case binder")
+        if settle_check is not None and not callable(settle_check):raise ValueError("Invalid settlement check")
+        self.settle_check=settle_check
+        self.bind_case=bind_case;self.bound=False
         self.execute=execute;self.request_seconds=request_seconds;self.cleanup_seconds=cleanup_seconds
         self.owner=os.getpid();self.token=secrets.token_hex(32);self._result=None;self.used=False
         self.directory=Path(tempfile.mkdtemp(prefix='factory-ops-broker-'));os.chmod(self.directory,0o700)
@@ -65,12 +69,25 @@ class OpsBroker:
         self.socket.bind(str(self.path));os.chmod(self.path,0o600);self.socket.listen(1);self.socket.settimeout(.1)
         self.closing=threading.Event();self.idle=threading.Event();self.idle.set();self.connection=None
         self.thread=threading.Thread(target=self._serve,daemon=True);self.thread.start()
+    def bind(self, case_id, *, timeout_seconds):
+        import re
+        if (os.getpid()!=self.owner or self.closing.is_set() or self.used or self.bound
+                or not isinstance(case_id,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,57}',case_id)
+                or type(timeout_seconds) not in (int,float) or not math.isfinite(timeout_seconds) or timeout_seconds<=0):
+            raise ValueError('Operations case binding unavailable')
+        self.bound=True
+        if self.bind_case is not None:self.bind_case(case_id,timeout_seconds=timeout_seconds)
+
     @property
     def configuration(self):
         if os.getpid()!=self.owner or self.closing.is_set():raise ValueError('Operations capability unavailable')
         return dict(socket=str(self.path),token=self.token)
     @property
-    def result(self):return copy.deepcopy(self._result)
+    def result(self):
+        if self._result is not None and self.settle_check is not None:
+            try:self.settle_check()
+            except Exception:self._result=unavailable()
+        return copy.deepcopy(self._result)
     def _serve(self):
         while not self.closing.is_set():
             try:connection,_=self.socket.accept()
@@ -86,7 +103,8 @@ class OpsBroker:
                         if not authenticated:
                             send(stream,dict(status='refused'));continue
                         if (set(request)!={'token','operation'} or request.get('operation')!='repeat-bootstrap'
-                                or self.used or self.closing.is_set() or os.getpid()!=self.owner):
+                                or self.used or self.closing.is_set() or os.getpid()!=self.owner
+                                or self.bind_case is not None and not self.bound):
                             self.used=True;self._result=unavailable();send(stream,dict(status='inconclusive'));continue
                         self.used=True
                         try:

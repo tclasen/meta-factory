@@ -25,7 +25,7 @@ class BrowserBinding:
         for identifier, fixture in self.fixtures.items():
             if (not isinstance(identifier, str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,57}', identifier)
                     or not isinstance(fixture, dict) or any(not isinstance(key, str) for key in fixture)
-                    or {'base_url', '_fault_control', '_audit_control', '_job_control', '_staging_control'} & fixture.keys()):
+                    or {'base_url', '_fault_control', '_audit_control', '_job_control', '_staging_control', '_ops_control'} & fixture.keys()):
                 raise ValueError('Invalid browser fixture binding')
         self.base_url = base_url
         self.sandbox, self.guard = sandbox, guard
@@ -69,6 +69,7 @@ class BrowserBinding:
         selected.pop('_fault_control', None)
         selected.pop('_job_control', None)
         selected.pop('_staging_control', None)
+        selected.pop('_ops_control', None)
         value = self.executor(attempt, suite, case, selected, timeout_seconds=remaining)
         self.check(0)
         return value

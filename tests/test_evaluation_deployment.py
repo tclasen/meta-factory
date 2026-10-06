@@ -711,3 +711,37 @@ class DeploymentTest(unittest.TestCase):
                 result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
         self.assertEqual(result['outcome'],'grading_incomplete')
         self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_operations_bound_after_bootstrap_and_closed_before_guard(self):
+        order=[]
+        class Runtime:
+            broker=object()
+            def __init__(inner,*args,**kwargs):
+                order.append('bound')
+                self.assertEqual(len(self.commands),1)
+            def close(inner):order.append('closed')
+        def resolver(box,**kwargs):
+            self.assertEqual(kwargs['base_url'],'http://127.0.0.1:18080')
+            return dict(observe=lambda:None,verify=lambda:None,expected_case={'id':'independent'},source_check=lambda:True)
+        def runner(*args,**kwargs):
+            self.assertIs(kwargs['ops_broker'],Runtime.broker)
+            order.append('graded')
+            return dict(criteria={},project_success=True,accepted_packages=[])
+        with patch.object(FakeGuard,'release',side_effect=lambda:order.append('released') or {'remote_termination_verified':True}):
+            with Attempt(self.root/'logs',{}) as attempt:
+                self.run_grade(attempt,runner=runner,ops_resolver=resolver,ops_runtime_factory=Runtime)
+        self.assertEqual(order,['bound','graded','closed','released'])
+
+    def test_operations_cleanup_failure_revokes_acceptance_and_still_disposes(self):
+        class Runtime:
+            broker=object()
+            def __init__(self,*args,**kwargs):pass
+            def close(self):raise RuntimeError('private detail')
+        config=dict(observe=lambda:None,verify=lambda:None,expected_case={'id':'x'},source_check=lambda:True)
+        with Attempt(self.root/'logs',{}) as attempt:
+            result=self.run_grade(attempt,ops_resolver=lambda *args,**kwargs:config,ops_runtime_factory=Runtime)
+        self.assertEqual(result['outcome'],'grading_incomplete')
+        self.assertFalse(result['project_success'])
+        self.assertEqual(result['accepted_packages'],[])
+        self.assertEqual(result['ops_cleanup_error'],'RuntimeError')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])

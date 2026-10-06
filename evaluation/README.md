@@ -2043,9 +2043,19 @@ error, never cleanup success. Callbacks must bound their own operations and obey
 the existing watchdog/deadlines; closing a socket cannot interrupt arbitrary
 Python callback execution.
 
-This is a library/grader capability. Binding it into fresh deployment, independent
-real application/database observations, alternate seeding, protected case
-registration and native Mac validation remain implementation obligations.
+`grade_capture(..., ops_resolver=...)` resolves trusted `observe`, `verify`,
+`expected_case` and `source_check` bindings after bootstrap and fixture loading.
+The resolver receives the owned sandbox, guard, fixed HTTP origin and original
+grading deadlines. Only these bindings and an optional timeout are accepted.
+`OpsRuntime` creates separate child evidence for the operation, checks source and
+deployment lifetime, and clips both clocks to the declared case timeout before
+handing the capability to its worker. Expiry or loss of the guard revokes success.
+Deployment closes this runtime before releasing the outer watchdog; cleanup
+failure revokes acceptance while remaining cleanup still runs. Browser fixtures
+cannot inject `_ops_control`, and browser execution strips it from its target.
+
+Independent real application/database observations, alternate seeding, protected
+case registration and native Mac validation remain implementation obligations.
 Neither a callback's presence nor synthetic fixture success grants acceptance.
 
 ```sh

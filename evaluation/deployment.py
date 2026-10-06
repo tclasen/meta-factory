@@ -10,6 +10,7 @@ from .audit_runtime import AuditRuntime
 from .job_runtime import JobRuntime
 from .staging_runtime import StagingRuntime
 from .security_runtime import SecurityRuntime
+from .ops_runtime import OpsRuntime
 from .security_broker import OPERATIONS as SECURITY_OPERATIONS
 from .browser_binding import BrowserBinding
 from .grading import run_suite, sha256
@@ -52,7 +53,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   browser_resolver=None, browser_binding_factory=BrowserBinding,
                   fault_storage_worker_restart=False, job_observer=None,
                   job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime,
-                  security_observer=None, security_runtime_factory=SecurityRuntime, fixture_loader=None):
+                  security_observer=None, security_runtime_factory=SecurityRuntime, fixture_loader=None,
+                  ops_resolver=None, ops_runtime_factory=OpsRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -60,6 +62,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     never grants acceptance and is for synthetic preflights or grader development.
     Factory injection supports deterministic lifecycle/failure tests, not CLI bypasses.
     """
+    if ops_resolver is not None and not callable(ops_resolver):
+        raise ValueError("Operations require a trusted post-bootstrap resolver")
     if fixture_loader is not None and not callable(fixture_loader):
         raise ValueError('Fixture loading requires a trusted post-bootstrap callback')
     if type(job_staging) is not bool:
@@ -108,6 +112,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     audit_runtime = None
     job_runtime = None
     staging_runtime = None
+    ops_runtime = None
     security_runtime = None
     browser_binding = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
@@ -148,6 +153,18 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             if remaining <= 0:
                 raise TimeoutError('Grading budget consumed by fixture preparation')
         options = {}
+        if ops_resolver is not None:
+            ops_options = ops_resolver(box, guard=guard, base_url=target['base_url'],
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            required = {'observe', 'verify', 'expected_case', 'source_check'}
+            if (not isinstance(ops_options, dict) or not required <= set(ops_options)
+                    or not set(ops_options) <= required | {'timeout'}):
+                raise ValueError('Incomplete post-bootstrap operations configuration')
+            ops_runtime = ops_runtime_factory(attempt.directory / 'operations', box, guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds, **ops_options)
+            options['ops_broker'] = ops_runtime.broker
         if fault_workloads is not None or fault_audit is not None:
             # Fresh workload UIDs exist only after bootstrap. An operator-owned
             # resolver may inspect the live deployment here; never use app output
@@ -226,6 +243,12 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     except Exception as error:
         report.update(outcome='grading_incomplete', project_success=False, error_type=type(error).__name__)
     finally:
+        if ops_runtime is not None:
+            try:
+                ops_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], ops_cleanup_error=type(error).__name__)
         if security_runtime is not None:
             try:
                 security_runtime.close()

@@ -166,7 +166,11 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             capabilities['_security_control'] = security_broker.configuration
         ops_available = ops_broker is not None and not ops_broker.used
         if case.get('runs_ops', False) and ops_available:
-            capabilities['_ops_control'] = ops_broker.configuration
+            try:
+                ops_broker.bind(case['id'], timeout_seconds=min(remaining,case['timeout_seconds']))
+                capabilities['_ops_control'] = ops_broker.configuration
+            except Exception:
+                ops_available = False
         if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
             atomic_json(worker_target, dict(target, **capabilities))
