@@ -250,3 +250,70 @@ class LinuxCRIFollower:
             return dict(outcome='private_cri_follower_closed', descriptors_closed=self._cleanup(),
                         polls=self._polls, rotations=self._rotations,
                         bytes_collected=self._bytes, history_complete=False)
+
+
+class LinuxCRIDescriptorFollower(LinuxCRIFollower):
+    """Follow one borrowed, independently attributed read-only regular file FD.
+
+    A trusted node notification receiver supplies the FD and verifies its peer,
+    mount, namespace, node, event/path and generation identity before calling.
+    The caller retains ownership; this follower duplicates it with CLOEXEC and
+    uses pread, leaving the caller's offset untouched. Already unlinked files
+    are allowed. Existing prefix verification, private byte limits and guarded
+    lifetime checks apply. There is no path lookup, directory watch, rotation
+    discovery, writer-close proof or completeness claim. New generations need
+    separate trusted event accounting. Run in an owned bounded child to contain
+    blocked filesystem operations. Closing invalidates retention as usual.
+    """
+    def __init__(self, retention, source, descriptor, *, node_uid, check, deadline):
+        if not sys.platform.startswith('linux'):
+            raise ValueError('Private CRI descriptor requires Linux')
+        import fcntl
+        positive(deadline, 'CRI descriptor deadline')
+        if type(descriptor) is not int or descriptor < 0 or not callable(check):
+            raise ValueError('Private CRI descriptor inputs required')
+        _file_identity(dict(node_uid=node_uid, device=0, inode=1))
+        self._retention, self._source = retention, self._source_binding(source)
+        self._node, self._check, self._deadline = node_uid, check, deadline
+        self._owner, self._lock = os.getpid(), threading.RLock()
+        self._dir_fd = self._notify_fd = self._current = self._pending = None
+        self._polls = self._rotations = self._bytes = 0
+        self._failed = self._closed = False
+        self._cleanup_ok = True
+        owned = None
+        try:
+            self._verify()
+            owned = fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 0)
+            flags = fcntl.fcntl(owned, fcntl.F_GETFL)
+            observed = os.fstat(owned)
+            if (not stat.S_ISREG(observed.st_mode) or flags & os.O_ACCMODE != os.O_RDONLY
+                    or flags & getattr(os, 'O_PATH', 0)):
+                raise ValueError('Private read-only regular CRI descriptor required')
+            identity = dict(node_uid=node_uid, device=observed.st_dev, inode=observed.st_ino)
+            _file_identity(identity)
+            self._current = dict(fd=owned, identity=identity, offset=0, digest=hashlib.sha256())
+            owned = None
+            self._retention.open(self._source, identity)
+            self._verify()
+        except BaseException as error:
+            if owned is not None: os.close(owned)
+            self._cleanup(); self._retention.abandon()
+            if not isinstance(error, Exception): raise
+            raise ValueError('Private CRI descriptor unavailable') from None
+
+    def poll(self):
+        self._owned()
+        with self._lock:
+            try:
+                if self._closed or self._failed or self._polls >= MAX_POLLS:
+                    raise ValueError('Private CRI descriptor unavailable')
+                self._verify(); self._polls += 1
+                self._read_current()
+                self._verify()
+                return dict(outcome='private_cri_descriptor_polled', polls=self._polls,
+                            bytes_collected=self._bytes, history_complete=False)
+            except BaseException as error:
+                self._failed = True
+                self._retention.abandon(); self._cleanup()
+                if not isinstance(error, Exception): raise
+                raise ValueError('Private CRI descriptor collection unavailable') from None

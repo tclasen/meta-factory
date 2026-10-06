@@ -5,7 +5,7 @@ import os
 import threading
 import time
 
-from .cri_follower import LinuxCRIFollower
+from .cri_follower import LinuxCRIFollower, LinuxCRIDescriptorFollower
 from .evidence import positive
 from .log_retention import PrivateCRIRetention, MAX_SOURCES, MAX_FILES, MAX_OPERATIONS, _file_identity
 from .log_transport import source_binding
@@ -28,6 +28,10 @@ def _key(entry):
 
 
 class _ProvisionalFollower(LinuxCRIFollower):
+    _source_binding = staticmethod(provisional_entry)
+
+
+class _ProvisionalDescriptorFollower(LinuxCRIDescriptorFollower):
     _source_binding = staticmethod(provisional_entry)
 
 
@@ -187,6 +191,34 @@ class PrivateCRIStaging:
                 self._cleanup()
                 if not isinstance(error, Exception): raise
                 raise ValueError('Private CRI staging unavailable') from None
+
+    def stage_descriptor(self, entry, descriptor, *, node_uid, check):
+        """Stage a borrowed trusted event FD, even after unlink; no birth proof.
+
+        Receiver must independently authenticate node/peer/event/path/generation.
+        This duplicates the read-only regular FD and leaves caller ownership and
+        offset unchanged. It observes only this inode, without rotation discovery.
+        The same private aggregate caps and independent late-binding checks apply.
+        """
+        self._owned()
+        with self._lock:
+            try:
+                self._verify(); entry = provisional_entry(entry)
+                key = _key(entry)
+                if (entry['namespace'] != self._retention._binding['name'] or key in self._slots
+                        or len(self._slots) >= MAX_SOURCES or not callable(check)):
+                    raise ValueError('Private provisional CRI entry unavailable')
+                _file_identity(dict(node_uid=node_uid, device=0, inode=1))
+                slot = _Slot(self, entry, node_uid); self._slots[key] = slot
+                self._followers[key] = _ProvisionalDescriptorFollower(slot, entry, descriptor,
+                    node_uid=node_uid, check=check, deadline=self._deadline)
+                self._followers[key].poll()
+                self._verify()
+                return self.summary()
+            except BaseException as error:
+                self._cleanup()
+                if not isinstance(error, Exception): raise
+                raise ValueError('Private CRI descriptor staging unavailable') from None
 
     def pending(self):
         """Copied private binding inputs, never public evidence or raw bytes."""
