@@ -15,6 +15,7 @@ from test_evaluation_cri_binding import (ENTRY, FILE, NODE, SOURCE, SECRET,
     pending_history, snapshots)
 from test_evaluation_pod_history import BINDING, pod, event, receipt, history
 from test_evaluation_cri_follower import frame
+from test_evaluation_cri_runtime_event import runtime_event
 
 
 class CRIArchiveTest(unittest.TestCase):
@@ -31,6 +32,44 @@ class CRIArchiveTest(unittest.TestCase):
     def resolve(self, **changes):
         values=dict(entry=ENTRY,file_identity=FILE,check=lambda *args:True)
         values.update(changes);return self.archive.resolve(**values)
+
+    def test_event_metadata_archives_without_runtime_snapshot_requery(self):
+        value=runtime_event()
+        result=self.archive.capture_event(ENTRY,NODE,value,FILE,check=lambda *args:True)
+        self.assertEqual(result['source'],SOURCE)
+        value.clear()
+        with patch('evaluation.cri_archive.bind_cri_log_source',side_effect=AssertionError('no requery')):
+            self.assertEqual(self.resolve()['source'],SOURCE)
+        self.assertNotIn(SECRET,repr(self.archive._records))
+        self.assertFalse(self.archive.summary()['history_complete'])
+
+    def test_deleted_event_never_creates_file_attribution(self):
+        value=runtime_event('CONTAINER_DELETED_EVENT');value['containersStatuses']=[]
+        self.assertIsNone(self.archive.capture_event(ENTRY,NODE,value,FILE,check=lambda *args:True))
+        self.assertIsNone(self.resolve())
+        self.assertEqual(self.archive.summary()['files'],0)
+        self.assertTrue(self.archive.summary()['valid'])
+
+    def test_event_failure_permanently_releases_prior_archive(self):
+        self.capture()
+        value=runtime_event();value['containersStatuses'][0]['logPath']='/foreign/0.log'
+        with self.assertRaises(ValueError):
+            self.archive.capture_event(ENTRY,NODE,value,FILE,check=lambda *args:True)
+        self.assertTrue(self.archive.summary()['metadata_released'])
+        with self.assertRaises(ValueError):self.resolve()
+
+    def test_event_admission_uses_original_runtime_and_held_file_guards(self):
+        for failure in ('runtime','file'):
+            with self.subTest(failure=failure):
+                archive=PrivateCRIRuntimeArchive(pending_history(),node_uid='node-uid',
+                    node_name='node-1',check=lambda reserve:self.allowed,deadline=time.monotonic()+60)
+                if failure=='runtime':self.allowed=False
+                try:
+                    with self.assertRaises(ValueError):
+                        archive.capture_event(ENTRY,NODE,runtime_event(),FILE,check=lambda *args:failure!='file')
+                    self.assertTrue(archive.summary()['metadata_released'])
+                finally:
+                    self.allowed=True;archive.close()
 
     def test_capture_then_deleted_pending_resolves_without_runtime_requery(self):
         before=self.history.summary();snapshot=snapshots();result=self.capture(snapshot=snapshot)

@@ -30,6 +30,22 @@ def bind_cri_event_log_source(history, entry, node, event, file_identity):
     birth/bootstrap/tombstone fence or writer completion is established.
     """
     try:
+        observed = _event_snapshot(event)
+        if observed is None:
+            return None
+        snapshot, event_created = observed
+        result = bind_cri_log_source(history, entry, node, snapshot, file_identity)
+        if result is not None:
+            result.update(metadata_observation='bundled_CRI_event',
+                          event_type=event['containerEventType'], event_created=event_created)
+        return result
+    except Exception:
+        raise ValueError('Private CRI event binding unavailable') from None
+
+
+def _event_snapshot(event):
+    """Normalize private bundled statuses; never synthesize deletion metadata."""
+    try:
         if (not isinstance(event, dict)
                 or len(json.dumps(event, allow_nan=False).encode()) > MAX_INPUT_BYTES
                 or event.get('containerEventType') not in EVENT_TYPES):
@@ -61,10 +77,6 @@ def bind_cri_event_log_source(history, entry, node, event, file_identity):
         snapshot = dict(container=container,
                         container_detail=dict(status=status, info=dict(sandboxID=sandbox_id)),
                         sandbox=sandbox_list, sandbox_detail=dict(status=sandbox))
-        result = bind_cri_log_source(history, entry, node, snapshot, file_identity)
-        if result is not None:
-            result.update(metadata_observation='bundled_CRI_event',
-                          event_type=event['containerEventType'], event_created=event_created)
-        return result
+        return snapshot, event_created
     except Exception:
         raise ValueError('Private CRI event binding unavailable') from None

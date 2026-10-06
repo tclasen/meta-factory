@@ -6,6 +6,7 @@ import time
 
 from .cri_binding import bind_cri_log_source, _created
 from .cri_staging import provisional_entry, _key
+from .cri_runtime_event import _event_snapshot
 from .evidence import positive
 from .log_retention import _file_identity
 from .pod_history import PodIdentityHistory
@@ -149,6 +150,34 @@ class PrivateCRIRuntimeArchive:
                 self._entries[key] = immutable; self._cids[cid] = key
                 self._sandboxes[sid] = pod; self._files[file_key] = key
                 return copy.deepcopy(projection)
+            except BaseException as error:
+                self._discard()
+                if not isinstance(error, Exception): raise
+                raise ValueError('Private CRI runtime archive unavailable') from None
+
+    def capture_event(self, entry, node, event, file_identity, *, check):
+        """Archive one authenticated bundled event through the same file guards.
+
+        The caller independently authenticates the event stream and original
+        runtime/Node/Namespace/held file. No fresh list/inspect RPC is required.
+        Metadata may have disappeared since the event was observed. Deletion
+        yields None and never creates attribution; unknown births stay unresolved.
+        The minimal stored record has the same identity/reuse/lifecycle rules as
+        capture. Event bodies and diagnostics are not retained or made public.
+        """
+        self._owned()
+        with self._lock:
+            try:
+                self._verify()
+                if not callable(check):
+                    raise ValueError('Private CRI archive check required')
+                observed = _event_snapshot(copy.deepcopy(event))
+                if observed is None:
+                    self._operation()
+                    self._verify()
+                    return None
+                snapshot, _ = observed
+                return self.capture(entry, node, snapshot, file_identity, check=check)
             except BaseException as error:
                 self._discard()
                 if not isinstance(error, Exception): raise
