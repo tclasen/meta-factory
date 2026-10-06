@@ -1797,3 +1797,36 @@ external CLI RPC transport or establish healthy grading. Every summary retains
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_rpc.py -v
 ```
+
+
+### Private physical artifact version history
+
+`job_storage.S3VersionListTransport` uses the existing guarded private AWS CLI
+transport with `list-object-versions`, explicit key/version marker pairs and
+`--no-paginate`. It retains the existing timeout/output limits and suppresses raw
+keys, version IDs, command arguments and diagnostics from saved read evidence.
+
+`S3ArtifactHistory(transport, bucket, prefix_for_export, check=...)` enumerates
+retained versions and delete markers for an independently reviewed published
+export prefix. It returns counts of versions, delete markers, distinct keys,
+current objects and current delete markers. Two versions of one key count as two
+physical versions, even though only one current object exists. Unversioned
+`null` version IDs are supported. Ambiguous scope, duplicate identities/latest
+flags, missing latest entries, marker reuse, bad echo/pagination, guard loss,
+deadlines and page limits make the observation incomplete. Default bounds are
+8 pages of at most 1,000 entries within a total 15-second enumeration budget.
+Version transport `page_size` may lower the requested page size (1–1,000);
+continuations remain explicit and the overall page/time limits still apply.
+Scoped key markers may contain provider cache metadata; preserve them verbatim
+and require exact echo, without interpreting the marker as an object key.
+
+Prefix mapping cannot come from application-selected artifact rows. Staging or
+orphan objects outside that reviewed prefix require separate inventory; listing
+is not an atomic DB/storage snapshot or a writer fence. Counts remain private
+oracle inputs with `history_complete=False`. This adds D-049 preparation support
+for AC-024 and REQ-012/015/020, without completing application artifact binding,
+publication/queue races, healthy export or acceptance-suite approval.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_job_storage*.py' -v
+```

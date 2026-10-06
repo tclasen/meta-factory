@@ -54,16 +54,19 @@ class S3ListTransport:
                 or continuation is not None and (not isinstance(continuation,str) or not continuation
                     or '\x00' in continuation or len(continuation.encode())>4096)):
             raise ValueError('Invalid bounded storage request')
+        argv = [*self.prefix,'s3api','list-objects-v2','--bucket',bucket,'--prefix',prefix,
+                '--max-keys','1000','--no-paginate','--output','json','--no-cli-pager',
+                '--cli-connect-timeout','3','--cli-read-timeout','5']
+        if continuation is not None:argv += ['--continuation-token',continuation]
+        return self._read(argv, timeout)
+
+    def _read(self, argv, timeout):
         label = 'storage-' + uuid.uuid4().hex
         directory = self.attempt.directory/label; directory.mkdir(mode=0o700)
         record = dict(started=utc_now(),outcome='incomplete',exit_code=None,stdout_bytes=0,stderr_bytes=0)
         process = None; started = time.monotonic(); output = bytearray(); value = None
         try:
             self.check(timeout+5)
-            argv = [*self.prefix,'s3api','list-objects-v2','--bucket',bucket,'--prefix',prefix,
-                    '--max-keys','1000','--no-paginate','--output','json','--no-cli-pager',
-                    '--cli-connect-timeout','3','--cli-read-timeout','5']
-            if continuation is not None:argv += ['--continuation-token',continuation]
             environment = dict(os.environ, AWS_MAX_ATTEMPTS='1', AWS_PAGER='', AWS_EC2_METADATA_DISABLED='true')
             process = subprocess.Popen(argv,cwd=self.cwd,env=environment,stdin=subprocess.DEVNULL,
                                        stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
@@ -154,3 +157,119 @@ class S3ArtifactCounter:
                 raise JobObservationError('Invalid storage continuation')
             tokens.add(token)
         raise JobObservationError('Artifact enumeration page limit')
+
+
+def _version_marker(value):
+    if (not isinstance(value, (list, tuple)) or len(value) != 2
+            or any(not isinstance(v, str) or not v or '\x00' in v
+                   or len(v.encode()) > 1024 for v in value)):
+        raise ValueError('Invalid private storage version marker')
+    return tuple(value)
+
+
+class S3VersionListTransport(S3ListTransport):
+    """Same private guarded CLI transport, with explicit version pagination."""
+    def __init__(self, *args, page_size=1000, **kwargs):
+        if type(page_size) is not int or not 1 <= page_size <= 1000:
+            raise ValueError('Invalid bounded storage version page size')
+        super().__init__(*args, **kwargs)
+        self.page_size = page_size
+
+    def __call__(self, bucket, prefix, continuation, *, timeout):
+        bucket_name(bucket)
+        positive(timeout, 'storage version read timeout')
+        if (timeout > 15 or not isinstance(prefix, str) or not prefix
+                or '\x00' in prefix or len(prefix.encode()) > 1024):
+            raise ValueError('Invalid bounded storage version request')
+        argv = [*self.prefix, 's3api', 'list-object-versions', '--bucket', bucket,
+                '--prefix', prefix, '--max-keys', str(self.page_size), '--no-paginate',
+                '--output', 'json', '--no-cli-pager', '--cli-connect-timeout', '3',
+                '--cli-read-timeout', '5']
+        if continuation is not None:
+            key, version = _version_marker(continuation)
+            if not key.startswith(prefix):
+                raise ValueError('Storage version marker outside scope')
+            argv += ['--key-marker', key, '--version-id-marker', version]
+        return self._read(argv, timeout)
+
+
+class S3ArtifactHistory(S3ArtifactCounter):
+    """Enumerate retained physical versions and delete markers in reviewed scope.
+
+    Multiple versions of one key are distinct physical artifacts. One current
+    object alone cannot prove unique publication. Returned counts contain no raw
+    keys/version IDs. Scope must independently include all published artifacts;
+    staging/orphans outside that scope need separate inventory. Version listing
+    is not atomic, nor a DB/storage/writer fence or complete-history receipt.
+    """
+    def __call__(self, export_id, *, timeout):
+        export_identity(export_id)
+        positive(timeout, 'artifact history timeout')
+        if timeout > 15:
+            raise ValueError('Artifact history enumeration exceeds bound')
+        prefix = self.scope(export_id)
+        if (not isinstance(prefix, str) or export_id not in prefix or '\x00' in prefix
+                or len(prefix.encode()) > 1024):
+            raise JobObservationError('Independent artifact history scope unavailable')
+        deadline = self.monotonic()+timeout
+        marker, markers, identities, latest, keys = None, set(), set(), {}, set()
+        versions = deletions = 0
+        for _ in range(self.max_pages):
+            remaining = deadline-self.monotonic()
+            if remaining <= 0:
+                raise JobObservationError('Artifact history enumeration deadline')
+            self.check(remaining+5)
+            page = self.transport(self.bucket, prefix, marker, timeout=remaining)
+            self.check(5)
+            if self.monotonic() >= deadline:
+                raise JobObservationError('Artifact history enumeration deadline')
+            if (not isinstance(page, dict) or page.get('Name') != self.bucket
+                    or page.get('Prefix') != prefix
+                    or type(page.get('IsTruncated')) is not bool
+                    or page.get('KeyMarker', '') != (marker[0] if marker else '')
+                    or page.get('VersionIdMarker', '') != (marker[1] if marker else '')
+                    or page.get('CommonPrefixes', []) != []
+                    or not isinstance(page.get('Versions', []), list)
+                    or not isinstance(page.get('DeleteMarkers', []), list)
+                    or len(page.get('Versions', []))+len(page.get('DeleteMarkers', [])) > 1000):
+                raise JobObservationError('Storage version scope or page changed')
+            for field in ('Versions', 'DeleteMarkers'):
+                for item in page.get(field, []):
+                    if not isinstance(item, dict) or type(item.get('IsLatest')) is not bool:
+                        raise JobObservationError('Invalid physical artifact version')
+                    try:
+                        identity = _version_marker((item.get('Key'), item.get('VersionId')))
+                    except ValueError:
+                        raise JobObservationError('Invalid physical artifact version') from None
+                    key, version = identity
+                    if not key.startswith(prefix) or identity in identities:
+                        raise JobObservationError('Ambiguous physical artifact version')
+                    identities.add(identity)
+                    keys.add(key)
+                    if item['IsLatest']:
+                        if key in latest:
+                            raise JobObservationError('Ambiguous current artifact version')
+                        latest[key] = field
+                    if field == 'Versions':
+                        versions += 1
+                    else:
+                        deletions += 1
+            if not page['IsTruncated']:
+                if (page.get('NextKeyMarker') not in (None, '')
+                        or page.get('NextVersionIdMarker') not in (None, '')
+                        or set(latest) != keys):
+                    raise JobObservationError('Incomplete or changed artifact history')
+                return dict(versions=versions, delete_markers=deletions, keys=len(keys),
+                            current_objects=sum(v == 'Versions' for v in latest.values()),
+                            current_delete_markers=sum(v == 'DeleteMarkers' for v in latest.values()),
+                            history_complete=False)
+            try:
+                marker = _version_marker((page.get('NextKeyMarker'), page.get('NextVersionIdMarker')))
+            except ValueError:
+                raise JobObservationError('Invalid storage version continuation') from None
+            # S3-compatible services may append opaque cache metadata to the
+            # key marker. Preserve and echo it, without treating it as a key.
+            if marker in markers or not marker[0].startswith(prefix):
+                raise JobObservationError('Ambiguous storage version continuation')
+            markers.add(marker)
+        raise JobObservationError('Artifact history enumeration page limit')
