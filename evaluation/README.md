@@ -1975,3 +1975,43 @@ production collector integration.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_rpc_collection.py -v
 ```
+
+### Guarded repeated bootstrap
+
+`bootstrap.repeat_bootstrap(attempt, sandbox, guard, observe=..., verify=...,
+expected_case=..., source_check=..., monotonic_deadline=..., wall_deadline=...)`
+is an operator-side execution hook for AC-002 development. It observes independent
+starting state, verifies the starting canary precondition, executes only
+`./ops/bootstrap.sh` through the exact owned grading sbx command, observes again,
+and invokes the protected preservation verifier. It cannot execute an application
+script on the host or redirect to another sandbox/project. The initial bootstrap
+must already have succeeded; the outer deployment owns sandbox cleanup.
+
+The trusted `observe(sandbox, monotonic_deadline=..., wall_deadline=...)` adapter
+must return complete independent observations tied to that deployment. The
+`verify(before, after, expected_case)` callback asserts preservation and returns
+None; it can use the unregistered protected bootstrap semantic helpers. The
+bounded `source_check(reserve)` callback independently verifies captured source
+identity. None of these mappings or provenance checks are inferred from builder
+output. Callback operations must be bounded: Python does not force-stop arbitrary
+callbacks here.
+
+Owner, sandbox/project identity, watchdog lifetime and both deadlines are checked
+before and after source callbacks and after observations/verification. Source
+check time reduces the actual command timeout. Results preserve command outcome
+and exit status, sanitize callback errors, and omit raw observations/canary data.
+Success requires command outcome passed plus an integer zero exit status. A
+post-operation preservation mismatch is fail; missing preconditions/observations,
+deadline, source or owner loss is inconclusive. Command failures also remain
+inconclusive: CLI status alone does not distinguish application execution failure
+from transport failure. A separate trusted remote execution receipt would be
+needed for that distinction.
+A mismatch observed during later guard loss is retained separately as
+`preservation_mismatch_observed`, while the final verdict remains inconclusive.
+Every nonpass sets `abort_suite=True` because the shared deployment may have been
+changed. Callers must honor that signal; this hook does not itself register an
+acceptance case, approve a suite or implement alternate seeding.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_bootstrap.py -v
+```
