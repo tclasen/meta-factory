@@ -1924,6 +1924,24 @@ from their independently specified inputs and verified creation, rather than
 learning expected results from application responses. Their actual integration,
 interruption behavior and dataset verification remain required before acceptance.
 
+### Disposable operations verification
+
+`verify_disposable_operations(...)` checks AC-003 behavior only in an already
+owned disposable post-capture grading copy. A trusted parent callback injects one
+known failing public test and returns a fixed scoped receipt; the controller then
+runs exactly `./ops/test.sh` and requires a nonzero failed command result. It next
+runs exactly `./ops/destroy.sh` twice. Independent before/after observers must
+prove the named project scope is absent and an unrelated canary is unchanged after
+both destroys. A hidden test failure or settled destroy/scope violation is a
+failure; missing setup, observations, source binding, lifetime or command evidence
+is inconclusive.
+
+The primitive does not select an application-specific failure injection or
+resource observer, create the disposable sandbox/canary, interrupt arbitrary
+callbacks, or stop the outer grading sandbox. Those remain parent-owned and must
+be bounded by the supplied monotonic/wall deadlines and watchdog. It must not run
+against the only graded deployment or host resources.
+
 ### Held-FD private RPC relay
 
 `cri_relay.relay_private_rpc(client, runtime, check_client=..., stop=...,
