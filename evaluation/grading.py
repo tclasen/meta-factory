@@ -64,11 +64,13 @@ class Suite:
             if "browser" in case:
                 if not isinstance(case["browser"], str) or case["browser"] not in BROWSER_MODES:
                     raise ValueError("Invalid browser invocation mode")
-                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False) or case.get("stages_jobs", False) or case.get("inspects_security", False):
+                if case.get("mutates_runtime", False) or case.get("reads_audit", False) or case.get("reads_jobs", False) or case.get("stages_jobs", False) or case.get("inspects_security", False) or case.get("runs_ops", False):
                     raise ValueError("Browser cases cannot receive host broker capabilities")
-            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs", "stages_jobs", "inspects_security"):
+            for declaration in ("mutates_runtime", "mutates_shared_state", "reads_audit", "reads_jobs", "stages_jobs", "inspects_security", "runs_ops"):
                 if type(case.get(declaration, False)) is not bool:
                     raise ValueError("Invalid case capability declaration: " + declaration)
+            if case.get('runs_ops', False) and (not case.get('mutates_shared_state', False) or any(case.get(k,False) for k in ('mutates_runtime','reads_audit','reads_jobs','stages_jobs','inspects_security'))):
+                raise ValueError('Operations cases require exclusive shared-state mutation')
             if case.get('stages_jobs', False) and not (case.get('mutates_runtime', False) and case.get('reads_jobs', False)):
                 raise ValueError('Staged jobs require runtime mutation and independent job observations')
             if case["source"] not in self.manifest["files"] or not re.fullmatch(r"[a-z][a-z0-9_]*", case["function"]):
@@ -122,7 +124,7 @@ class Suite:
 
 
 def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fault_broker=None, audit_broker=None,
-              browser_executor=None, job_broker=None, staging_broker=None, security_broker=None):
+              browser_executor=None, job_broker=None, staging_broker=None, security_broker=None, ops_broker=None):
     """Run trusted hashed suite code only; target application remains untrusted.
 
     target is operator-created synthetic endpoint/fixture config, never builder
@@ -137,6 +139,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
     target.pop('_job_control', None)
     target.pop('_staging_control', None)
     target.pop('_security_control', None)
+    target.pop('_ops_control', None)
     target_path = attempt.directory / "grading-target.json"
     atomic_json(target_path, target)
     results = {}
@@ -161,10 +164,15 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             capabilities['_staging_control'] = staging_broker.configuration
         if case.get('inspects_security', False) and security_broker is not None:
             capabilities['_security_control'] = security_broker.configuration
+        ops_available = ops_broker is not None and not ops_broker.used
+        if case.get('runs_ops', False) and ops_available:
+            capabilities['_ops_control'] = ops_broker.configuration
         if capabilities:
             worker_target = attempt.directory / (case['id'] + '-target.json')
             atomic_json(worker_target, dict(target, **capabilities))
-        if case.get('stages_jobs', False) and (staging_broker is None or job_broker is None):
+        if case.get('runs_ops', False) and not ops_available:
+            results[case['id']] = {'case_id':case['id'],'verdict':'inconclusive','reason':'ops_capability_unavailable','abort_suite':True}
+        elif case.get('stages_jobs', False) and (staging_broker is None or job_broker is None):
             results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
                                     'reason':'staging_capability_unavailable', 'abort_suite':True}
             atomic_json(path, results[case['id']])
@@ -211,6 +219,16 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             if not security_broker.wait_idle():
                 results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
                                         'reason':'security_reader_unsettled', 'abort_suite':True}
+        if case.get('runs_ops', False) and ops_available:
+            settled = ops_broker.wait_idle()
+            observed = ops_broker.result if settled else None
+            valid = (isinstance(observed,dict) and set(observed)=={'verdict','abort_suite'}
+                     and observed['verdict'] in VERDICTS-{'untested'} and type(observed['abort_suite']) is bool
+                     and observed['abort_suite']==(observed['verdict']!='pass') and ops_broker.used)
+            if not valid or observed['verdict'] == 'inconclusive':
+                results[case['id']] = {'case_id':case['id'],'verdict':'inconclusive','reason':'ops_control_unsettled','abort_suite':True}
+            elif observed.get('verdict') == 'fail':
+                results[case['id']] = {'case_id':case['id'],'verdict':'fail','reason':'ops_preservation_mismatch','abort_suite':True}
         atomic_json(path, results[case["id"]])
         attempt.emit("grader", "case.result", results[case["id"]])
         shared_state_uncertain = (case.get("mutates_shared_state", False)

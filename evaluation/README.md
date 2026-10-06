@@ -2015,3 +2015,39 @@ acceptance case, approve a suite or implement alternate seeding.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_bootstrap.py -v
 ```
+
+### One-shot protected operations capability
+
+`ops_broker.OpsBroker(execute)` exposes exactly one authenticated
+`repeat-bootstrap` request through an operator-owned private Unix socket. The
+trusted bounded `execute()` closure invokes `bootstrap.repeat_bootstrap` with
+owned sandbox, guard, original deadlines and independently mapped observations.
+Requests cannot supply commands, paths, fixtures, SQL or other operations.
+Unknown authenticated fields/operations and reuse permanently refuse the
+capability. Callback exceptions and inconsistent results become inconclusive;
+only verdict/abort fields cross to the worker, with private extras discarded.
+
+A protected case declares `runs_ops: true` and `mutates_shared_state: true`.
+It cannot combine operations with browser or other host broker capabilities.
+`run_suite(..., ops_broker=broker)` strips caller-supplied `_ops_control`, gives
+only declared cases the capability, and independently settles the parent result.
+Missing/uninvoked/reused/unsettled capabilities are inconclusive and abort.
+Parent preservation failure overrides even a worker pass as fail/abort; parent
+inconclusive overrides it as inconclusive/abort. Final verdict files and events
+are written after that settlement. Ordinary cases never receive the capability.
+
+The worker uses `request_repeat_bootstrap(target['_ops_control'])` and asserts
+its projected result. The outer owner must close the broker and verify sandbox
+cleanup; a broker thread that cannot settle within its cleanup allowance is an
+error, never cleanup success. Callbacks must bound their own operations and obey
+the existing watchdog/deadlines; closing a socket cannot interrupt arbitrary
+Python callback execution.
+
+This is a library/grader capability. Binding it into fresh deployment, independent
+real application/database observations, alternate seeding, protected case
+registration and native Mac validation remain implementation obligations.
+Neither a callback's presence nor synthetic fixture success grants acceptance.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_ops_broker.py -v
+```
