@@ -1712,3 +1712,8 @@ cannot authorize acceptance. D-049 and REQ-012/015/020 boundaries remain in forc
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_binding.py -v
 ```
+
+CRI binding refusals retain a fixed public error message and a `reason` attribute
+with a code-owned category such as `scope_labels`, `sandbox_link`, `log_path`, or
+`api_identity`. Malformed upstream inputs/history map to `input_or_history`. Raw
+runtime/OCI diagnostics and field values never become diagnostic reasons.

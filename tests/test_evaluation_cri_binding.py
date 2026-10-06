@@ -116,6 +116,18 @@ class CRIBindingTest(unittest.TestCase):
                 elif mode=='time-overflow':c['createdAt']=status['createdAt']=str(2**63)
                 with self.assertRaises(ValueError):bind_cri_log_source(pending_history(),ENTRY,NODE,s,FILE)
 
+    def test_refusals_report_fixed_reasons_without_raw_runtime_diagnostics(self):
+        for mode,reason in (('labels','scope_labels'),('path','log_path'),('shape','shape'),('history','input_or_history')):
+            h=pending_history();s=snapshots()
+            if mode=='labels':s['container']['labels']['io.kubernetes.pod.uid']=SECRET
+            if mode=='path':s['container_detail']['status']['logPath']=SECRET
+            if mode=='shape':s['container_detail']['status']=SECRET
+            if mode=='history':h.abandon()
+            with self.assertRaises(ValueError) as raised:bind_cri_log_source(h,ENTRY,NODE,s,FILE)
+            self.assertEqual(raised.exception.reason,reason)
+            self.assertEqual(str(raised.exception),'Private CRI log binding unavailable')
+            self.assertNotIn(SECRET,repr(raised.exception.__dict__))
+
     def test_node_file_bounds_history_ownership_and_private_copies(self):
         for mode in ('node-name','node-uid','node-kind','node-deleted','runtime','file','bounds','history','owner'):
             with self.subTest(mode=mode):
