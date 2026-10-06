@@ -1389,6 +1389,40 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_foll
 ```
 
 
+### Private anchored Pod identity history
+
+`pod_history.PodIdentityHistory(namespace, pods, binding=...)` starts from the
+independently verified Namespace and complete unfiltered PodList. The verified
+list type supplies omitted item TypeMeta; explicit wrong types and untyped watch
+events are refused. Use its
+`begin()` window ID/version, feed every transport callback through `accept()`,
+then `finish(receipt)` with the exact verified window receipt. It retains deleted
+Pod tombstones and every observed immutable container ID/restart index across
+regular, init/sidecar and ephemeral containers. Pending or missing statuses stay
+explicitly pending; a waiting container's cached ID is not a new instance.
+Same-name Pod recreation requires observing deletion and a new UID. Unknown
+events, UID/node/declaration changes, count/identity regressions, failed windows
+and bounds permanently invalidate tracking without silently relisting.
+
+`sources()` returns copied private collector inputs with restart index, role,
+node name and latest `current|previous|historical` availability. Historical/deleted
+sources need independent node/file binding; an availability label does not verify
+a retrieval route. Summaries expose only fixed counts and pending/gap flags;
+Pod annotations, environment and diagnostic text are discarded. Limits are 128
+lifetime Pods, 128 declared containers and 128 immutable container identities,
+with a 16 MiB initial snapshot and 1 MiB per Pod/event. State belongs to the
+original parent PID and shares the watch cursor's exact count/correlation rules.
+
+Every summary has `history_complete=False`. API identity tracking does not collect
+bytes or prove bootstrap/rotation history, namespace log coverage, API/time fences
+or owner-death recovery. Keep these private source inputs outside builder mounts
+and operator evidence; collectors still require independent peer/guard binding.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_pod_history.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
