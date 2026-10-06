@@ -1890,14 +1890,18 @@ owned grading deployment. Fixture preparation consumes the grading budget; it
 does not grant extra time. The watchdog remains active throughout preparation.
 
 The callback may return only dictionary-valued `tenants`, `accounts`,
-`scale_cases`, `performance_fixture`, `twenty_export_fixture`, and `integrated_fixture`
-and `network_fixture` target fields. `integrated_fixture` carries the independently normalized seed
+`scale_cases`, `performance_fixture`, `twenty_export_fixture`, `integrated_fixture`,
+`network_fixture`, and `foundation_fixture` target fields. `integrated_fixture` carries the independently normalized seed
 identities and actor selection for a distinct protected two-tenant API journey;
 its presence does not establish fresh bootstrap, native seeding or suite acceptance.
 `network_fixture` carries independently selected live cluster, workload, service,
 probe, and expected-edge identities for protected NetworkPolicy checks; its
 presence alone does not establish that the identities are complete, the probes
 ran inside the guarded deployment, or the CNI enforced the policy.
+`foundation_fixture` carries independently observed bootstrap outputs such as the
+live cluster and component identities, migration state, private storage, fixture
+identities, and loopback publication. Its presence alone does not establish that
+the observations are complete or bind them to a protected AC-001 case.
 The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with
