@@ -1618,3 +1618,43 @@ and REQ-012/015/020 while keeping those remaining evidence limits explicit.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_staging.py -v
 ```
+
+### Recursive node CRI birth discovery
+
+`cri_birth.LinuxCRIBirthWatch(staging, root, node_uid=..., check=...,
+ deadline=...)` watches a trusted operator-mounted node `/var/log/pods` tree.
+Its Namespace binding comes from the staging manager; its deadline cannot extend
+that manager's original deadline. `check(reserve)` verifies the original Namespace
+UID, node/runtime/owner and both clocks. Watch each directory before scanning it;
+open descendants with `O_NOFOLLOW`. Only the exact Namespace's canonical
+`namespace_pod-name_UUID/container-name/restart-index.log` paths are staged.
+Other namespaces are not traversed. File opens use held directory descriptors:
+the follower opens an independent directory description through `openat('.')`,
+so it neither follows replaced ancestors nor shares the scanner's directory offset.
+The caller retains ownership of a supplied directory descriptor.
+
+`poll()` processes new directories/files and collects staging growth. Existing
+files are explicitly counted as startup observations. Public summaries expose
+fixed counts, a sticky discovery-gap flag and cleanup results; identities and
+bytes remain private. `staging.pending()` supplies private inputs for a separate
+trusted API/runtime/file binder; discovery itself never assigns a container ID.
+Observed missing births, moved/deleted directories, invalid names, symlinks,
+nonregular files, older rotations, overflow, unreadable paths and bounds close all
+watchers/followers and invalidate retention. Previously bound positives remain.
+There is no relist/reset. Limits are 512 directories, 512 entries per directory
+scan, 4,096 events per poll and 4,096 polls, plus staging's existing caps.
+
+Recursive inotify has an unavoidable interval before each new descendant's watch
+is armed: a file can appear and vanish in that interval without an observable file
+event. A valid or empty scan therefore does not prove birth coverage. Every
+summary says `birth_coverage_verified=False` and `history_complete=False`.
+This collects observable early files; independent deployment/bootstrap fences,
+runtime birth accounting, all-node coverage, closed-writer/time fences and
+owner-death cleanup remain necessary before absence can authorize acceptance.
+Run inside an owned bounded child to terminate blocked callbacks/filesystem work.
+Closing discovery also closes its staging manager; collection owners must coordinate
+that all-source shutdown. D-049/REQ-012/015/020 evidence boundaries remain in force.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_birth.py -v
+```

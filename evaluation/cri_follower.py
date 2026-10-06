@@ -59,7 +59,7 @@ class LinuxCRIFollower:
         if not callable(check): raise ValueError('Private CRI lifetime check required')
         _file_identity(dict(node_uid=node_uid, device=0, inode=1))
         self._retention, self._source = retention, self._source_binding(source)
-        self._directory, self._name = Path(directory), active_name
+        self._directory, self._name = directory if type(directory) is int else Path(directory), active_name
         self._node, self._check, self._deadline = node_uid, check, deadline
         self._owner, self._lock = os.getpid(), threading.RLock()
         self._dir_fd = self._notify_fd = None
@@ -70,7 +70,15 @@ class LinuxCRIFollower:
         self._cleanup_ok = True
         try:
             self._verify()
-            self._dir_fd = os.open(self._directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            if type(self._directory) is int:
+                # A dup would share scandir's position with the discoverer.
+                # Open '.' through the held directory for an independent offset.
+                self._dir_fd = os.open('.', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                       dir_fd=self._directory)
+                if not stat.S_ISDIR(os.fstat(self._dir_fd).st_mode):
+                    raise ValueError('Private CRI directory required')
+            else:
+                self._dir_fd = os.open(self._directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
             libc = ctypes.CDLL(None, use_errno=True)
             libc.inotify_init1.argtypes = [ctypes.c_int]; libc.inotify_init1.restype = ctypes.c_int
             libc.inotify_add_watch.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
