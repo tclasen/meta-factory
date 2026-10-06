@@ -1891,9 +1891,13 @@ does not grant extra time. The watchdog remains active throughout preparation.
 
 The callback may return only dictionary-valued `tenants`, `accounts`,
 `scale_cases`, `performance_fixture`, `twenty_export_fixture`, and `integrated_fixture`
-target fields. `integrated_fixture` carries the independently normalized seed
+and `network_fixture` target fields. `integrated_fixture` carries the independently normalized seed
 identities and actor selection for a distinct protected two-tenant API journey;
 its presence does not establish fresh bootstrap, native seeding or suite acceptance.
+`network_fixture` carries independently selected live cluster, workload, service,
+probe, and expected-edge identities for protected NetworkPolicy checks; its
+presence alone does not establish that the identities are complete, the probes
+ran inside the guarded deployment, or the CNI enforced the policy.
 The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with

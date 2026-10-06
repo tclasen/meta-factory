@@ -663,7 +663,9 @@ class DeploymentTest(unittest.TestCase):
         fixture={'accounts':{'analyst':{'username':'independent','password':'synthetic'}},
                  'twenty_export_fixture':{'case':{'title':'independently seeded'},'patterns':{'synthetic-id':'synthetic bytes'}},
                  'integrated_fixture':{'identities':{'users':[{'username':'independent journey actor'}]},
-                                       'actors':{'alpha':{'analyst':'independent actor identity'}}}}
+                                       'actors':{'alpha':{'analyst':'independent actor identity'}}},
+                 'network_fixture':{'cluster':{'uid':'independently observed cluster'},
+                                    'roles':{'api':{'pods':['independent api pod']}}}}
         def loader(box, **context):
             self.assertEqual(len(self.commands),1)
             self.assertIsInstance(context['guard'],FakeGuard)
@@ -683,6 +685,10 @@ class DeploymentTest(unittest.TestCase):
             target['integrated_fixture']['identities']['users'][0]['username']='worker-side change'
             self.assertEqual(fixture['integrated_fixture']['identities']['users'][0]['username'],
                              'independent journey actor')
+            self.assertEqual(target['network_fixture'],fixture['network_fixture'])
+            target['network_fixture']['roles']['api']['pods'].append('worker-side pod')
+            self.assertEqual(fixture['network_fixture']['roles']['api']['pods'],
+                             ['independent api pod'])
             self.assertEqual(target['base_url'],'http://127.0.0.1:18080')
             return {'criteria':{},'project_success':False,'accepted_packages':[]}
         with Attempt(self.root/'fixtures',{}) as attempt:
