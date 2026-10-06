@@ -1882,7 +1882,7 @@ owned grading deployment. Fixture preparation consumes the grading budget; it
 does not grant extra time. The watchdog remains active throughout preparation.
 
 The callback may return only dictionary-valued `tenants`, `accounts`,
-`scale_cases`, and `performance_fixture` target fields. The controller copies
+`scale_cases`, `performance_fixture`, and `twenty_export_fixture` target fields. The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with
 sanitized error types. Credentials are not added to deployment result logs.

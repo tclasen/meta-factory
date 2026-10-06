@@ -143,7 +143,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             fixture = fixture_loader(box, guard=guard, base_url=target['base_url'],
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds)
-            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture'}
+            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture', 'twenty_export_fixture'}
             if (not isinstance(fixture, dict) or not fixture
                     or not set(fixture) <= allowed
                     or not all(isinstance(value, dict) for value in fixture.values())):
