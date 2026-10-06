@@ -671,7 +671,8 @@ class DeploymentTest(unittest.TestCase):
                  'documentation_fixture':{'documents':{'operations':{'sha256':'a'*64}},
                                           'checks':{'bootstrap':{'exit_code':0}}},
                  'attestation_fixture':{'source':{'sha256':'b'*64},
-                                        'runtime':{'cluster_uid':'independent runtime'}}}
+                                        'runtime':{'cluster_uid':'independent runtime'}},
+                 'disposal_fixture':{'verdict':'pass','abort_suite':False}}
         def loader(box, **context):
             self.assertEqual(len(self.commands),1)
             self.assertIsInstance(context['guard'],FakeGuard)
@@ -705,6 +706,9 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(target['attestation_fixture'],fixture['attestation_fixture'])
             target['attestation_fixture']['source']['sha256']='c'*64
             self.assertEqual(fixture['attestation_fixture']['source']['sha256'],'b'*64)
+            self.assertEqual(target['disposal_fixture'],fixture['disposal_fixture'])
+            target['disposal_fixture']['verdict']='fail'
+            self.assertEqual(fixture['disposal_fixture']['verdict'],'pass')
             self.assertEqual(target['base_url'],'http://127.0.0.1:18080')
             return {'criteria':{},'project_success':False,'accepted_packages':[]}
         with Attempt(self.root/'fixtures',{}) as attempt:

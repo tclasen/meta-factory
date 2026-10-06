@@ -1892,7 +1892,8 @@ does not grant extra time. The watchdog remains active throughout preparation.
 The callback may return only dictionary-valued `tenants`, `accounts`,
 `scale_cases`, `performance_fixture`, `twenty_export_fixture`, `integrated_fixture`,
 `network_fixture`, `foundation_fixture`, and `documentation_fixture` target fields.
-The callback may also return dictionary-valued `attestation_fixture`.
+The callback may also return dictionary-valued `attestation_fixture` and
+`disposal_fixture`.
 `integrated_fixture` carries the independently normalized seed
 identities and actor selection for a distinct protected two-tenant API journey;
 its presence does not establish fresh bootstrap, native seeding or suite acceptance.
@@ -1912,6 +1913,9 @@ documentation covers the application or works in a native fresh deployment.
 fixture-path, storage-path and human-intervention observations for protected
 AC-035 checks; it cannot grant runtime capabilities or make an incomplete
 integrated journey acceptable.
+`disposal_fixture` carries only the sanitized result of parent-owned disposable
+operations verification for an AC-003-only fresh stage. Its presence cannot
+authorize commands, identify cleanup targets, or make an unsettled destroy pass.
 The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with
