@@ -1,11 +1,19 @@
 """Reviewable first-test resource plan; no provisioning or experiment execution."""
 from pathlib import Path
 import json
+import hashlib
 import uuid
 
 from .grading import sha256
 from .readiness import audit
 from .sandbox import disjoint, sandbox_create_argv
+
+
+def controller_identities(repository):
+    paths=[path for path in (repository/'evaluation').rglob('*')
+           if path.is_file() and path.suffix in ('.py','.json') and '__pycache__' not in path.parts]
+    paths += [repository/'pyproject.toml',repository/'uv.lock']
+    return {str(path.relative_to(repository)):sha256(path) for path in paths}
 
 
 def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
@@ -21,7 +29,9 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
     parent=Path(workspace_parent).resolve(strict=True);evidence=Path(evidence).resolve(strict=True)
     if not parent.is_dir() or not evidence.is_dir():raise ValueError('Existing operator workspace parent and evidence required')
     approval_path=workload/'review/WORKLOAD-APPROVAL.json'
-    approval=json.loads(approval_path.read_text())
+    approval_bytes=approval_path.read_bytes()
+    approval=json.loads(approval_bytes)
+    approval_digest=hashlib.sha256(approval_bytes).hexdigest()
     if (approval.get('schema_version')!=1
             or approval.get('approval_type')!='workload_and_envelope_review_not_suite_freeze'
             or not {'24-hour builder wall-clock ceiling','8-vCPU and 16-GiB sandbox allocation'} <= set(approval.get('approved_scope',[]))):
@@ -43,13 +53,11 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
             create_argv=sandbox_create_argv(project,paths['specification'],name=name,port=port,role=role),
             manual_stop=['sbx','stop',name],cpus=8,memory_gib=16,host_port=port,
             created=False,termination_verified=False)
-    controller_paths=[path for path in (repository/'evaluation').rglob('*') if path.is_file() and path.suffix in ('.py','.json') and '__pycache__' not in path.parts]
-    controller_paths += [repository/'pyproject.toml',repository/'uv.lock']
-    identities={str(path.relative_to(repository)):sha256(path) for path in controller_paths}
+    identities=controller_identities(repository)
     report=dict(schema_version=1,outcome='planned_not_ready',launch_enabled=False,
         workspace=str(workspace),paths={key:str(value) for key,value in paths.items()},
         resources=resources,evidence=str(evidence),readiness=readiness,
-        source_identities=dict(workload_approval_sha256=sha256(workload/'review/WORKLOAD-APPROVAL.json'),
+        source_identities=dict(workload_approval_sha256=approval_digest,
             workload={str(path.relative_to(workload)):sha256(path) for path in (workload/'builder').rglob('*') if path.is_file()},
             suite_sha256=readiness['details']['suite_sha256'],controller=identities),
         limits=dict(builder_seconds=dict(value=86400,approval='D-048'),
@@ -77,6 +85,6 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
     if (settled['details']!=readiness['details']
             or report['source_identities']['workload']!=approval['workload_sha256']
             or sha256(approval_path)!=report['source_identities']['workload_approval_sha256']
-            or any(sha256(repository/name)!=digest for name,digest in identities.items())):
+            or controller_identities(repository)!=identities):
         raise ValueError('Planning source identities changed during inspection')
     return report

@@ -2092,5 +2092,7 @@ recorded, with outcome `planned_not_ready` and `launch_enabled: false`. It creat
 no workspace, sandbox, port reservation or model call, changes no host policy,
 and has no execute/launch switch. Paths and names are proposals rather than owned
 resources. A future executor must recheck identities, acquire exclusive ownership,
-verify remaining readiness gates and obtain separate launch authorization. A plan
+verify remaining readiness gates and obtain separate launch authorization. The
+plan binds the exact approval bytes it validated and checks the complete controller
+source inventory again before returning, including added or removed files. A plan
 cannot freeze or approve the protected suite.

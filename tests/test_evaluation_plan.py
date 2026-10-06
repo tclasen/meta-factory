@@ -119,3 +119,48 @@ class PlanTest(unittest.TestCase):
         path=self.workload/'review/WORKLOAD-APPROVAL.json'
         value=json.loads(path.read_text());value['approved_scope']=[];atomic_json(path,value)
         with self.assertRaises(ValueError):self.plan()
+
+    def test_approval_change_after_scope_validation_cannot_produce_a_plan(self):
+        from evaluation.readiness import audit
+        path=self.workload/'review/WORKLOAD-APPROVAL.json'
+        changed=False
+        def racing_audit(*args,**kwargs):
+            nonlocal changed
+            if not changed:
+                value=json.loads(path.read_text());value['approved_scope']=[]
+                atomic_json(path,value);changed=True
+            return audit(*args,**kwargs)
+        with patch('evaluation.plan.audit',side_effect=racing_audit):
+            with self.assertRaises(ValueError):self.plan()
+        self.assertEqual(list(self.parent.iterdir()),[])
+
+    def test_new_controller_source_during_inspection_cannot_be_omitted(self):
+        from evaluation.grading import sha256
+        repository=self.root/'controller';(repository/'evaluation').mkdir(parents=True)
+        first=repository/'evaluation/first.py';first.write_text('fixture = 1\n')
+        (repository/'pyproject.toml').write_text('fixture')
+        (repository/'uv.lock').write_text('fixture')
+        changed=False
+        def racing_hash(path):
+            nonlocal changed
+            value=sha256(path)
+            if Path(path)==first and not changed:
+                (repository/'evaluation/new.py').write_text('fixture = 2\n');changed=True
+            return value
+        with patch('evaluation.plan.sha256',side_effect=racing_hash):
+            with self.assertRaises(ValueError):self.plan(repository=repository)
+        self.assertEqual(list(self.parent.iterdir()),[])
+
+    def test_removed_controller_source_during_inspection_cannot_be_retained(self):
+        from evaluation.grading import sha256
+        repository=self.root/'controller';(repository/'evaluation').mkdir(parents=True)
+        first=repository/'evaluation/first.py';first.write_text('fixture = 1\n')
+        (repository/'pyproject.toml').write_text('fixture')
+        (repository/'uv.lock').write_text('fixture')
+        def racing_hash(path):
+            value=sha256(path)
+            if Path(path)==first:first.unlink()
+            return value
+        with patch('evaluation.plan.sha256',side_effect=racing_hash):
+            with self.assertRaises(ValueError):self.plan(repository=repository)
+        self.assertEqual(list(self.parent.iterdir()),[])
