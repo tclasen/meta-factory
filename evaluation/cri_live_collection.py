@@ -33,9 +33,11 @@ class PrivateCRILiveCollection:
     claiming secure erasure. Expected window finish is framing only, not source
     continuity. Transport interruption must call close().
 
-    This supports initial held generations, not rotation/birth/bootstrap/all-node
+    rotate requires independently authenticated replacement FD and boundary/order
+    observations; it does not discover rotations or prove all writers closed.
+    This does not establish rotation/birth/bootstrap/all-node
     coverage, writer/API/time fences, persisted positives or owner-death recovery.
-    Duplicate initial bindings refuse; no generation inherits attribution. None
+    Duplicate initial bindings refuse; every generation needs new archive admission. None
     means pending/unseen API/runtime metadata, never clean/complete collection.
     Public receipts contain counts only; all source/file metadata remain private.
     """
@@ -47,7 +49,7 @@ class PrivateCRILiveCollection:
         self._owner, self._lock = os.getpid(), threading.RLock()
         self._valid, self._active, self._released = True, False, False
         self._buffer = self._archive = self._decoder = self._retention = None
-        self._followers = {}; self._descriptors_closed = True
+        self._followers = {}; self._generations = {}; self._descriptors_closed = True
         try:
             with self._transaction():
                 self._buffer = PrivateCRIRuntimeEventBuffer(history,node_uid=node_uid,
@@ -98,6 +100,7 @@ class PrivateCRILiveCollection:
             result = follower.close()
             self._descriptors_closed &= result['descriptors_closed']
         self._followers.clear()
+        self._generations.clear()
         if self._buffer is not None: self._buffer.close()
         if self._archive is not None: self._archive.close()
         if self._retention is not None: self._retention.abandon()
@@ -148,15 +151,39 @@ class PrivateCRILiveCollection:
                 identity = dict(node_uid=self._node,device=observed.st_dev,inode=observed.st_ino)
                 projection = self._archive.capture_event(entry,node,creation,identity,check=check)
                 if projection is None: return None
+                self._generations[key] = [(copy.deepcopy(identity),check)]
                 def source_check(source, reserve):
                     if not self._scope(reserve): return False
-                    value = self._archive.resolve(entry,identity,check=check)
-                    return value is not None and value['source']==source
+                    for file_identity,file_check in self._generations[key]:
+                        value = self._archive.resolve(entry,file_identity,check=file_check)
+                        if value is None or value['source']!=source:return False
+                    return True
                 follower = LinuxCRIDescriptorFollower(self._retention,projection['source'],descriptor,
                     node_uid=self._node,check=source_check,deadline=self._deadline)
                 self._followers[key] = follower
             return self.summary()
         except BaseException as error: self._failure(error)
+
+    def rotate(self, entry, node, descriptor, *, check, boundary_check):
+        """Admit a separately authenticated successor and independently checked order."""
+        self._owned()
+        try:
+            with self._transaction():
+                entry = provisional_entry(entry); key = _key(entry)
+                if key not in self._followers or type(descriptor) is not int or descriptor<0 or not callable(boundary_check):
+                    raise ValueError('Private live successor inputs unavailable')
+                observed = os.fstat(descriptor)
+                identity = dict(node_uid=self._node,device=observed.st_dev,inode=observed.st_ino)
+                creation = self._buffer.event_for(entry)
+                if creation is None:raise ValueError('Private live successor metadata unavailable')
+                projection = self._archive.capture_event(entry,node,creation,identity,check=check)
+                if projection is None:raise ValueError('Private live successor attribution unavailable')
+                if any(identity==prior for prior,_ in self._generations[key]):
+                    raise ValueError('Private live successor identity reused')
+                self._generations[key].append((copy.deepcopy(identity),check))
+                self._followers[key].rotate(descriptor,check=boundary_check)
+            return self.summary()
+        except BaseException as error:self._failure(error)
 
     def poll(self):
         self._owned()

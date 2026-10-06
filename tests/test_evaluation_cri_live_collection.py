@@ -109,3 +109,21 @@ class LiveCollectionTest(unittest.TestCase):
         self.collection.release()
         with self.assertRaises(ValueError):self.positive()
         with self.assertRaises(ValueError):self.collection.poll()
+
+    def test_successor_needs_independent_archive_admission_and_retired_file_checks(self):
+        self.admit();self.collection.poll()
+        replacement=Path(self.directory.name)/'replacement.log'
+        replacement.write_bytes(frame(b'new-private-positive\n'))
+        fd=os.open(replacement,os.O_RDONLY)
+        try:
+            def check(proof,reserve):
+                observed=os.fstat(fd)
+                return proof['entry']==ENTRY and proof['projection']['file_identity']==dict(node_uid='node-uid',device=observed.st_dev,inode=observed.st_ino)
+            self.collection.rotate(ENTRY,NODE,fd,check=check,boundary_check=lambda *args:True)
+            self.assertEqual(self.collection._archive.summary()['files'],2)
+            self.assertTrue(self.collection.inspect(binary_values=[b'new-private-positive'])['canary_present'])
+            with self.path.open('ab') as writer:writer.write(frame(b'late-retired'))
+            with self.assertRaises(ValueError):self.collection.poll()
+            self.assertTrue(self.positive()['canary_present']);self.assertFalse(self.positive()['retention_valid'])
+            self.assertTrue(self.collection.summary()['descriptors_closed'])
+        finally:os.close(fd)

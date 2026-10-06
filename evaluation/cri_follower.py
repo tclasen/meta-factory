@@ -278,8 +278,10 @@ class LinuxCRIDescriptorFollower(LinuxCRIFollower):
     uses pread, leaving the caller's offset untouched. Already unlinked files
     are allowed. Existing prefix verification, private byte limits and guarded
     lifetime checks apply. There is no path lookup, directory watch, rotation
-    discovery, writer-close proof or completeness claim. New generations need
-    separate trusted event accounting. Run in an owned bounded child to contain
+    discovery, writer-close proof or completeness claim. rotate admits a separately
+    authenticated successor and retains old FDs for continued size/prefix checks.
+    Caller checks successor order and the old boundary; observed EOF alone cannot
+    establish either or prove all writers finished. Run in an owned bounded child to contain
     blocked filesystem operations. Closing invalidates retention as usual.
     """
     def __init__(self, retention, source, descriptor, *, node_uid, check, deadline):
@@ -327,11 +329,58 @@ class LinuxCRIDescriptorFollower(LinuxCRIFollower):
                     raise ValueError('Private CRI descriptor unavailable')
                 self._verify(); self._polls += 1
                 self._read_current()
+                self._verify_retired()
                 self._verify()
                 return dict(outcome='private_cri_descriptor_polled', polls=self._polls,
-                            bytes_collected=self._bytes, history_complete=False)
+                            rotations=self._rotations,bytes_collected=self._bytes, history_complete=False)
             except BaseException as error:
                 self._failed = True
                 self._retention.abandon(); self._cleanup()
                 if not isinstance(error, Exception): raise
                 raise ValueError('Private CRI descriptor collection unavailable') from None
+
+    def rotate(self, descriptor, *, check):
+        """Admit an independently observed successor; do not infer writer closure."""
+        self._owned()
+        with self._lock:
+            owned = None
+            try:
+                import fcntl
+                if (self._closed or self._failed or self._rotations>=MAX_ROTATIONS
+                        or type(descriptor) is not int or descriptor<0 or not callable(check)):
+                    raise ValueError('Private CRI successor unavailable')
+                self._verify(); self._verify_retired(); self._read_current()
+                owned = fcntl.fcntl(descriptor,fcntl.F_DUPFD_CLOEXEC,0)
+                observed = os.fstat(owned); flags = fcntl.fcntl(owned,fcntl.F_GETFL)
+                identity = dict(node_uid=self._node,device=observed.st_dev,inode=observed.st_ino)
+                key = _file_identity(identity)
+                if (not stat.S_ISREG(observed.st_mode) or flags&os.O_ACCMODE!=os.O_RDONLY
+                        or flags&getattr(os,'O_PATH',0) or key==_file_identity(self._current['identity'])
+                        or key in self._retired):
+                    raise ValueError('Private CRI successor identity unavailable')
+                final_size = os.fstat(self._current['fd']).st_size
+                proof = dict(source=copy.deepcopy(self._source),old_file=copy.deepcopy(self._current['identity']),
+                    new_file=identity,final_size=final_size)
+                self._verify()
+                if check(copy.deepcopy(proof),5) is not True:
+                    raise ValueError('Private CRI successor observation unavailable')
+                self._verify()
+                self._read_current(); self._verify_retired()
+                if os.fstat(self._current['fd']).st_size!=final_size or self._current['offset']!=final_size:
+                    raise ValueError('Private CRI old boundary changed')
+                if check(copy.deepcopy(proof),5) is not True:
+                    raise ValueError('Private CRI successor observation changed')
+                self._verify()
+                old = self._current
+                self._retention.rotate(self._source,old['identity'],identity,final_size=final_size)
+                self._retired[_file_identity(old['identity'])] = old
+                self._current = dict(fd=owned,identity=identity,offset=0,digest=hashlib.sha256())
+                owned = None; self._rotations += 1
+                self._read_current(); self._verify_retired(); self._verify()
+                return dict(outcome='private_cri_successor_admitted',rotations=self._rotations,
+                    bytes_collected=self._bytes,history_complete=False)
+            except BaseException as error:
+                if owned is not None:os.close(owned)
+                self._failed = True;self._retention.abandon();self._cleanup()
+                if not isinstance(error, Exception):raise
+                raise ValueError('Private CRI successor unavailable') from None
