@@ -1674,3 +1674,41 @@ An unknown Namespace/Pod UID/name/container returns `None`; filesystem or runtim
 names cannot create an API association. No annotations, environment or diagnostics
 are returned. This lookup does not register a runtime CID or resolve history gaps;
 a separate trusted binder must verify Node UID, runtime metadata and file identity.
+
+### Binding CRI metadata to an anchored early file
+
+`cri_binding.bind_cri_log_source(history, entry, node, snapshot, file_identity)`
+validates private operator observations against `PodIdentityHistory` declarations.
+`snapshot` contains exactly the CRI list `container` and `sandbox` items plus
+`container_detail` and `sandbox_detail` inspect replies. The supported encoding is
+the actual pinned K3s/containerd crictl JSON schema. Container and sandbox IDs,
+Pod metadata/labels, container name, integer restart attempt, immutable creation
+timestamps, the inspect reply's sandbox link, and exact canonical node log path
+must agree. The API declaration must already associate that Pod UID/container
+with the Node name. The independently observed file identity must use that Node's
+UID, whose API runtime is containerd. Known API index/CID conflicts and CID reuse
+across indices refuse attribution. An undeclared Pod/container returns `None`,
+leaving the provisional source unresolved.
+
+The result is a copied **private binder input**, containing the immutable source,
+original Namespace name/UID, Node name/UID, restart index, role, file identity and
+API-observation/pending/deletion flags. Raw OCI configuration, environment,
+annotations and diagnostic text are discarded. Input observations are capped at
+2 MiB. A runtime CID can be derived when the API status has not supplied one;
+this does not mutate API history or resolve its pending/gap accounting.
+Historical or deleted declarations can bind retained files, but do not prove
+writer closure. Every result says `history_complete=False`.
+
+This pure validator performs no IO or authenticity/lifetime checks. The operator
+must verify original Namespace UID, Node UID/runtime endpoint/peer, owner, both
+clocks and exact node path/device/inode before **and** after obtaining snapshots,
+then repeat verification through `PrivateCRIStaging.bind`'s callback. Compare the
+returned Namespace binding to the staging retention's original binding; a shared
+Namespace name alone is insufficient. Returned identities must not enter public
+receipts or builder mounts. Runtime snapshots do not prove continuous birth,
+deployment/bootstrap/API/time/writer coverage or owner-death cleanup; absence
+cannot authorize acceptance. D-049 and REQ-012/015/020 boundaries remain in force.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_binding.py -v
+```

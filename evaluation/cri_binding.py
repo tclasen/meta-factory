@@ -1,0 +1,138 @@
+"""Validate private CRI file attribution against anchored API declarations."""
+import copy
+import json
+import re
+import uuid
+
+from .cri_staging import provisional_entry
+from .log_retention import _file_identity
+from .log_transport import source_binding
+from .pod_history import PodIdentityHistory
+
+
+MAX_INPUT_BYTES = 2 * 1024 * 1024
+_ID = re.compile(r'[0-9a-f]{64}')
+_TIME = re.compile(r'[1-9][0-9]{0,18}')
+
+
+def _identifier(value):
+    if not isinstance(value, str) or not _ID.fullmatch(value):
+        raise ValueError('Private CRI identifier unavailable')
+    return value
+
+
+def _created(value):
+    if not isinstance(value, str) or not _TIME.fullmatch(value) or int(value) > 2**63-1:
+        raise ValueError('Private CRI creation timestamp unavailable')
+    return int(value)
+
+
+def _labels(value, expected):
+    if not isinstance(value, dict) or any(value.get(key) != item for key, item in expected.items()):
+        raise ValueError('Private CRI scope labels unavailable')
+
+
+def bind_cri_log_source(history, entry, node, snapshot, file_identity):
+    """Return a private source projection, or None for an unknown declaration.
+
+    Inputs are private trusted operator observations: anchored PodIdentityHistory,
+    v1 Node, exact CRI list Container and PodSandbox plus inspect replies, and
+    independently observed node/file identity. snapshot has exactly container,
+    container_detail, sandbox and sandbox_detail fields. The supported runtime is
+    containerd with the pinned crictl JSON encoding verified in local K3s checks.
+
+    Caller verifies original Namespace UID, Node UID/runtime endpoint/peer, owner,
+    both clocks and the exact node log path/device/inode before AND after obtaining
+    these observations, then repeats verification through staging.bind's callback.
+    This pure validator performs no IO, authenticity or lifetime checks itself.
+    Runtime and filesystem names cannot invent an anchored API Pod/container.
+
+    Known API index/CID conflicts and CID reuse across indices refuse attribution.
+    A previously unseen API CID may be derived from matching runtime metadata,
+    sandbox Pod labels, exact restart attempt and log path. Node name must already
+    be anchored by the API declaration. Historical/deleted declarations remain
+    eligible; this does not prove writer closure. No raw OCI/env/diagnostics or
+    annotations are retained or returned. The returned IDs are private binder
+    input, NEVER public receipts. No history is mutated, no runtime birth stream
+    or bootstrap accounting is established; absence cannot pass acceptance.
+    """
+    try:
+        if type(history) is not PodIdentityHistory:
+            raise ValueError('Private API history required')
+        entry = provisional_entry(entry)
+        declaration = history.runtime_declaration(entry)
+        if declaration is None: return None
+        if str(uuid.UUID(entry['pod_uid'])) != entry['pod_uid']:
+            raise ValueError('Private CRI Pod UID unavailable')
+        if (not isinstance(node, dict) or node.get('apiVersion') != 'v1' or node.get('kind') != 'Node'
+                or not isinstance(snapshot, dict)
+                or set(snapshot) != {'container', 'container_detail', 'sandbox', 'sandbox_detail'}
+                or len(json.dumps(dict(node=node,snapshot=snapshot),allow_nan=False,ensure_ascii=False).encode()) > MAX_INPUT_BYTES):
+            raise ValueError('Private CRI observation shape unavailable')
+        node_meta = node.get('metadata')
+        if (not isinstance(node_meta, dict) or not declaration['node_name']
+                or node_meta.get('name') != declaration['node_name'] or node_meta.get('deletionTimestamp')):
+            raise ValueError('Private CRI node declaration unavailable')
+        observed_file = _file_identity(file_identity)
+        if node_meta.get('uid') != observed_file[0]:
+            raise ValueError('Private CRI node UID unavailable')
+        runtime = node.get('status',{}).get('nodeInfo',{}).get('containerRuntimeVersion')
+        if not isinstance(runtime,str) or not runtime.startswith('containerd://') or len(runtime) <= len('containerd://'):
+            raise ValueError('Supported private CRI runtime unavailable')
+        container, detail = snapshot['container'], snapshot['container_detail']
+        sandbox, sandbox_detail = snapshot['sandbox'], snapshot['sandbox_detail']
+        if not all(isinstance(value,dict) for value in (container,detail,sandbox,sandbox_detail)):
+            raise ValueError('Private CRI observations unavailable')
+        status, sandbox_status = detail.get('status'), sandbox_detail.get('status')
+        info = detail.get('info')
+        if not all(isinstance(value,dict) for value in (status,sandbox_status,info)):
+            raise ValueError('Private CRI status observations unavailable')
+        identifier, sandbox_id = _identifier(container.get('id')), _identifier(sandbox.get('id'))
+        if (status.get('id') != identifier or container.get('podSandboxId') != sandbox_id
+                or sandbox_status.get('id') != sandbox_id or info.get('sandboxID') != sandbox_id):
+            raise ValueError('Private CRI container sandbox link unavailable')
+        expected_labels = {'io.kubernetes.pod.uid':entry['pod_uid'],
+                           'io.kubernetes.pod.name':entry['pod_name'],
+                           'io.kubernetes.pod.namespace':entry['namespace']}
+        for value in (sandbox,sandbox_status):
+            _labels(value.get('labels'),expected_labels)
+        container_labels = dict(expected_labels,**{'io.kubernetes.container.name':entry['container_name']})
+        for value in (container,status):
+            _labels(value.get('labels'),container_labels)
+            metadata = value.get('metadata')
+            if (not isinstance(metadata,dict) or metadata.get('name') != entry['container_name']
+                    or type(metadata.get('attempt')) is not int or metadata['attempt'] != entry['restart_index']
+                    or metadata['attempt'] > 1000000
+                    or value.get('state') not in ('CONTAINER_CREATED','CONTAINER_RUNNING','CONTAINER_EXITED')):
+                raise ValueError('Private CRI container attempt unavailable')
+        if status['metadata'] != container['metadata']:
+            raise ValueError('Private CRI container metadata disagreement')
+        sandbox_meta = sandbox.get('metadata')
+        if (not isinstance(sandbox_meta,dict) or sandbox_meta.get('name') != entry['pod_name']
+                or sandbox_meta.get('uid') != entry['pod_uid'] or sandbox_meta.get('namespace') != entry['namespace']
+                or type(sandbox_meta.get('attempt')) is not int or not 0 <= sandbox_meta['attempt'] <= 1000000
+                or sandbox_status.get('metadata') != sandbox_meta
+                or any(value.get('state') not in ('SANDBOX_READY','SANDBOX_NOTREADY') for value in (sandbox,sandbox_status))):
+            raise ValueError('Private CRI sandbox metadata unavailable')
+        container_created, sandbox_created = _created(container.get('createdAt')), _created(sandbox.get('createdAt'))
+        if (status.get('createdAt') != container['createdAt'] or sandbox_status.get('createdAt') != sandbox['createdAt']
+                or sandbox_created > container_created):
+            raise ValueError('Private CRI creation ordering unavailable')
+        expected_path = ('/var/log/pods/'+entry['namespace']+'_'+entry['pod_name']+'_'+entry['pod_uid']
+                         +'/'+entry['container_name']+'/'+str(entry['restart_index'])+'.log')
+        if status.get('logPath') != expected_path:
+            raise ValueError('Private CRI log path unavailable')
+        source = source_binding({key:entry[key] for key in entry if key != 'restart_index'} |
+                                dict(container_id='containerd://'+identifier,previous=False))
+        known = declaration['known_instances']; index = entry['restart_index']
+        if (index in known and known[index] != source['container_id']
+                or any(value == source['container_id'] and prior != index for prior,value in known.items())):
+            raise ValueError('Private CRI API container identity conflict')
+        return dict(source=source,namespace_binding=copy.deepcopy(declaration['namespace_binding']),
+                    restart_index=index,role=declaration['role'],
+                    node_name=declaration['node_name'],node_uid=observed_file[0],
+                    file_identity=copy.deepcopy(file_identity),pod_deleted=declaration['deleted'],
+                    api_pending=declaration['pending'],api_container_id_observed=index in known,
+                    history_complete=False)
+    except Exception:
+        raise ValueError('Private CRI log binding unavailable') from None
