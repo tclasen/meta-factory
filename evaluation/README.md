@@ -2157,6 +2157,21 @@ and grants no readiness or launch authority. Dual deadline checks do not interru
 filesystem I/O; the outer owner must enforce the overall preparation interval.
 Any later execution must revalidate sources, ownership and all readiness gates.
 
+`workspace.verify_prepared_workspace` accepts the same attempt, plan, workload,
+suite and deadline/review context. It rereads the successful preparation receipt,
+binds its exact plan hash, verifies original workspace/project/specification
+device and inode identities, requires an empty project and absent future capture
+and grading directories, and checks every reviewed specification byte and mode.
+It repeats the complete source/readiness inspection and confirms the preparation
+receipt did not change while checking. Workspace/project directories require
+`0700`, specification directories `0555`, and specification files `0444`.
+
+The separate `workspace-verification.json` records current inspection success or
+sanitized failure. A later failed inspection replaces its earlier success while
+preserving the original preparation record. Verification permits no mounting,
+execution or launch; callers must enforce the outer deadline and satisfy the
+remaining readiness gates before any side effect.
+
 For that handoff, `Sandbox(..., planned_name=resource['name'])` preserves the
 inspected builder or grader name and therefore its exact create command. Names
 must match the selected role and the controller's UUID namespace. Constructing

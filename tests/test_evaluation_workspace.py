@@ -10,7 +10,7 @@ from evaluation.evidence import Attempt
 from evaluation.plan import build_plan, controller_identities
 from evaluation.preparation import prepare_specification
 from evaluation.sandbox import Sandbox
-from evaluation.workspace import prepare_workspace
+from evaluation.workspace import prepare_workspace,verify_prepared_workspace
 
 
 class WorkspaceTest(unittest.TestCase):
@@ -28,6 +28,14 @@ class WorkspaceTest(unittest.TestCase):
 
     def receipt(self):
         return json.loads((self.attempt.directory/'workspace-preparation.json').read_text())
+
+    def verify(self,plan=None):
+        return verify_prepared_workspace(self.attempt,self.plan if plan is None else plan,
+            self.workload,self.suite,monotonic_deadline=100,wall_deadline=100,
+            monotonic=lambda:self.clock,wall=lambda:self.clock)
+
+    def verification_receipt(self):
+        return json.loads((self.attempt.directory/'workspace-verification.json').read_text())
 
     def test_owned_copy_empty_project_and_no_execution(self):
         with patch('subprocess.Popen',side_effect=AssertionError('No execution allowed')):
@@ -190,3 +198,76 @@ class WorkspaceTest(unittest.TestCase):
         self.assertNotEqual(result['paths']['capture'],'changed')
         with self.assertRaises(ValueError):self.prepare()
         self.assertEqual(self.receipt(),result)
+
+    def test_prepared_workspace_reinspection_executes_nothing_and_preserves_receipt(self):
+        prepared=self.prepare()
+        with patch('subprocess.Popen',side_effect=AssertionError('No execution allowed')):
+            result=self.verify()
+        self.assertEqual(result['outcome'],'workspace_verified_for_inspection')
+        self.assertFalse(result['launch_enabled']);self.assertFalse(result['sandboxes_created'])
+        self.assertEqual(result['files'],prepared['specification']['files'])
+        self.assertEqual(result,self.verification_receipt())
+        self.assertEqual(self.receipt(),prepared)
+
+    def test_changed_prepared_bytes_permissions_and_inventory_refuse_verification(self):
+        self.prepare();spec=self.workspace/'specification';path=spec/'APPLICATION.md'
+        original=path.read_bytes()
+        for mode in ('bytes','file-mode','directory-mode','extra-file','missing-file','hardlink'):
+            with self.subTest(mode=mode):
+                try:
+                    if mode=='bytes':path.chmod(0o600);path.write_bytes(original+b'changed');path.chmod(0o444)
+                    elif mode=='file-mode':path.chmod(0o644)
+                    elif mode=='directory-mode':spec.chmod(0o755)
+                    elif mode=='extra-file':spec.chmod(0o755);(spec/'unreviewed').write_text('unreviewed')
+                    elif mode=='missing-file':spec.chmod(0o755);path.unlink()
+                    else:
+                        import os
+                        os.link(path,self.root/'alias')
+                    with self.assertRaises(ValueError):self.verify()
+                    self.assertEqual(self.verification_receipt()['outcome'],'workspace_verification_incomplete')
+                finally:
+                    (self.root/'alias').unlink(missing_ok=True)
+                    spec.chmod(0o755);(spec/'unreviewed').unlink(missing_ok=True)
+                    if path.exists():path.chmod(0o600)
+                    path.write_bytes(original);path.chmod(0o444);spec.chmod(0o555)
+
+    def test_same_byte_replacement_of_owned_specification_refuses_verification(self):
+        import shutil
+        self.prepare();spec=self.workspace/'specification';saved=self.root/'saved-spec'
+        spec.chmod(0o755);spec.rename(saved);saved.chmod(0o555);shutil.copytree(saved,spec)
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_project_directory_replacement_or_content_refuses_verification(self):
+        self.prepare();project=self.workspace/'builder-project'
+        (project/'unexpected').write_text('unexpected')
+        with self.assertRaises(ValueError):self.verify()
+        (project/'unexpected').unlink();project.rename(self.root/'saved-project');project.mkdir(mode=0o700)
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_changed_plan_and_source_identity_refuse_verification(self):
+        self.prepare();plan=copy.deepcopy(self.plan);plan['limits']['builder_seconds']['value']=1
+        with self.assertRaises(ValueError):self.verify(plan)
+        (self.suite/'case.py').write_text('changed protected source')
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_failed_preparation_never_verifies(self):
+        with patch('evaluation.workspace.prepare_specification',side_effect=OSError('private detail')):
+            with self.assertRaises(OSError):self.prepare()
+        with self.assertRaises(ValueError):self.verify()
+
+    def test_verification_expiry_revokes_current_inspection_preserves_preparation(self):
+        prepared=self.prepare();self.verify();self.clock=101
+        with self.assertRaises(TimeoutError):self.verify()
+        self.assertEqual(self.receipt(),prepared)
+        self.assertEqual(self.verification_receipt()['outcome'],'workspace_verification_incomplete')
+
+    def test_verification_receipt_drift_and_duplicate_keys_refuse(self):
+        self.prepare();path=self.attempt.directory/'workspace-preparation.json';raw=path.read_bytes()
+        from evaluation.preparation import snapshot
+        def change(*args,**kwargs):
+            result=snapshot(*args,**kwargs);path.write_bytes(raw+b'\n')
+            return result
+        with patch('evaluation.workspace.snapshot',side_effect=change):
+            with self.assertRaises(ValueError):self.verify()
+        path.write_bytes(b'{"outcome":"workspace_prepared","outcome":"workspace_prepared"}')
+        with self.assertRaises(ValueError):self.verify()
