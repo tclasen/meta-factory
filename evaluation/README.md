@@ -1876,7 +1876,15 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_job_runt
 `grade_capture(..., fixture_loader=...)` optionally calls an operator-owned
 callback after successful bootstrap and before capability preparation or grading.
 The callback receives the fresh sandbox plus `guard`, the fixed loopback
-`base_url`, and the existing monotonic/wall grading deadlines. It must bound its
+`base_url`, the existing monotonic/wall grading deadlines, and `lifetime_check`.
+The latter returns exact `True` or refuses a lost lifetime; it accepts a finite
+nonnegative reserve in seconds for the next operation. The controller checks
+before and after loading: original sandbox/guard adapters, active creation, live
+watchdog, unchanged owned watchdog configuration, absence of release/result
+markers, and both grading deadlines plus watchdog wall expiry. Adapter scope is
+restored on callback exit so cleanup remains directed at the original resource.
+This cannot restart a stopped deployment, interrupt a callback, or prove live
+application-source invariance or capacity. It must bound its
 own operations, honor those deadlines and keep any fixture resources inside the
 owned grading deployment. Fixture preparation consumes the grading budget; it
 does not grant extra time. The watchdog remains active throughout preparation.

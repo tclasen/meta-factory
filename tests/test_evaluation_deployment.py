@@ -4,6 +4,9 @@ from pathlib import Path
 import tempfile
 import shutil
 import unittest
+import os
+import time
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from evaluation.deployment import grade_capture, verify_capture
@@ -21,6 +24,7 @@ class FakeSandbox:
     instances = []
     def __init__(self, *args, **kwargs):
         self.name = 'factory-eval-grader-0123456789abcdef'
+        self.project, self.specification = args[1], args[2]
         self.creation_attempted = False
         self.stopped = False
         self.instances.append(self)
@@ -33,7 +37,13 @@ class FakeSandbox:
 
 class FakeGuard:
     stopped = True
-    def __init__(self, *args, **kwargs): pass
+    def __init__(self, *args, **kwargs):
+        self.directory = Path(args[0])
+        self.process = SimpleNamespace(poll=lambda: None)
+        self.nonce = '0'*32
+        self.directory.mkdir(mode=0o700)
+        from evaluation.evidence import atomic_json
+        atomic_json(self.directory/'config.json',dict(schema_version=1,sandbox=args[1],owner_pid=os.getpid(),nonce=self.nonce,max_seconds=6000,expires_at=time.time()+6000))
     def release(self): return {'remote_termination_verified': self.stopped}
 
 
@@ -658,6 +668,7 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(context['base_url'],'http://127.0.0.1:18080')
             self.assertGreater(context['monotonic_deadline'],0)
             self.assertGreater(context['wall_deadline'],0)
+            self.assertTrue(context['lifetime_check'](10))
             observations.append(box.name)
             return fixture
         def runner(attempt,suite,target,**kwargs):
@@ -714,6 +725,107 @@ class DeploymentTest(unittest.TestCase):
             with Attempt(self.root/'fixtures-budget',{}) as attempt:
                 result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
         self.assertEqual(result['outcome'],'grading_incomplete')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_fixture_lifetime_loss_refuses_grading_and_restores_cleanup_scope(self):
+        mutations = ('name', 'project', 'specification', 'creation_attempted',
+                     'directory', 'process', 'nonce', 'config', 'release', 'result', 'exit')
+        for index, mutation in enumerate(mutations):
+            with self.subTest(mutation=mutation):
+                originals = {}
+                def loader(box, **context):
+                    guard = context['guard']
+                    originals.update(name=box.name, project=box.project,
+                                     specification=box.specification, directory=guard.directory,
+                                     process=guard.process, nonce=guard.nonce)
+                    if mutation in ('name', 'project', 'specification'):
+                        setattr(box, mutation, 'unowned-resource')
+                    elif mutation == 'creation_attempted':
+                        box.creation_attempted = False
+                    elif mutation == 'directory':
+                        guard.directory = self.root / 'unowned-guard'
+                    elif mutation == 'process':
+                        guard.process = SimpleNamespace(poll=lambda: None)
+                    elif mutation == 'nonce':
+                        guard.nonce = '1' * 32
+                    elif mutation == 'config':
+                        (guard.directory / 'config.json').write_text('{}')
+                    elif mutation in ('release', 'result'):
+                        (guard.directory / (mutation + '.json')).write_text('{}')
+                    else:
+                        guard.process.poll = lambda: 0
+                    return {'accounts': {}}
+                def runner(*args, **kwargs):
+                    self.fail('Grading ran after fixture lifetime loss')
+                with Attempt(self.root / ('lifetime-' + str(index)), {}) as attempt:
+                    result = self.run_grade(attempt, fixture_loader=loader, runner=runner)
+                box = FakeSandbox.instances[-1]
+                for key in ('name', 'project', 'specification'):
+                    self.assertEqual(getattr(box, key), originals[key])
+                self.assertTrue(box.creation_attempted)
+                self.assertEqual(result['outcome'], 'grading_incomplete')
+                self.assertTrue(result['cleanup']['remote_termination_verified'])
+                shutil.rmtree(self.root / 'project')
+
+    def test_fixture_checker_reserves_owner_and_watchdog_expiry(self):
+        from evaluation.fixture_lifetime import FixtureLifetime
+        from evaluation.verdicts import Inconclusive
+        from evaluation.evidence import atomic_json
+        import json
+        box = FakeSandbox('unused', self.root / 'project', self.spec)
+        box.create()
+        guard = FakeGuard(self.root / 'direct-guard', box.name)
+        config = json.loads((guard.directory / 'config.json').read_text())
+        config['expires_at'] = 150
+        atomic_json(guard.directory / 'config.json', config)
+        lifetime = FixtureLifetime(box, guard, monotonic_deadline=200,
+                                   wall_deadline=200, monotonic=lambda: 100,
+                                   wall=lambda: 100)
+        self.assertIs(lifetime.check(49), True)
+        with self.assertRaises(Inconclusive):
+            lifetime.check(50)
+        for reserve in (True, -1, float('nan'), float('inf'), '1'):
+            with self.subTest(reserve=reserve), self.assertRaises(ValueError):
+                lifetime.check(reserve)
+        with patch('evaluation.fixture_lifetime.os.getpid', return_value=os.getpid()+1):
+            with self.assertRaises(Inconclusive):
+                lifetime.check()
+        for invalid in (float('nan'), float('inf'), True):
+            for clock in ('monotonic', 'wall'):
+                original_clock = getattr(lifetime, clock)
+                setattr(lifetime, clock, lambda: invalid)
+                with self.subTest(clock=clock, invalid=invalid), self.assertRaises(Inconclusive):
+                    lifetime.check()
+                setattr(lifetime, clock, original_clock)
+        box.stopped = True
+        with self.assertRaises(Inconclusive):
+            lifetime.check()
+        lifetime.restore_scope()
+        self.assertTrue(box.stopped)
+
+    def test_fixture_callback_error_restores_owned_scope(self):
+        original = {}
+        def loader(box, **context):
+            original['name'] = box.name
+            box.name = 'unowned-resource'
+            context['guard'].directory = self.root / 'unowned-guard'
+            raise RuntimeError('private-callback-error')
+        with Attempt(self.root / 'fixture-error-scope', {}) as attempt:
+            result = self.run_grade(attempt, fixture_loader=loader)
+        self.assertEqual(FakeSandbox.instances[-1].name, original['name'])
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-callback-error', str(result))
+
+    def test_fixture_wall_deadline_expires_without_monotonic_expiry(self):
+        with patch('evaluation.deployment.time.time', return_value=100) as clock:
+            def loader(*args, **kwargs):
+                clock.return_value = 10000
+                return {'accounts': {}}
+            def runner(*args, **kwargs):
+                self.fail('Grading ran after wall deadline')
+            with Attempt(self.root / 'fixture-wall-expiry', {}) as attempt:
+                result = self.run_grade(attempt, fixture_loader=loader, runner=runner)
+        self.assertEqual(result['outcome'], 'grading_incomplete')
         self.assertTrue(result['cleanup']['remote_termination_verified'])
 
     def test_operations_bound_after_bootstrap_and_closed_before_guard(self):

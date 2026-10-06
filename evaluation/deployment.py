@@ -6,6 +6,7 @@ import time
 
 from .evidence import atomic_json, collect, positive
 from .fault_runtime import FaultRuntime
+from .fixture_lifetime import FixtureLifetime
 from .audit_runtime import AuditRuntime
 from .job_runtime import JobRuntime
 from .staging_runtime import StagingRuntime
@@ -140,9 +141,18 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             # This operator callback owns bounded fixture creation and independent
             # expected resources. It never receives or selects an executable from
             # application output, and cannot redirect the HTTP grading origin.
-            fixture = fixture_loader(box, guard=guard, base_url=target['base_url'],
+            fixture_lifetime = FixtureLifetime(box, guard,
                 monotonic_deadline=grading_started + grading_seconds,
-                wall_deadline=grading_wall_started + grading_seconds)
+                wall_deadline=grading_wall_started + grading_seconds,
+                monotonic=time.monotonic, wall=time.time)
+            try:
+                fixture = fixture_loader(box, guard=guard, base_url=target['base_url'],
+                    monotonic_deadline=grading_started + grading_seconds,
+                    wall_deadline=grading_wall_started + grading_seconds,
+                    lifetime_check=fixture_lifetime.check)
+                fixture_lifetime.check()
+            finally:
+                fixture_lifetime.restore_scope()
             allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture', 'twenty_export_fixture'}
             if (not isinstance(fixture, dict) or not fixture
                     or not set(fixture) <= allowed
