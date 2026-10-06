@@ -69,6 +69,42 @@ class PodHistoryTest(unittest.TestCase):
         self.assertEqual(summary['identities'],1)
         self.assertFalse(summary['history_complete'])
 
+    def test_runtime_declaration_exists_before_api_status_and_after_deletion(self):
+        value=pod();value['status']={}
+        h=history([value]);entry=dict(namespace=BINDING['name'],pod_name='api',pod_uid='pod-one',container_name='runtime',restart_index=0)
+        declared=h.runtime_declaration(entry)
+        self.assertEqual(declared['namespace_binding'],BINDING)
+        self.assertEqual(declared['node_name'],'node-1')
+        self.assertTrue(declared['pending']);self.assertEqual(declared['known_instances'],{})
+        self.assertIsNone(declared['observed_restart_count'])
+        self.assertEqual(h.sources(),[])
+        start=h.begin();h.accept(event(value,'DELETED'));h.finish(receipt(start,1))
+        self.assertTrue(h.runtime_declaration(entry)['deleted'])
+        self.assertEqual(h.summary()['unresolved_deleted_containers'],1)
+        self.assertFalse(h.summary()['history_complete'])
+
+    def test_runtime_declaration_copies_known_instances_and_all_container_roles(self):
+        for role in ('containers','initContainers','ephemeralContainers'):
+            h=history([pod(role=role)])
+            name='runtime' if role=='containers' else 'additional'
+            entry=dict(namespace=BINDING['name'],pod_name='api',pod_uid='pod-one',container_name=name,restart_index=0)
+            declared=h.runtime_declaration(entry)
+            self.assertEqual(declared['role'],role);self.assertEqual(declared['known_instances'],{0:'containerd://one'})
+            declared['namespace_binding']['uid']='tampered';declared['known_instances'][0]='tampered'
+            self.assertEqual(h.runtime_declaration(entry)['known_instances'],{0:'containerd://one'})
+            self.assertEqual(h.runtime_declaration(entry)['namespace_binding'],BINDING)
+            self.assertNotIn(SECRET,repr(declared))
+
+    def test_runtime_declaration_cannot_invent_uid_namespace_name_container_or_owner(self):
+        h=history([pod()]);entry=dict(namespace=BINDING['name'],pod_name='api',pod_uid='pod-one',container_name='runtime',restart_index=0)
+        for field in ('namespace','pod_name','pod_uid','container_name'):
+            self.assertIsNone(h.runtime_declaration(dict(entry,**{field:'unknown'})))
+        self.assertTrue(h.summary()['valid'])
+        with self.assertRaises(ValueError):h.runtime_declaration(dict(entry,container_id='fake'))
+        with patch('evaluation.pod_history.os.getpid',return_value=-1),self.assertRaises(ValueError):h.runtime_declaration(entry)
+        h.abandon()
+        with self.assertRaises(ValueError):h.runtime_declaration(entry)
+
     def test_waiting_after_restart_does_not_alias_cached_current_id_as_new_instance(self):
         h=history([pod()]);start=h.begin()
         h.accept(event(pod(count=1,current='containerd://one',prior='containerd://one',state='waiting')))

@@ -5,6 +5,7 @@ import os
 import threading
 
 from .log_transport import source_binding
+from .cri_staging import provisional_entry
 from .pod_watch import MAX_EVENT_BYTES, _version, watch_event
 from .watch_cursor import PodWatchCursor
 
@@ -239,6 +240,30 @@ class PodIdentityHistory:
                             pod_uid=pod['uid'], container_name=name, container_id=identity, previous=availability=='previous'),
                             restart_index=index, role=value['role'], node_name=pod['node'], available_as=availability))
             return copy.deepcopy(result)
+
+    def runtime_declaration(self, entry):
+        """Private minimal anchored declaration, including absent API statuses.
+
+        None means this Pod/container was not declared in this Namespace history;
+        filesystem/runtime names cannot manufacture an API association. The
+        caller must independently bind node UID, runtime metadata and file IDs.
+        This projection does not register runtime CIDs or resolve coverage gaps.
+        """
+        self._owned()
+        with self._lock:
+            if not self._valid: self._refuse()
+            try: entry = provisional_entry(entry)
+            except Exception:
+                raise ValueError('Private runtime declaration input unavailable') from None
+            pod = self._pods.get(entry['pod_uid'])
+            if (entry['namespace'] != self._binding['name'] or pod is None
+                    or pod['name'] != entry['pod_name']):
+                return None
+            container = pod['containers'].get(entry['container_name'])
+            if container is None: return None
+            return copy.deepcopy(dict(namespace_binding=self._binding, node_name=pod['node'],
+                role=container['role'], deleted=pod['deleted'], pending=container['pending'],
+                observed_restart_count=container['count'], known_instances=container['ids']))
 
     def summary(self):
         self._owned()

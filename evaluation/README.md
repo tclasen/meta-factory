@@ -1665,3 +1665,12 @@ declarations are counted separately: deletion and same-name recreation cannot
 erase uncertainty about a container whose CID was never observed. This count
 does not prove it ran; independent node/runtime accounting must resolve that
 uncertainty before a complete-history claim is possible.
+
+`PodIdentityHistory.runtime_declaration(entry)` supplies a copied private minimal
+API declaration for the provisional entry even when its container status/CID has
+not appeared. It retains the exact original Namespace binding, node name, role,
+deleted/pending flags, observed restart count and known index-to-CID mapping.
+An unknown Namespace/Pod UID/name/container returns `None`; filesystem or runtime
+names cannot create an API association. No annotations, environment or diagnostics
+are returned. This lookup does not register a runtime CID or resolve history gaps;
+a separate trusted binder must verify Node UID, runtime metadata and file identity.
