@@ -24,6 +24,20 @@ def decode_cri_log(chunks, *, max_bytes=DEFAULT_BYTES):
     An EOF here proves only parsing of supplied bytes. Files must stay private;
     do not persist the returned raw streams in operator evidence or builder mounts.
     """
+    result = decode_cri_prefix(chunks, max_bytes=max_bytes)
+    if not result.pop('complete'):
+        raise ValueError('Complete private CRI framing unavailable') from None
+    return result
+
+
+def decode_cri_prefix(chunks, *, max_bytes=DEFAULT_BYTES):
+    """Preserve valid payload prefixes even if later framing/reads fail.
+
+    Returns the same private streams plus complete. An unfinished P fragment is
+    returned without an invented newline, with complete=False. Only validated
+    record headers authorize payload bytes. Never use an incomplete prefix for
+    absence evidence. Known positives may remain evidence after a later error.
+    """
     if type(max_bytes) is not int or not 1 <= max_bytes <= 64 * 1024 * 1024:
         raise ValueError('Private CRI byte bound required')
     streams = {'stdout': bytearray(), 'stderr': bytearray()}
@@ -66,6 +80,8 @@ def decode_cri_log(chunks, *, max_bytes=DEFAULT_BYTES):
         if buffer or any(partial.values()):
             raise ValueError('Private CRI incomplete frame')
     except Exception:
-        raise ValueError('Complete private CRI framing unavailable') from None
+        complete = False
+    else:
+        complete = True
     return dict(stdout=bytes(streams['stdout']), stderr=bytes(streams['stderr']),
-                records=count, input_bytes=total)
+                records=count, input_bytes=total, complete=complete)

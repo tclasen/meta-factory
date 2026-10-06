@@ -1308,9 +1308,50 @@ The operator must independently bind node files to the exact Pod/container and
 verify reads, cleanup, rotation and collection continuity. Parsing a supplied
 file through EOF does not establish full log history or an acceptance verdict.
 This decoder is a building block for private node collection, not a collector.
+`decode_cri_prefix(...)` returns validated payload prefixes plus `complete`;
+malformed/truncated/unfinished tails and reader failures retain earlier payloads
+with `complete=False`. It supports positive detection after a later error and
+cannot establish absence. The strict decoder still refuses incomplete results.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_log.py -v
+```
+
+
+### Private in-memory CRI retention
+
+`log_retention.PrivateCRIRetention(binding, max_bytes=...)` retains private raw
+CRI bytes for later canary requests, including after the original files or Pods
+are deleted. A trusted collector calls `open(source, file_identity)`, then
+`append(source, file_identity, offset, data)` at exact contiguous offsets.
+File identities contain an independently verified `node_uid`, `device` and
+`inode`. At rotation, call `rotate(source, old_file, new_file, final_size=...)`
+only after reading the old file through its independently verified final size.
+`seal(...)` closes a collected source when its final size is verified. Rotation
+requires the same node/device, a fresh inode and a complete CRI record boundary;
+`P` fragments can continue in the next generation. Current/previous selectors
+refer to the same immutable container's bytes; distinct containers and streams
+are never joined.
+
+Skipped/overlapping offsets, reused identities, foreign sources, late writes,
+bounds and `abandon()` permanently invalidate further collection. Already
+retained valid payloads remain inspectable, including before a malformed tail.
+`inspect(values, binary_values=...)` returns fixed counts and a canary-presence
+flag, with `history_complete=False` in every result. A positive may be failure
+evidence when its source was independently bound; absence never authorizes a
+pass. This class does not collect files, discover unseen rotations, verify
+collector identity or establish watch/time fences or full source coverage.
+
+The aggregate raw-byte default is 8 MiB, configurable up to 64 MiB. At most 128
+immutable sources, 512 file identities and 65,536 collection operations are
+allowed. State belongs to its original parent PID and stays in memory; `close()`
+releases references without claiming secure memory erasure. No raw bytes are
+returned or saved in evidence. The caller must bound inspection/collector work
+within the original grading guard and deadlines. Memory is lost on owner death,
+which must remain incomplete.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_log_retention.py -v
 ```
 
 

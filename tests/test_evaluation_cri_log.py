@@ -2,7 +2,7 @@
 import unittest
 from unittest.mock import patch
 
-from evaluation.cri_log import decode_cri_log
+from evaluation.cri_log import decode_cri_log, decode_cri_prefix
 from evaluation.secret_scan import scan_secret_chunks
 
 
@@ -53,6 +53,21 @@ class CRILogTest(unittest.TestCase):
         for timestamp in (b'2026-10-05T12:30:45Z', b'2026-10-05T12:30:45.1+01:30',
                           b'2026-10-05T12:30:45.123456789-05:00'):
             self.assertEqual(decode_cri_log([frame(b'ordinary', timestamp=timestamp)])['stdout'], b'ordinary\n')
+
+    def test_valid_prefix_positive_survives_malformed_truncated_and_reader_errors(self):
+        raw = frame(b'private-prefix-canary')
+        def failing():
+            yield raw
+            raise RuntimeError('private diagnostic')
+        for chunks in ([raw+b'malformed\n'], [raw+b'truncated'],
+                       [raw+frame(b'partial', tag=b'P')], failing(), [raw, b'xx']):
+            result = decode_cri_prefix(chunks, max_bytes=len(raw)+len(frame(b'partial', tag=b'P')))
+            self.assertFalse(result['complete'])
+            self.assertTrue(scan_secret_chunks([result['stdout']], ['private-prefix-canary'])['canary_present'])
+        unfinished = decode_cri_prefix([frame(b'private-prefix-canary', tag=b'P')])
+        self.assertEqual(unfinished['stdout'], b'private-prefix-canary')
+        self.assertFalse(unfinished['complete'])
+        self.assertEqual(decode_cri_prefix([b'unvalidated private-prefix-canary\n'])['stdout'], b'')
 
     def test_reader_failure_and_explicit_bounds_refuse_partial_result(self):
         def failing():
