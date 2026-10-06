@@ -1,4 +1,5 @@
 import contextlib
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -75,6 +76,20 @@ class DisposalTest(unittest.TestCase):
         self.guard.process.poll=lambda:1;self.assertEqual(self.execute('guard-lost')['verdict'],'inconclusive')
         self.guard.process.poll=lambda:None;self.clock[0]=101;self.assertEqual(self.execute('deadline')['verdict'],'inconclusive')
         self.clock[0]=10;self.box.exec_argv=lambda argv:['sbx','exec','wrong',*argv];self.assertEqual(self.execute('redirect')['verdict'],'inconclusive')
+    def test_interruption_is_durable_and_propagates(self):
+        @contextlib.contextmanager
+        def interrupted(*args,**kwargs):raise KeyboardInterrupt;yield
+        directory=self.root/'interrupted'
+        with Attempt(directory,{}) as attempt:
+            with self.assertRaises(KeyboardInterrupt):
+                verify_disposable_operations(attempt,self.box,self.guard,observe=self.observe,
+                    verify_destroyed=self.verify,failure_setup=interrupted,
+                    source_check=lambda reserve:True,monotonic_deadline=100,wall_deadline=100,
+                    command_runner=self.runner,monotonic=lambda:self.clock[0],wall=lambda:self.clock[0])
+            result=json.loads((directory/'disposable-operations-result.json').read_text())
+            self.assertEqual(result['verdict'],'inconclusive')
+            self.assertEqual(result['error_type'],'KeyboardInterrupt')
+            self.assertEqual(result['stage'],'test_failure_setup')
 
 
 if __name__=='__main__':unittest.main()

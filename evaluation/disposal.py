@@ -52,6 +52,7 @@ def verify_disposable_operations(attempt, sandbox, guard, *, observe, verify_des
     owner=os.getpid();identity=(sandbox.name,str(sandbox.project));previous=[monotonic(),wall()]
     report=dict(outcome='disposable_operations_incomplete',verdict='inconclusive',abort_suite=True,
                 stage='precondition')
+    interrupted=None
     def check(reserve=0, *, source=False):
         values=[monotonic(),wall()]
         if (os.getpid()!=owner or values[0]<previous[0] or values[1]<previous[1]
@@ -105,7 +106,10 @@ def verify_disposable_operations(attempt, sandbox, guard, *, observe, verify_des
             check(0);report.update(outcome='disposable_operations_checked',verdict='fail',reason=str(error)[:500])
         except Exception as settlement:
             report.update(verdict='inconclusive',reason='disposable_operations_settlement_unavailable',error_type=type(settlement).__name__)
-    except Exception as error:
+    except BaseException as error:
         report.update(reason='disposable_operations_unavailable',error_type=type(error).__name__)
-    atomic_json(attempt.directory/'disposable-operations-result.json',report)
+        if not isinstance(error,Exception):interrupted=error
+    finally:
+        atomic_json(attempt.directory/'disposable-operations-result.json',report)
+    if interrupted is not None:raise interrupted
     return report
