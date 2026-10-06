@@ -1830,3 +1830,32 @@ publication/queue races, healthy export or acceptance-suite approval.
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_job_storage*.py' -v
 ```
+
+
+### Job observations with retained artifact history
+
+`JobRuntime` accepts exactly one independent physical reader: `artifact_count`
+for current-object counts, or `artifact_history` for a guarded `S3ArtifactHistory`
+projection. History mode derives `published_artifacts` from that same read's
+`current_objects` and sends the fixed private `artifact_history` count projection
+through the job broker. Database-supplied artifact/history fields are discarded.
+The existing 15-second physical-read budget, 40-second reserve and broker request
+limits remain unchanged; history mode performs one physical read.
+
+The broker validates integer count bounds, current/latest key consistency,
+retained-version/delete-marker cardinality and `history_complete=False`. Current
+and retained counts must agree about current objects. Extra keys or raw version
+IDs are refused. Multiple retained versions remain visible to protected oracles
+rather than being converted to infrastructure failures. Lifetime or peer loss
+before/after the physical read suppresses the entire observation. Durable-only
+lease reads continue to use the database alone and omit physical/history counts.
+
+Current-only observations omit `artifact_history`; they cannot establish retained
+version uniqueness. History projections do not supply orphan inventory outside
+the reviewed prefix, atomic DB/storage/publication fences or full publication
+history after explicit version deletion. Application account, bucket, prefix and
+worker mappings remain independent integration work under D-049 and AC-024.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_job_runtime.py -v
+```

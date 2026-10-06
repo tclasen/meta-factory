@@ -26,6 +26,23 @@ def export_identity(value):
 
 LEASE_FIELDS = {'export_id', 'status', 'processing_attempts', 'active_lease',
                 'lease_fingerprint', 'completion_events'}
+ARTIFACT_HISTORY_FIELDS = {'versions', 'delete_markers', 'keys', 'current_objects',
+                           'current_delete_markers', 'history_complete'}
+
+
+def project_artifact_history(value):
+    """Private physical counts only; no raw keys, IDs or completeness assertion."""
+    if (not isinstance(value, dict) or set(value) != ARTIFACT_HISTORY_FIELDS
+            or value['history_complete'] is not False
+            or any(type(value[key]) is not int or not 0 <= value[key] <= 2**31-1
+                   for key in ARTIFACT_HISTORY_FIELDS-{'history_complete'})
+            or value['current_objects']+value['current_delete_markers'] != value['keys']
+            or value['versions'] < value['current_objects']
+            or value['delete_markers'] < value['current_delete_markers']
+            or (value['keys'] == 0) != (value['versions']+value['delete_markers'] == 0)
+            or value['keys'] > value['versions']+value['delete_markers']):
+        raise ValueError('Invalid independent artifact history')
+    return {key: value[key] for key in sorted(ARTIFACT_HISTORY_FIELDS)}
 
 
 def project_lease(value, export_id):
@@ -50,6 +67,11 @@ def project(value, export_id):
     if type(count) is not int or not 0 <= count <= 2**31 - 1:
         raise ValueError('Invalid independent physical artifact count')
     observation['published_artifacts'] = count
+    if 'artifact_history' in value:
+        history = project_artifact_history(value['artifact_history'])
+        if history['current_objects'] != count:
+            raise ValueError('Independent artifact observations disagree')
+        observation['artifact_history'] = history
     # Above-limit counts remain visible to the oracle rather than being hidden
     # as infrastructure errors. Durable-only reads never fabricate this field.
     return {key: observation[key] for key in sorted(observation)}

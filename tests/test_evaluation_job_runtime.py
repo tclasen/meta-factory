@@ -36,16 +36,88 @@ class JobRuntimeTest(unittest.TestCase):
             return value() if value else None
         return execute
 
-    def runtime(self):
-        runtime = JobRuntime(self.root / ('jobs-' + uuid.uuid4().hex), self.box, self.guard,
-            database_read=self.callback('database', lambda: self.value),
+    def runtime(self, **overrides):
+        arguments = dict(database_read=self.callback('database', lambda: self.value),
             artifact_count=self.callback('objects', lambda: self.physical_count),
             database_peer_check=self.callback('database-peer'),
             storage_peer_check=self.callback('storage-peer'),
             monotonic_deadline=200, wall_deadline=200,
             monotonic=lambda: self.now[0], wall=lambda: self.now[1])
+        arguments.update(overrides)
+        runtime = JobRuntime(self.root / ('jobs-' + uuid.uuid4().hex), self.box, self.guard,
+                             **arguments)
         self.addCleanup(runtime.close)
         return runtime
+
+    def history_runtime(self, value):
+        return self.runtime(artifact_count=None,
+            artifact_history=self.callback('history', lambda: value))
+
+    def test_history_mode_uses_one_physical_read_and_exposes_overwritten_versions(self):
+        history = dict(versions=2, delete_markers=0, keys=1, current_objects=1,
+                       current_delete_markers=0, history_complete=False)
+        self.value['artifact_history'] = dict(history, versions=999)
+        runtime = self.history_runtime(history)
+        observation = self.read(runtime)
+        self.assertEqual(observation['published_artifacts'], 1)
+        self.assertEqual(observation['artifact_history'], history)
+        self.assertEqual([(name, timeout) for name, args, timeout in self.calls
+                          if name in ('database', 'objects', 'history')],
+                         [('database', 15), ('history', 15)])
+        self.assertNotIn('objects', [name for name, args, timeout in self.calls])
+        for path in runtime.directory.rglob('*'):
+            if path.is_file():
+                self.assertNotIn(self.export_id, path.read_text())
+
+    def test_deleted_current_object_keeps_retained_versions_visible(self):
+        history = dict(versions=2, delete_markers=1, keys=1, current_objects=0,
+                       current_delete_markers=1, history_complete=False)
+        observation = self.read(self.history_runtime(history))
+        self.assertEqual(observation['published_artifacts'], 0)
+        self.assertEqual(observation['artifact_history']['versions'], 2)
+        self.assertEqual(observation['artifact_history']['delete_markers'], 1)
+
+    def test_history_cannot_be_fabricated_from_database_or_legacy_current_count(self):
+        self.value['artifact_history'] = dict(versions=1)
+        observation = self.read(self.runtime())
+        self.assertNotIn('artifact_history', observation)
+
+    def test_malformed_history_and_completeness_assertions_are_inconclusive(self):
+        history = dict(versions=1, delete_markers=0, keys=1, current_objects=1,
+                       current_delete_markers=0, history_complete=False)
+        for changes in [dict(versions=True), dict(versions=0), dict(keys=0),
+                        dict(current_delete_markers=1), dict(history_complete=True),
+                        dict(versions=-1), dict(versions=2**31),
+                        dict(VersionId='private-version-canary')]:
+            with self.subTest(changes=changes):
+                runtime = self.history_runtime(dict(history, **changes))
+                with self.assertRaises(JobObservationError):
+                    self.read(runtime)
+                for path in runtime.directory.rglob('*'):
+                    if path.is_file():
+                        self.assertNotIn('private-version-canary', path.read_text())
+                runtime.close()
+
+    def test_unkeyed_retained_versions_are_inconclusive(self):
+        history = dict(versions=2, delete_markers=0, keys=0, current_objects=0,
+                       current_delete_markers=0, history_complete=False)
+        with self.assertRaises(JobObservationError):
+            self.read(self.history_runtime(history))
+
+    def test_history_post_read_revocation_suppresses_observation(self):
+        history = dict(versions=1, delete_markers=0, keys=1, current_objects=1,
+                       current_delete_markers=0, history_complete=False)
+        runtime = self.history_runtime(history)
+        self.actions['history'] = runtime.revoked.set
+        with self.assertRaises(JobObservationError):
+            self.read(runtime)
+        self.assertEqual(self.calls[-1][0], 'history')
+
+    def test_exactly_one_reviewed_physical_reader_is_required(self):
+        for override in [dict(artifact_count=None), dict(artifact_history=lambda *a, **k: None)]:
+            with self.subTest(override=override), self.assertRaises(ValueError):
+                self.runtime(**override)
+        self.assertEqual(list(self.root.glob('jobs-*')), [])
 
     def read(self, runtime):
         return read_job(runtime.broker.configuration, self.export_id)
