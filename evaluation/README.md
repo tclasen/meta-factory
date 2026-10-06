@@ -1921,3 +1921,33 @@ until those adapters and their native-runtime preflights are implemented.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_relay.py -v
 ```
+
+### Independently mapped RPC client admission
+
+`cri_client.PrivateCRIClientGuard(peer=..., check=..., deadline=...)` compares
+actual connected Unix `SO_PEERCRED` and live process start/mount/executable
+identity with a separately observed operator-client mapping. UID alone cannot
+authorize a client. The independent bounded `check(reserve)` callback binds full
+cgroup, supervisor lifetime and clocks before and after peer observation. The
+mapping is copied; scope loss, stale/dead process, closed FD or callback failure
+refuses admission without recording private identities or exception content.
+
+`serve_private_rpc_once(listener, runtime, client_guard=..., stop=...,
+deadline=...)` owns an already-created private listener and admitted runtime
+connection. It accepts one client, closes the listener, authenticates the actual
+accepted FD, then invokes the held-FD relay with continuous client checks.
+Rejected admission ends the attempt and closes both connections, invalidating
+dependent collection; it never tries another client. The deadline and runtime
+guard bound idle admission. The caller must create the pathname in an exclusive
+operator-owned directory, clean up that pathname and run the callbacks/process
+under the operator watchdog.
+
+This is the admission/relay boundary, not a complete process launcher or CRI
+collector replacement. Separately binding the launched client PID/executable,
+private endpoint lifecycle, owner-death recovery, native gRPC/subscription
+semantics and production integration remain required. Window-end receipts retain
+`history_complete=False` and do not establish source completeness.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_client.py -v
+```
