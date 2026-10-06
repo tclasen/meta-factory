@@ -48,6 +48,8 @@ class LinuxCRIFollower:
     Every receipt has history_complete=False. close() stops collection and
     abandons retention; known captured positives remain inspectable.
     """
+    _source_binding = staticmethod(source_binding)
+
     def __init__(self, retention, source, directory, active_name, *, node_uid, check, deadline):
         if not sys.platform.startswith('linux'):
             raise ValueError('Private CRI follower requires Linux')
@@ -56,7 +58,7 @@ class LinuxCRIFollower:
         positive(deadline, 'CRI follower deadline')
         if not callable(check): raise ValueError('Private CRI lifetime check required')
         _file_identity(dict(node_uid=node_uid, device=0, inode=1))
-        self._retention, self._source = retention, source_binding(source)
+        self._retention, self._source = retention, self._source_binding(source)
         self._directory, self._name = Path(directory), active_name
         self._node, self._check, self._deadline = node_uid, check, deadline
         self._owner, self._lock = os.getpid(), threading.RLock()

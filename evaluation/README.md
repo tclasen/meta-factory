@@ -1574,3 +1574,47 @@ evidence limits.
 ```bash
 uv run --locked python -m unittest discover -s tests -p test_evaluation_log_collector.py -v
 ```
+
+### Private CRI staging before container identity observation
+
+`cri_staging.PrivateCRIStaging(retention, check=..., deadline=...)` keeps early
+CRI file bytes private until an immutable container ID is independently bound.
+Use a dedicated `PrivateCRIRetention` exclusively with this manager.
+`stage(entry, directory, node_uid=..., check=...)` takes a provisional entry with
+exact `namespace`, `pod_name`, `pod_uid`, `container_name`, and `restart_index`
+fields, but no container ID. Trusted node discovery must bind the directory and
+node independently. The manager uses the Linux follower's held descriptors,
+append checks and ordered rotations; existing older generations still refuse
+collection. `poll()` collects every staged or bound source.
+
+`pending()` returns copied private entries, node IDs and captured file identities
+for the operator's binder. It never returns raw bytes or canary results. Unbound
+bytes do not appear in authoritative retention. `bind(entry, source, check=...)`
+requires the exact immutable source and a trusted `check(proof, reserve)` that
+independently verifies the API restart index, node runtime container and all file
+identities. The proof contains the provisional entry, immutable source, node UID,
+and ordered file identities. The check runs before/during/after replay and on
+later polls, including polls without file growth. Captured generations transfer
+in order, then subsequent reads append directly under the verified source.
+Current/previous selectors never permit duplicate binding or container-ID reuse.
+
+The global `check(reserve)` binds the original Namespace, node, owner and both
+clocks; per-file `check(entry, reserve)` verifies filesystem/node lifetime. Stage
+and replay share retention's aggregate byte cap (8 MiB default, 64 MiB maximum).
+At most 128 provisional entries, 512 file identities, 65,536 sink operations and
+4,096 manager polls are accepted. Replay releases staged chunks as they transfer;
+individual transient chunks are at most 64 KiB. Failure closes every follower,
+clears unbound staged references, and invalidates retention while preserving
+already bound positives. `close()` also abandons retention; no secure memory
+erasure is claimed. All state belongs to the original process. Run this work
+inside an owned bounded child to interrupt blocked callbacks/filesystem calls.
+
+This supplies late attribution, not recursive birth discovery, pre-deployment
+bootstrap coverage, API/time/closed-writer fences, owner-death recovery or
+complete namespace history. Every summary retains `history_complete=False` and
+unbound-source counts; absence cannot authorize acceptance. This supports D-049
+and REQ-012/015/020 while keeping those remaining evidence limits explicit.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_staging.py -v
+```
