@@ -197,7 +197,8 @@ class PrivateCRIStaging:
 
         Receiver must independently authenticate node/peer/event/path/generation.
         This duplicates the read-only regular FD and leaves caller ownership and
-        offset unchanged. It observes only this inode, without rotation discovery.
+        offset unchanged. Successors require separate rotate_descriptor admission;
+        no rotation discovery or writer-closure proof is provided.
         The same private aggregate caps and independent late-binding checks apply.
         """
         self._owned()
@@ -219,6 +220,33 @@ class PrivateCRIStaging:
                 self._cleanup()
                 if not isinstance(error, Exception): raise
                 raise ValueError('Private CRI descriptor staging unavailable') from None
+
+    def rotate_descriptor(self, entry, descriptor, *, node_uid, check):
+        """Stage a separately authenticated successor with independent order proof.
+
+        check receives the provisional entry, old/new file identities and final
+        old size from the descriptor follower. It must independently authenticate
+        successor order and the old boundary, not infer either from EOF. Before
+        binding, bytes remain private and unscannable. After binding, the existing
+        binding callback must accept and revalidate every admitted file identity.
+        Retired descriptors remain checked; any refusal invalidates all staging.
+        """
+        self._owned()
+        with self._lock:
+            try:
+                self._verify(); entry = provisional_entry(entry)
+                key = _key(entry)
+                slot, follower = self._slots.get(key), self._followers.get(key)
+                if (slot is None or type(follower) is not _ProvisionalDescriptorFollower
+                        or node_uid != slot.node_uid or not callable(check)):
+                    raise ValueError('Private provisional CRI successor unavailable')
+                follower.rotate(descriptor, check=check)
+                self._verify()
+                return self.summary()
+            except BaseException as error:
+                self._cleanup()
+                if not isinstance(error, Exception): raise
+                raise ValueError('Private CRI descriptor successor unavailable') from None
 
     def pending(self):
         """Copied private binding inputs, never public evidence or raw bytes."""
