@@ -17,6 +17,10 @@ git diff --check
 
 `evidence.py` supplies exclusively created private attempt directories, durable
 JSONL transitions, atomic status/result snapshots and bounded subprocess logs.
+Process-group termination waits at most five seconds. If termination or pipe
+cleanup fails, the command result records `cleanup_error`, the original
+`command_outcome` and observed exit status; it cannot count as a passing check.
+Cleanup interruptions are recorded before they propagate.
 Commands preserve actual exit status and separately classify timeout/output limits.
 They never use a shell. Callers must keep secrets out of arguments and manifests.
 Terminating an sbx client does not prove its remote children stopped: a separate

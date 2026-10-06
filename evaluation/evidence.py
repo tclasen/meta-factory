@@ -124,7 +124,7 @@ def kill_group(process):
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
-    process.wait()
+    process.wait(timeout=5)
 
 
 def collect(attempt, label, argv, *, cwd, timeout, max_output_bytes=16 * 1024 * 1024):
@@ -180,12 +180,27 @@ def collect(attempt, label, argv, *, cwd, timeout, max_output_bytes=16 * 1024 * 
         if not isinstance(error, Exception):
             raise
     finally:
+        cleanup_interrupt = None
         if process is not None:
-            kill_group(process)
+            def cleanup_failed(error):
+                nonlocal cleanup_interrupt
+                record.setdefault("command_outcome", record["outcome"])
+                record.update(outcome="cleanup_error", cleanup_error_type=type(error).__name__)
+                if not isinstance(error, Exception):
+                    cleanup_interrupt = error
+            try:
+                kill_group(process)
+            except BaseException as error:
+                cleanup_failed(error)
             record["exit_code"] = process.returncode
-            process.stdout.close()
-            process.stderr.close()
+            for stream in (process.stdout, process.stderr):
+                try:
+                    stream.close()
+                except BaseException as error:
+                    cleanup_failed(error)
         record.update(ended=utc_now(), elapsed_seconds=time.monotonic() - start)
         atomic_json(check_dir / "result.json", record)
         attempt.emit("controller", "command.end", record)
+        if cleanup_interrupt is not None:
+            raise cleanup_interrupt
     return record

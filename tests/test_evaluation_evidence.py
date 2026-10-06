@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import time
 import unittest
@@ -61,6 +62,36 @@ class EvidenceTest(unittest.TestCase):
         result = self.command("print('x'*10000)", max_output_bytes=100)
         self.assertEqual(result["outcome"], "output_limit")
         self.assertEqual((self.attempt.directory / "fixture/stdout.log").stat().st_size, 100)
+
+    def test_cleanup_failure_retains_original_failure_and_final_evidence(self):
+        with patch("evaluation.evidence.kill_group", side_effect=OSError("private error")):
+            result = self.command("import sys; sys.exit(7)")
+        self.assertEqual((result["outcome"], result["command_outcome"], result["exit_code"]),
+                         ("cleanup_error", "failed", 7))
+        self.assertEqual(result["cleanup_error_type"], "OSError")
+        self.assertIn("ended", result)
+        saved = json.loads((self.attempt.directory / "fixture/result.json").read_text())
+        self.assertEqual(saved, result)
+        events = [json.loads(line) for line in (self.attempt.directory / "events.jsonl").read_text().splitlines()]
+        self.assertEqual(events[-1]["type"], "command.end")
+        self.assertEqual(events[-1]["payload"], result)
+        self.assertNotIn("private error", json.dumps(result))
+
+    def test_cleanup_timeout_cannot_turn_success_into_pass(self):
+        with patch("evaluation.evidence.kill_group", side_effect=subprocess.TimeoutExpired("private", 5)):
+            result = self.command("pass")
+        self.assertEqual((result["outcome"], result["command_outcome"], result["exit_code"]),
+                         ("cleanup_error", "passed", 0))
+        self.assertEqual(result["cleanup_error_type"], "TimeoutExpired")
+
+    def test_cleanup_interrupt_is_logged_before_propagation(self):
+        with patch("evaluation.evidence.kill_group", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.command("pass")
+        saved = json.loads((self.attempt.directory / "fixture/result.json").read_text())
+        self.assertEqual(saved["outcome"], "cleanup_error")
+        self.assertEqual(saved["cleanup_error_type"], "KeyboardInterrupt")
+        self.assertIn("ended", saved)
 
     def test_failed_snapshot_write_preserves_original(self):
         path = self.root / "snapshot.json"
