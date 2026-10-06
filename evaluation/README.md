@@ -1147,6 +1147,15 @@ not proof that a required source was collected. Arbitrary encoding, encryption,
 partial-secret detection and complete application log history are not guaranteed.
 No deployment resolver or acceptance case is wired to this helper.
 
+For trusted operator-side binary values, pass `binary_values=[known_bytes]` to
+`scan_secret_chunks`. Text values may be omitted or combined with binary values.
+Exact bytes (including NUL/non-UTF-8) and selected base64/hex forms are inspected
+across chunk boundaries. At most four binary values of 8–65,536 bytes are allowed,
+with a total of at most 131,072 bytes. Unsupported scopes raise a fixed validation
+error; the caller must treat unavailable coverage as inconclusive. This adds no
+worker capability or source/history attestation. Arbitrary enclosing encodings
+and reconstructed archive representations remain outside the scanner guarantee.
+
 Run its focused fixture checks with:
 
 ```sh

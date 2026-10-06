@@ -33,9 +33,33 @@ def canary_patterns(values):
     return tuple(sorted(patterns, key=len, reverse=True))
 
 
-def scan_secret_chunks(chunks, values, *, max_bytes=DEFAULT_BYTES, max_chunks=65536):
+def binary_canary_patterns(values):
+    """Private exact binary values and base64/hex forms, with fixed memory bounds.
+
+    Raw compressed archives are compared as bytes rather than decoded as UTF-8.
+    No arbitrary enclosing encodings, fragments or reconstructed archives claimed.
+    """
+    if (not isinstance(values, (list, tuple)) or not 1 <= len(values) <= 4
+            or any(not isinstance(value, bytes) or not 8 <= len(value) <= 65536
+                   for value in values)
+            or sum(map(len, values)) > 131072):
+        raise ValueError('Bounded nonempty known binary canaries required')
+    patterns = set()
+    for raw in values:
+        patterns.add(raw)
+        patterns.add(raw.hex().encode())
+        patterns.add(raw.hex().upper().encode())
+        for encoded in (base64.b64encode(raw), base64.urlsafe_b64encode(raw)):
+            patterns.add(encoded)
+            patterns.add(encoded.rstrip(b'='))
+    return tuple(sorted(patterns, key=len, reverse=True))
+
+
+def scan_secret_chunks(chunks, values=None, *, binary_values=None, max_bytes=DEFAULT_BYTES, max_chunks=65536):
     """Inspect one independently bound stream; require complete EOF for absence.
 
+    Optional binary_values selects exact known bytes (including NUL/non-UTF-8)
+    and their base64/hex forms. Text and binary values may be combined.
     Split needles are matched across adjacent chunks of this stream, including
     encoded forms. Never concatenate unrelated sources. A detected canary remains
     evidence even if the stream later fails or exceeds a bound. Absence with
@@ -47,7 +71,11 @@ def scan_secret_chunks(chunks, values, *, max_bytes=DEFAULT_BYTES, max_chunks=65
         raise ValueError('Invalid secret scan byte bound')
     if type(max_chunks) is not int or not 1 <= max_chunks <= 65536:
         raise ValueError('Invalid secret scan chunk bound')
-    patterns = canary_patterns(values)
+    if values is None and binary_values is None:
+        raise ValueError('Known text or binary canaries required')
+    patterns = (canary_patterns(values) if values is not None else ())
+    if binary_values is not None:
+        patterns += binary_canary_patterns(binary_values)
     overlap = max(map(len, patterns)) - 1
     receipt = dict(canary_present=False, complete=False, bytes_inspected=0, outcome='incomplete')
     tail = b''; count = 0

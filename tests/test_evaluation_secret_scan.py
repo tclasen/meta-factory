@@ -89,4 +89,64 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual(receipt['outcome'], 'chunk_limit')
 
 
+class BinarySecretScanTest(unittest.TestCase):
+    raw = b'PK\x03\x04\x00\xff\xfecompressed-fixture\x80'
+
+    def test_binary_and_encoded_values_across_every_boundary(self):
+        forms = [self.raw, base64.b64encode(self.raw),
+                 base64.urlsafe_b64encode(self.raw).rstrip(b'='),
+                 self.raw.hex().encode(), self.raw.hex().upper().encode()]
+        for form in forms:
+            for split in range(1, len(form)):
+                with self.subTest(length=len(form), split=split):
+                    result = scan_secret_chunks([b'prefix' + form[:split], form[split:] + b'suffix'],
+                                                binary_values=[self.raw])
+                    self.assertTrue(result['canary_present'])
+                    self.assertTrue(result['complete'])
+                    self.assertNotIn(self.raw.hex(), repr(result))
+                    self.assertEqual(set(result), {'canary_present', 'complete', 'bytes_inspected', 'outcome'})
+
+    def test_mixed_text_binary_and_clean_empty_streams(self):
+        for raw in (self.raw, CANARY.encode()):
+            self.assertTrue(scan_secret_chunks([raw], [CANARY], binary_values=[self.raw])['canary_present'])
+        for chunks in ([], [b'healthy fixture']):
+            result = scan_secret_chunks(chunks, binary_values=[self.raw])
+            self.assertFalse(result['canary_present'])
+            self.assertTrue(result['complete'])
+
+    def test_binary_detection_survives_failure_but_absence_needs_complete_source(self):
+        def broken():
+            yield self.raw
+            raise RuntimeError(self.raw.hex())
+        result = scan_secret_chunks(broken(), binary_values=[self.raw])
+        self.assertTrue(result['canary_present'])
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['outcome'], 'source_error')
+        result = scan_secret_chunks([self.raw, b'extra'], binary_values=[self.raw], max_bytes=len(self.raw))
+        self.assertTrue(result['canary_present'])
+        self.assertFalse(result['complete'])
+        result = scan_secret_chunks([self.raw], binary_values=[self.raw], max_bytes=len(self.raw)-1)
+        self.assertFalse(result['canary_present'])
+        self.assertFalse(result['complete'])
+
+    def test_binary_bounds_and_types_refused_without_exposing_values(self):
+        for values in ([], self.raw, [None], ['text-secret'], [bytearray(self.raw)],
+                       [b'short'], [b'x'*65537], [self.raw]*5, [b'x'*65536]*3):
+            with self.subTest(kind=type(values).__name__):
+                with self.assertRaises(ValueError) as raised:
+                    scan_secret_chunks([], binary_values=values)
+                self.assertNotIn(self.raw.hex(), str(raised.exception))
+        with self.assertRaises(ValueError):
+            scan_secret_chunks([])
+
+    def test_maximum_binary_needles_and_separate_sources(self):
+        raw = b'\xff'*65535 + b'\x00'
+        result = scan_secret_chunks([raw[:32768], raw[32768:]], binary_values=[raw])
+        self.assertTrue(result['canary_present'])
+        for part in (self.raw[:8], self.raw[8:]):
+            result = scan_secret_chunks([part], binary_values=[self.raw])
+            self.assertFalse(result['canary_present'])
+            self.assertTrue(result['complete'])
+
+
 if __name__ == '__main__':unittest.main()
