@@ -1730,3 +1730,35 @@ inspect creation times as RFC 3339 strings. Binding normalizes inspect times wit
 integer arithmetic and preserves all nine fractional digits before comparing
 immutable creation times. Calendar, timezone, precision and positive signed-int64
 bounds are checked; one-nanosecond disagreement still refuses attribution.
+
+### Private CRI runtime metadata archive
+
+`cri_archive.PrivateCRIRuntimeArchive(history, node_uid=..., node_name=...,
+check=..., deadline=...)` remembers minimal independently validated attribution
+while CRI metadata exists. `capture(entry, node, snapshot, file_identity,
+check=...)` applies the CRI binder, original namespace/node binding and guarded
+held-file checks. It retains only the private projection and immutable CID,
+sandbox ID, creation timestamps and role. Raw OCI/configuration, environment,
+annotations, diagnostics and runtime state are discarded.
+
+`resolve(entry, file_identity, check=...)` can return that attribution after runtime
+garbage collection, while rechecking the original API history, deadlines, owner,
+namespace/node/runtime guard and exact independently verified held file. Each file
+generation requires its own capture; unknown entries/files return `None`. Changed
+creation times or sandbox association, CID/file reuse across entries, later API
+conflicts, guard failure and bounds permanently discard the archive. Callers must
+invalidate dependent collection when archival fails. A returned projection is
+private binder input, never a public receipt; neither capture nor lookup mutates
+API identity history or resolves its pending-container counts.
+
+The archive holds at most 128 entries, 512 independently captured files and 4,096
+operations. Close releases references, without claiming secure erasure. Blocking
+guards require an owned bounded child. This is not a continuous runtime birth
+stream, tombstone/writer-close proof, bootstrap/API/time fence or owner-death
+recovery. Fast-deleted containers never captured remain unresolved, and every
+summary retains `history_complete=False`. D-049 and REQ-012/015/020 boundaries
+remain in force.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_archive.py -v
+```
