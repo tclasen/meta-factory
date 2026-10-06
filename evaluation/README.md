@@ -1292,6 +1292,28 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_watch_cu
 ```
 
 
+### Private CRI log decoding
+
+`cri_log.decode_cri_log(chunks, max_bytes=...)` reconstructs private payload bytes
+from bounded Kubernetes CRI log files. It strips record headers, joins `P`
+fragments without inserting bytes, and restores the newline at each `F` record.
+Stdout and stderr stay separate; binary bytes and carriage returns are preserved.
+Malformed timestamps/headers, unfinished fragments, truncated final records,
+reader errors and size/count limits refuse a result. Defaults bound input to
+8 MiB, with at most 65,536 records/chunks and 1 MiB per record; the configurable
+input ceiling is 64 MiB. Returned streams contain private raw bytes: do not save
+them in evidence or expose them to builder mounts.
+
+The operator must independently bind node files to the exact Pod/container and
+verify reads, cleanup, rotation and collection continuity. Parsing a supplied
+file through EOF does not establish full log history or an acceptance verdict.
+This decoder is a building block for private node collection, not a collector.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_log.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
