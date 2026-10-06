@@ -1870,3 +1870,26 @@ worker mappings remain independent integration work under D-049 and AC-024.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_runtime.py -v
 ```
+
+### Independent post-bootstrap fixture preparation
+
+`grade_capture(..., fixture_loader=...)` optionally calls an operator-owned
+callback after successful bootstrap and before capability preparation or grading.
+The callback receives the fresh sandbox plus `guard`, the fixed loopback
+`base_url`, and the existing monotonic/wall grading deadlines. It must bound its
+own operations, honor those deadlines and keep any fixture resources inside the
+owned grading deployment. Fixture preparation consumes the grading budget; it
+does not grant extra time. The watchdog remains active throughout preparation.
+
+The callback may return only dictionary-valued `tenants`, `accounts`,
+`scale_cases`, and `performance_fixture` target fields. The controller copies
+these fields and refuses unknown keys, including origins and grading capabilities.
+Loader exceptions prevent grading and retain ordinary deployment cleanup with
+sanitized error types. Credentials are not added to deployment result logs.
+
+This hook permits independently authored fixture loaders; it does not implement
+application-specific loading, validate dataset/resource preconditions, establish
+capacity or approve a protected suite. Loaders must derive expected resources
+from their independently specified inputs and verified creation, rather than
+learning expected results from application responses. Their actual integration,
+interruption behavior and dataset verification remain required before acceptance.

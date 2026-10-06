@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import tempfile
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -645,3 +646,68 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(events[-2:],['job-close','fault-close'])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
         self.assertNotIn('private-staging-binding',str(report))
+
+
+    def test_post_bootstrap_fixture_loader_receives_guard_and_fixed_origin(self):
+        observations=[]
+        fixture={'accounts':{'analyst':{'username':'independent','password':'synthetic'}}}
+        def loader(box, **context):
+            self.assertEqual(len(self.commands),1)
+            self.assertIsInstance(context['guard'],FakeGuard)
+            self.assertEqual(context['base_url'],'http://127.0.0.1:18080')
+            self.assertGreater(context['monotonic_deadline'],0)
+            self.assertGreater(context['wall_deadline'],0)
+            observations.append(box.name)
+            return fixture
+        def runner(attempt,suite,target,**kwargs):
+            self.assertEqual(target['accounts'],fixture['accounts'])
+            self.assertIsNot(target['accounts'],fixture['accounts'])
+            self.assertEqual(target['base_url'],'http://127.0.0.1:18080')
+            return {'criteria':{},'project_success':False,'accepted_packages':[]}
+        with Attempt(self.root/'fixtures',{}) as attempt:
+            result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
+        self.assertEqual(len(observations),1)
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_fixture_loader_not_called_after_failed_bootstrap(self):
+        def loader(*args,**kwargs):self.fail('Fixture loader ran after failed bootstrap')
+        with Attempt(self.root/'fixtures-no-bootstrap',{}) as attempt:
+            result=self.run_grade(attempt,bootstrap='failed',fixture_loader=loader)
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_invalid_fixture_loader_refused_before_sandbox_creation(self):
+        count=len(FakeSandbox.instances)
+        with Attempt(self.root/'fixtures-invalid-callback',{}) as attempt,self.assertRaises(ValueError):
+            self.run_grade(attempt,fixture_loader={})
+        self.assertEqual(len(FakeSandbox.instances),count)
+
+    def test_fixture_loader_cannot_redirect_or_inject_capabilities(self):
+        for index,value in enumerate(({},None,{'base_url':'https://elsewhere.invalid'},
+                                      {'job_broker':{}},{'accounts':[]},
+                                      {'accounts':{},'browser_executor':{}})):
+            def runner(*args,**kwargs):self.fail('Invalid fixture configuration reached grader')
+            with Attempt(self.root/('fixtures-invalid-'+str(index)),{}) as attempt:
+                result=self.run_grade(attempt,fixture_loader=lambda *args,**kwargs:value,runner=runner)
+            self.assertEqual(result['outcome'],'grading_incomplete')
+            self.assertTrue(result['cleanup']['remote_termination_verified'])
+            shutil.rmtree(self.root/'project')
+
+    def test_fixture_loader_error_is_sanitized_and_cleanup_runs(self):
+        def loader(*args,**kwargs):raise RuntimeError('private-fixture-credential')
+        def runner(*args,**kwargs):self.fail('Grading ran without fixture preparation')
+        with Attempt(self.root/'fixtures-error',{}) as attempt:
+            result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-fixture-credential',str(result))
+
+
+    def test_fixture_preparation_consumes_existing_grading_deadline(self):
+        with patch('evaluation.deployment.time.monotonic',return_value=10) as clock:
+            def loader(*args,**kwargs):
+                clock.return_value=6000
+                return {'accounts':{}}
+            def runner(*args,**kwargs):self.fail('Grading ran after fixture preparation exhausted budget')
+            with Attempt(self.root/'fixtures-budget',{}) as attempt:
+                result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
+        self.assertEqual(result['outcome'],'grading_incomplete')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])

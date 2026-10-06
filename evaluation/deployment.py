@@ -1,6 +1,7 @@
 """Redeploy captured source only inside a guarded, disposable grading sandbox."""
 
 from pathlib import Path
+import copy
 import time
 
 from .evidence import atomic_json, collect, positive
@@ -51,7 +52,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   browser_resolver=None, browser_binding_factory=BrowserBinding,
                   fault_storage_worker_restart=False, job_observer=None,
                   job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime,
-                  security_observer=None, security_runtime_factory=SecurityRuntime):
+                  security_observer=None, security_runtime_factory=SecurityRuntime, fixture_loader=None):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -59,6 +60,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     never grants acceptance and is for synthetic preflights or grader development.
     Factory injection supports deterministic lifecycle/failure tests, not CLI bypasses.
     """
+    if fixture_loader is not None and not callable(fixture_loader):
+        raise ValueError('Fixture loading requires a trusted post-bootstrap callback')
     if type(job_staging) is not bool:
         raise ValueError('Job staging selection must be a boolean')
     if job_staging and not all(callable(callback) for callback in (fault_workloads, fault_service_probes, job_observer)):
@@ -128,6 +131,22 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:
             raise TimeoutError('Grading budget consumed by deployment')
+        if fixture_loader is not None:
+            # This operator callback owns bounded fixture creation and independent
+            # expected resources. It never receives or selects an executable from
+            # application output, and cannot redirect the HTTP grading origin.
+            fixture = fixture_loader(box, guard=guard, base_url=target['base_url'],
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture'}
+            if (not isinstance(fixture, dict) or not fixture
+                    or not set(fixture) <= allowed
+                    or not all(isinstance(value, dict) for value in fixture.values())):
+                raise ValueError('Incomplete post-bootstrap fixture configuration')
+            target = dict(target, **copy.deepcopy(fixture))
+            remaining = grading_seconds - (time.monotonic() - grading_started)
+            if remaining <= 0:
+                raise TimeoutError('Grading budget consumed by fixture preparation')
         options = {}
         if fault_workloads is not None or fault_audit is not None:
             # Fresh workload UIDs exist only after bootstrap. An operator-owned
