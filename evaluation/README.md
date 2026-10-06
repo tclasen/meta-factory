@@ -1891,7 +1891,8 @@ does not grant extra time. The watchdog remains active throughout preparation.
 
 The callback may return only dictionary-valued `tenants`, `accounts`,
 `scale_cases`, `performance_fixture`, `twenty_export_fixture`, `integrated_fixture`,
-`network_fixture`, and `foundation_fixture` target fields. `integrated_fixture` carries the independently normalized seed
+`network_fixture`, `foundation_fixture`, and `documentation_fixture` target fields.
+`integrated_fixture` carries the independently normalized seed
 identities and actor selection for a distinct protected two-tenant API journey;
 its presence does not establish fresh bootstrap, native seeding or suite acceptance.
 `network_fixture` carries independently selected live cluster, workload, service,
@@ -1902,6 +1903,10 @@ ran inside the guarded deployment, or the CNI enforced the policy.
 live cluster and component identities, migration state, private storage, fixture
 identities, and loopback publication. Its presence alone does not establish that
 the observations are complete or bind them to a protected AC-001 case.
+`documentation_fixture` carries bounded, independently parsed documentation and
+operator-execution receipts for protected AC-036 checks. It cannot supply commands
+or capabilities to the controller, and its presence does not establish that the
+documentation covers the application or works in a native fresh deployment.
 The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with

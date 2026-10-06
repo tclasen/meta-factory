@@ -667,7 +667,9 @@ class DeploymentTest(unittest.TestCase):
                  'network_fixture':{'cluster':{'uid':'independently observed cluster'},
                                     'roles':{'api':{'pods':['independent api pod']}}},
                  'foundation_fixture':{'cluster':{'uid':'independent foundation cluster'},
-                                       'components':{'database':{'image':'locked digest'}}}}
+                                       'components':{'database':{'image':'locked digest'}}},
+                 'documentation_fixture':{'documents':{'operations':{'sha256':'a'*64}},
+                                          'checks':{'bootstrap':{'exit_code':0}}}}
         def loader(box, **context):
             self.assertEqual(len(self.commands),1)
             self.assertIsInstance(context['guard'],FakeGuard)
@@ -695,6 +697,9 @@ class DeploymentTest(unittest.TestCase):
             target['foundation_fixture']['components']['database']['image']='worker-side digest'
             self.assertEqual(fixture['foundation_fixture']['components']['database']['image'],
                              'locked digest')
+            self.assertEqual(target['documentation_fixture'],fixture['documentation_fixture'])
+            target['documentation_fixture']['checks']['bootstrap']['exit_code']=1
+            self.assertEqual(fixture['documentation_fixture']['checks']['bootstrap']['exit_code'],0)
             self.assertEqual(target['base_url'],'http://127.0.0.1:18080')
             return {'criteria':{},'project_success':False,'accepted_packages':[]}
         with Attempt(self.root/'fixtures',{}) as attempt:
