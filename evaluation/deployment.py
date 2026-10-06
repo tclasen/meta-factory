@@ -8,6 +8,8 @@ from .fault_runtime import FaultRuntime
 from .audit_runtime import AuditRuntime
 from .job_runtime import JobRuntime
 from .staging_runtime import StagingRuntime
+from .security_runtime import SecurityRuntime
+from .security_broker import OPERATIONS as SECURITY_OPERATIONS
 from .browser_binding import BrowserBinding
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
@@ -48,7 +50,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   fault_audit=None, audit_observer=None, audit_runtime_factory=AuditRuntime,
                   browser_resolver=None, browser_binding_factory=BrowserBinding,
                   fault_storage_worker_restart=False, job_observer=None,
-                  job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime):
+                  job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime,
+                  security_observer=None, security_runtime_factory=SecurityRuntime):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -70,6 +73,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         raise ValueError('Audit observation requires a trusted post-bootstrap resolver')
     if job_observer is not None and not callable(job_observer):
         raise ValueError('Job observation requires a trusted post-bootstrap resolver')
+    if security_observer is not None and not callable(security_observer):
+        raise ValueError('Security inspection requires a trusted post-bootstrap resolver')
     if browser_resolver is not None and not callable(browser_resolver):
         raise ValueError('Browser configuration requires a trusted post-bootstrap resolver')
     if fault_audit is not None and not callable(fault_audit):
@@ -100,6 +105,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     audit_runtime = None
     job_runtime = None
     staging_runtime = None
+    security_runtime = None
     browser_binding = None
     report = {'outcome': 'grading_incomplete', 'project_success': False}
     cleanup = {'remote_termination_verified': False}
@@ -168,6 +174,20 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         if job_staging:
             staging_runtime = staging_runtime_factory(attempt.directory / 'job-staging', fault_runtime, job_runtime=job_runtime)
             options['staging_broker'] = staging_runtime.broker
+        if security_observer is not None:
+            security_options = security_observer(box, guard=guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            if (not isinstance(security_options, dict) or set(security_options) != {'inspections', 'peer_check'}
+                    or not isinstance(security_options['inspections'], dict) or not security_options['inspections']
+                    or not set(security_options['inspections']) <= SECURITY_OPERATIONS
+                    or not all(callable(reader) for reader in security_options['inspections'].values())
+                    or not callable(security_options['peer_check'])):
+                raise ValueError('Incomplete post-bootstrap security inspection configuration')
+            security_runtime = security_runtime_factory(attempt.directory / 'security-observations', box, guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds, **security_options)
+            options['security_broker'] = security_runtime.broker
         if browser_resolver is not None:
             browser_configuration = browser_resolver(box)
             browser_binding = browser_binding_factory(box, guard, browser_configuration,
@@ -187,6 +207,12 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     except Exception as error:
         report.update(outcome='grading_incomplete', project_success=False, error_type=type(error).__name__)
     finally:
+        if security_runtime is not None:
+            try:
+                security_runtime.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], security_cleanup_error=type(error).__name__)
         if browser_binding is not None:
             try:
                 browser_binding.close()

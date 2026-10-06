@@ -498,6 +498,109 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(events,['workloads','fault-bind','job-bind','stage-bind','grade','stage-close','job-close','fault-close','guard-release'])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
 
+    def security_options(self):
+        return dict(inspections={'password_storage':lambda *a,**k:None},peer_check=lambda *a,**k:True)
+
+    def test_security_resolves_after_bootstrap_with_owned_guard_and_deadlines(self):
+        events=[];context={};broker=object();configuration=self.security_options()
+        def resolver(box,**kwargs):
+            self.assertTrue(box.creation_attempted);self.assertEqual(len(self.commands),1)
+            self.assertIsInstance(kwargs['guard'],FakeGuard);context.update(kwargs)
+            events.append('resolve');return configuration
+        class Runtime:
+            def __init__(inner,directory,box,guard,**kwargs):
+                self.assertIs(guard,context['guard'])
+                self.assertIs(kwargs['inspections'],configuration['inspections'])
+                self.assertEqual(kwargs['monotonic_deadline'],context['monotonic_deadline'])
+                self.assertEqual(kwargs['wall_deadline'],context['wall_deadline'])
+                inner.broker=broker
+            def close(inner):events.append('security-close')
+        def runner(attempt,suite,target,**kwargs):
+            self.assertEqual(set(target),{'base_url'});self.assertIs(kwargs['security_broker'],broker)
+            events.append('grade');return {'criteria':{'AC-004':{'verdict':'pass'}},'project_success':False}
+        def release(guard):events.append('guard-release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release),Attempt(self.root/'security-bound',{}) as attempt:
+            report=self.run_grade(attempt,runner=runner,security_observer=resolver,security_runtime_factory=Runtime)
+        self.assertEqual(events,['resolve','grade','security-close','guard-release'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_security_closes_before_other_parent_resources_and_guard(self):
+        events=[]
+        class Security:
+            def __init__(inner,*a,**k):inner.broker=object()
+            def close(inner):events.append('security-close')
+        class Jobs:
+            def __init__(inner,*a,**k):inner.broker=object()
+            def close(inner):events.append('job-close')
+        def release(guard):events.append('guard-release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release),Attempt(self.root/'security-order',{}) as attempt:
+            self.run_grade(attempt,security_observer=lambda *a,**k:self.security_options(),security_runtime_factory=Security,
+                job_observer=lambda box:self.job_options(),job_runtime_factory=Jobs)
+        self.assertEqual(events,['security-close','job-close','guard-release'])
+
+    def test_later_resolver_failure_closes_security_before_guard(self):
+        events=[]
+        class Security:
+            def __init__(inner,*a,**k):inner.broker=object()
+            def close(inner):events.append('security-close')
+        def broken(box):raise RuntimeError('private-later-security-secret')
+        def release(guard):events.append('guard-release');return {'remote_termination_verified':True}
+        with patch.object(FakeGuard,'release',release),Attempt(self.root/'security-later-failure',{}) as attempt:
+            result=self.run_grade(attempt,security_observer=lambda *a,**k:self.security_options(),security_runtime_factory=Security,
+                browser_resolver=broken)
+        self.assertEqual(events,['security-close','guard-release'])
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-later-security-secret',str(result))
+
+    def test_security_default_constructs_no_capability(self):
+        def unexpected(*args,**kwargs):self.fail('Default created security runtime')
+        with Attempt(self.root/'security-default',{}) as attempt:
+            self.run_grade(attempt,security_runtime_factory=unexpected)
+
+    def test_static_security_configuration_refused_before_sandbox_creation(self):
+        count=len(FakeSandbox.instances)
+        with Attempt(self.root/'security-static',{}) as attempt,self.assertRaises(ValueError):
+            self.run_grade(attempt,security_observer={})
+        self.assertEqual(len(FakeSandbox.instances),count)
+
+    def test_failed_bootstrap_never_resolves_security(self):
+        def unexpected(*args,**kwargs):self.fail('Security resolver called without bootstrap')
+        with Attempt(self.root/'security-bootstrap-failed',{}) as attempt:
+            result=self.run_grade(attempt,bootstrap='failed',security_observer=unexpected)
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_malformed_security_configuration_disposes_sandbox_without_grading(self):
+        configurations=[{},dict(self.security_options(),inspections={}),dict(self.security_options(),peer_check=None),
+                        dict(self.security_options(),inspections={'builder-command':lambda:None}),
+                        dict(self.security_options(),inspections={'password_storage':None}),dict(self.security_options(),credentials='private')]
+        for index,configuration in enumerate(configurations):
+            if index:(self.root/'project').rename(self.root/('security-old-project-'+str(index)))
+            def unexpected(*args,**kwargs):self.fail('Malformed security scope used')
+            with Attempt(self.root/('security-malformed-'+str(index)),{}) as attempt:
+                result=self.run_grade(attempt,runner=unexpected,security_observer=lambda *a,**k:configuration,security_runtime_factory=unexpected)
+            self.assertEqual(result['error_type'],'ValueError')
+            self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+    def test_security_close_failure_cannot_accept_and_still_releases_guard(self):
+        class Runtime:
+            def __init__(inner,*a,**k):inner.broker=object()
+            def close(inner):raise RuntimeError('private-security-credential')
+        self.suite.approved=True
+        with Attempt(self.root/'security-close-broken',{}) as attempt:
+            result=self.run_grade(attempt,security_observer=lambda *a,**k:self.security_options(),security_runtime_factory=Runtime)
+        self.assertFalse(result['project_success']);self.assertEqual(result['accepted_packages'],[])
+        self.assertEqual(result['security_cleanup_error'],'RuntimeError')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-security-credential',str(result))
+
+    def test_security_initialization_failure_still_disposes_sandbox(self):
+        def broken(*args,**kwargs):raise ValueError('private-security-binding')
+        with Attempt(self.root/'security-binding-failed',{}) as attempt:
+            result=self.run_grade(attempt,security_observer=lambda *a,**k:self.security_options(),security_runtime_factory=broken)
+        self.assertEqual(result['outcome'],'grading_incomplete')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-security-binding',str(result))
+
     def test_staging_default_does_not_construct_capability(self):
         def unexpected(*args,**kwargs):self.fail('Default created staging capability')
         with Attempt(self.root/'staging-default',{}) as attempt:

@@ -1276,3 +1276,31 @@ Run the executor capability checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_grading.py -v
 ```
+
+
+### Fresh deployment security resolution
+
+`grade_capture(..., security_observer=...)` resolves security inspection callbacks
+only after successful fresh bootstrap. The trusted operator function receives
+`box`, plus keyword arguments `guard`, `monotonic_deadline` and `wall_deadline` so
+it can bind private readers to that exact deployment and its original lifetime.
+It must return exactly `inspections` (a nonempty fixed-operation/callable map) and
+`peer_check` (a callable). Static configuration dictionaries, unknown operations,
+noncallable readers and extra fields are refused. Actual account/library-default
+and log inventory/history bindings remain independent operator work; builder
+stdout is not executable or authoritative resolver configuration.
+
+The controller constructs SecurityRuntime with those same immutable deadlines
+and supplies only its broker to the suite executor. Parent callback/configuration
+objects and raw values are not added to worker targets. Default deployment grants
+no security capability. Failed bootstrap never invokes the resolver. Security
+inspection closes before browser/job/audit/fault resources and guard release;
+resolution or cleanup failures still dispose the owned sandbox. A close failure
+revokes acceptance and records only its exception type. No grading time, policy
+changes, suite coverage approval or benchmark launch is implied by this hook.
+
+Run its focused deployment checks with:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
+```
