@@ -1893,3 +1893,31 @@ capacity or approve a protected suite. Loaders must derive expected resources
 from their independently specified inputs and verified creation, rather than
 learning expected results from application responses. Their actual integration,
 interruption behavior and dataset verification remain required before acceptance.
+
+### Held-FD private RPC relay
+
+`cri_relay.relay_private_rpc(client, runtime, check_client=..., stop=...,
+deadline=...)` transfers ownership of an operator client Unix socket and an
+already admitted `PrivateCRIRPCConnection`. It relays private bytes on that held
+runtime FD with bounded buffers, preserving partial writes and idle backpressure.
+The independent `check_client(socket, reserve)` callback must authenticate the
+actual client FD and its owner lifetime. Runtime checks retain the independently
+bound Node/Namespace/cgroup/owner/clock requirements of the connection primitive.
+Both checks run around IO; every exit closes both sockets and invalidates
+runtime-dependent collection. Run callbacks and the relay in a guarded operator
+process: Python does not force-stop an arbitrary callback.
+
+A trusted boolean `stop()` signal may end an observation window only with no
+unsent buffered bytes. EOF, deadline exhaustion, guard or callback failure refuses
+transport; they never imply successful observation. Receipts contain byte counts
+and cleanup state, omit payloads/identities, and retain `history_complete=False`.
+The relay does not prove that there were no unread server bytes at window end.
+
+This component does not yet provide a listening endpoint, an authenticated
+launcher, gRPC semantic decoding, subscription/publication acknowledgement or
+integration into production collectors. Existing external CLI transport remains
+until those adapters and their native-runtime preflights are implemented.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_relay.py -v
+```
