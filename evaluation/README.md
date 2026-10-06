@@ -1242,6 +1242,31 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_log_inve
 ```
 
 
+### Private Pod watch windows
+
+`pod_watch.PodWatchTransport` requests one bounded unfiltered raw Pod watch from
+an operator-bound namespace UID and an opaque resource-version anchor. The
+trusted prefix must use private credential configuration. Query values are
+escaped; workers select neither namespace nor selectors. `consume(event)` gets
+private validated Pod/bookmark objects and must enforce its own processing bound.
+`check(binding, reserve)` independently checks API/namespace identity, owner,
+sandbox and original deadlines before and after collection.
+
+Malformed/duplicate-key/nonfinite JSON, truncated frames, watch/API errors
+(including expired anchors), scope mismatch, output/event limits, timeout,
+callback failure or lost identity make the window incomplete. Raw objects and
+client diagnostics are discarded; evidence contains counts, hashes, fixed
+outcomes/error types and cleanup flags. Client groups are terminated and verified.
+A normal `watch_window_closed` is not full-history evidence: continuous resumption,
+fences, deleted-container log retention, rotation and owner-death containment
+still need independent implementation and validation. No deployment observer or
+acceptance case is wired to this transport yet.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_pod_watch.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
