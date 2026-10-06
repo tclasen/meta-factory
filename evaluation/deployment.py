@@ -153,7 +153,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 fixture_lifetime.check()
             finally:
                 fixture_lifetime.restore_scope()
-            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture', 'twenty_export_fixture'}
+            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture',
+                       'twenty_export_fixture', 'integrated_fixture'}
             if (not isinstance(fixture, dict) or not fixture
                     or not set(fixture) <= allowed
                     or not all(isinstance(value, dict) for value in fixture.values())):

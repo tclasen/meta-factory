@@ -661,7 +661,9 @@ class DeploymentTest(unittest.TestCase):
     def test_post_bootstrap_fixture_loader_receives_guard_and_fixed_origin(self):
         observations=[]
         fixture={'accounts':{'analyst':{'username':'independent','password':'synthetic'}},
-                 'twenty_export_fixture':{'case':{'title':'independently seeded'},'patterns':{'synthetic-id':'synthetic bytes'}}}
+                 'twenty_export_fixture':{'case':{'title':'independently seeded'},'patterns':{'synthetic-id':'synthetic bytes'}},
+                 'integrated_fixture':{'identities':{'users':[{'username':'independent journey actor'}]},
+                                       'actors':{'alpha':{'analyst':'independent actor identity'}}}}
         def loader(box, **context):
             self.assertEqual(len(self.commands),1)
             self.assertIsInstance(context['guard'],FakeGuard)
@@ -677,6 +679,10 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(target['twenty_export_fixture'],fixture['twenty_export_fixture'])
             target['twenty_export_fixture']['case']['title']='worker-side change'
             self.assertEqual(fixture['twenty_export_fixture']['case']['title'],'independently seeded')
+            self.assertEqual(target['integrated_fixture'],fixture['integrated_fixture'])
+            target['integrated_fixture']['identities']['users'][0]['username']='worker-side change'
+            self.assertEqual(fixture['integrated_fixture']['identities']['users'][0]['username'],
+                             'independent journey actor')
             self.assertEqual(target['base_url'],'http://127.0.0.1:18080')
             return {'criteria':{},'project_success':False,'accepted_packages':[]}
         with Attempt(self.root/'fixtures',{}) as attempt:

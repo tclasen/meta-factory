@@ -1890,7 +1890,11 @@ owned grading deployment. Fixture preparation consumes the grading budget; it
 does not grant extra time. The watchdog remains active throughout preparation.
 
 The callback may return only dictionary-valued `tenants`, `accounts`,
-`scale_cases`, `performance_fixture`, and `twenty_export_fixture` target fields. The controller copies
+`scale_cases`, `performance_fixture`, `twenty_export_fixture`, and `integrated_fixture`
+target fields. `integrated_fixture` carries the independently normalized seed
+identities and actor selection for a distinct protected two-tenant API journey;
+its presence does not establish fresh bootstrap, native seeding or suite acceptance.
+The controller copies
 these fields and refuses unknown keys, including origins and grading capabilities.
 Loader exceptions prevent grading and retain ordinary deployment cleanup with
 sanitized error types. Credentials are not added to deployment result logs.
