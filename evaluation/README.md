@@ -1355,6 +1355,40 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_log_rete
 ```
 
 
+### Linux node-local CRI following
+
+`cri_follower.LinuxCRIFollower(retention, source, directory, active_name,
+node_uid=..., check=..., deadline=...)` follows an existing independently bound
+CRI file on a trusted Linux node. `poll()` drains inotify events and reads growth
+through held descriptors; captured prefixes are rehashed to refuse overwrite or
+truncation. Rename cookies establish rotation order. The old writer must close
+after rename before the collector advances to the new inode; late old writes
+are read first. Unlink does not erase bytes from a held descriptor. Directory
+and active-file symlinks/nonregular files are refused.
+
+The fixed active filename is a canonical numeric restart index followed by
+`.log`. The caller must independently verify its container/node mapping and
+both original deadlines through `check(source, reserve)`, and run collection in
+an owned child that the outer watchdog can terminate if filesystem or check work
+blocks. The CRI writer must be trusted and append-only with rename/reopen
+rotation. Older rotations at startup, overlapping/ambiguous rotations, queue
+overflow, unobserved generations, writes to a retired generation, identity loss
+and bounds are unavailable. At most 4,096 polls, 4,096 events per drain, 128
+rotations and 512 initial directory entries are accepted; retention's aggregate
+byte/file/source bounds also apply. Poll frequently enough for the tested load;
+there is no silent recovery from a missed generation.
+
+`close()` closes descriptors and abandons further retention; already captured
+positives remain inspectable. Every receipt says `history_complete=False`.
+This follows one existing source, not recursive Pod/container discovery, API/time
+fences, a complete namespace history or owner-death recovery. Source coverage
+and actual deployment orchestration remain separate work.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_follower.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
