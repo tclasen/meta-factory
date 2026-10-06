@@ -2128,3 +2128,31 @@ sanitized failure type. Existing destinations are never overwritten or claimed;
 owned incomplete copies are retained with their exact path for inspection. No
 application/specification code executes, no sandbox is created, and no source
 copy receipt grants suite approval, readiness or launch authorization.
+
+
+### Owned workspace preparation
+
+`workspace.prepare_workspace(attempt, plan, workload, suite_root,
+monotonic_deadline=..., wall_deadline=...)` acquires the exact local workspace
+described by `plan.build_plan`. It validates canonical workspace paths, exact
+builder/grader resource commands, allocation and sequential port use, disjoint
+protected inputs, and current workload, approval, suite and controller identities.
+The full readiness audit must match the inspected plan. Supply the same optional
+`suite_approval` and `host_attempt` context used to create that plan.
+
+Preparation creates only the exclusively owned workspace, an empty private
+`builder-project`, and the reviewed specification copy. Future `capture` and
+`grader-project` paths remain absent. It checks input identities again after the
+copy, confirms owned directory identities and refuses unexpected workspace
+content. One attempt permits one acquisition; existing data is never overwritten
+or claimed. Failed owned copies remain with their exact retained path and a
+sanitized `workspace-preparation.json` receipt outside the workspace.
+Exact acquisition intent is recorded before directory creation, then confirmed
+with the owned device/inode identity. An interrupted unconfirmed acquisition
+requires inspection; the intent alone never grants ownership of existing data.
+
+An incomplete readiness plan can be prepared for inspection, but its gates remain
+in force. This helper creates no sandbox, reserves no port, executes no code,
+and grants no readiness or launch authority. Dual deadline checks do not interrupt
+filesystem I/O; the outer owner must enforce the overall preparation interval.
+Any later execution must revalidate sources, ownership and all readiness gates.
