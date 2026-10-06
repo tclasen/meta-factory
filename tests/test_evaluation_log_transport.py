@@ -18,12 +18,14 @@ CLIENT=r'''import json,signal,sys,time
 signal.alarm(5)
 mode=sys.argv[1]
 if mode=='flags':
- assert sys.argv[2:]==['logs','--namespace=incident-app','worker.fixture-1','--container=worker','--timestamps=true','--tail=-1','--previous=false','--request-timeout=1s']
+ assert sys.argv[2:]==['logs','--namespace=incident-app','worker.fixture-1','--container=worker','--timestamps=false','--tail=-1','--previous=false','--request-timeout=1s']
  print('ordinary log')
 if mode in ('leak','failed-leak'):print('Private-log-canary-2026!')
 if mode in ('binary','binary-diagnostics'):
  destination=sys.stderr.buffer if mode=='binary-diagnostics' else sys.stdout.buffer
- destination.write(b'PK\x03\x04\x00\xffprivate-log-binary')
+ raw=b'PK\x03\x04\x00\xffprivate\nlog-binary'
+ if '--timestamps=true' in sys.argv:raw=b'2026-10-06T00:00:00Z '+raw.replace(b'\n',b'\n2026-10-06T00:00:00Z ')
+ destination.write(raw)
 if mode=='large':print('x'*8192)
 if mode=='diagnostics':print('Private-log-canary-2026!',file=sys.stderr)
 if mode=='diagnostic-limit':print('x'*131072,file=sys.stderr)
@@ -59,7 +61,7 @@ class LogTransportTest(unittest.TestCase):
         self.assert_private()
 
     def test_binary_stream_and_diagnostics_stay_private(self):
-        raw=b'PK\x03\x04\x00\xffprivate-log-binary'
+        raw=b'PK\x03\x04\x00\xffprivate\nlog-binary'
         for mode,expected in [('binary','canary_detected'),('binary-diagnostics','observed_clean')]:
             result=self.reader(mode)(binary_values=[raw],timeout=1)
             self.assertEqual(result['outcome'],expected)

@@ -1174,8 +1174,13 @@ grading guard/deadline. Credentials belong in private client configuration files
 never prefix arguments. Current sources require the selected current container ID;
 previous sources require its independently observed terminated container ID.
 
-The adapter uses timestamps and the complete available snapshot (`--tail=-1`),
-with a 15-second default/30-second maximum client bound and the scanner's byte
+The adapter reads the complete available snapshot (`--tail=-1`) with
+`--timestamps=false` to preserve payload bytes across line boundaries. Added
+timestamp prefixes can otherwise conceal multiline text or raw binary canaries.
+Collection UTC times are recorded separately; log timestamps are not used to
+prove history or source coverage.
+
+The client has a 15-second default/30-second maximum bound and the scanner's byte
 ceiling. It privately scans application logs from client stdout; client stderr is
 bounded, discarded connection diagnostics. Kubernetes merges application stdout
 and stderr into that log stream. It writes only byte counts, source/client hashes,
