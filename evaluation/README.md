@@ -2259,3 +2259,55 @@ observations. This primitive alone supplies no orchestration or launch authority
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_grading.py -v
 ```
+
+### Sequential fresh grading stages
+
+`grading_stages.grade_stages(attempt, source, inventory, specification, suite,
+stages, port=..., grading_seconds=5400, development=False)` runs one protected
+registry across sequential fresh deployments. Each stage declares a unique `id`,
+planned grader `name`, absent `project` under an existing operator-owned parent,
+nonempty `case_ids`, protected `target`, and optional trusted deployment `options`.
+The stage list must partition every registered case exactly once. It cannot
+replace the shared suite, source, origin, budget, command/sandbox owner or selected
+case runner. Options may supply the existing fixture/capability resolvers and their
+factories; bootstrap remains bounded to the proposed 1,800-second ceiling.
+
+All case/criterion/package identities and coverage approval remain those of the
+original full suite. Each deployment gets a copy of its cached registry, executes
+its selected cases in registry order, and returns observations for final full
+aggregation. The owner verifies disk and cached registry identity, the unchanged
+captured source, mount-parent/project identities, planned creation argv, actual
+owned creation/stop state and scoped remote termination. It reuses the port only
+after the previous stage settles. An aborted or incomplete stage stops subsequent
+deployments; missing cases remain untested. Ordinary observed failures retain the
+existing fail/partial-package aggregation rules.
+
+The one-shot private `grading-stages-intent.json` records exact resources, commands,
+case assignments, source/suite identities and option names before creation. Targets
+and callback representations are not logged in that plan. Each child attempt keeps
+its deployment/grading evidence; raw observations and the final
+`grading-stages-result.json` remain available when settlement fails. Infrastructure,
+identity, clock or cleanup uncertainty invalidates collected observations and
+withholds acceptance. Unapproved development suites never confer acceptance.
+
+Both clocks share one budget across source checks, bootstrap, fixture loading,
+cases and stage settlement. Clock rollback/nonfinite observations refuse, and
+first-test grading cannot exceed the proposed 5,400 seconds. Cleanup still runs
+after expiry; its overrun cannot extend grading or authorize acceptance. If an
+interruption escapes the deployment, scoped fallback stop/listing uses only a
+matching ordinary private pre-create resource intent. A collision refused before
+that intent grants no stop authority. Interrupted calls retain their result and
+re-raise the interruption. Existing native name-availability checks are not an
+atomic reservation or proof of concurrent creation-race recovery.
+
+The caller must independently own/prepare the parent workspace, reviewed
+specification, frozen capture after verified builder termination, actual native
+seed/identity/resource adapters and reviewed stage assignment. This synchronous
+owner cannot interrupt arbitrary callbacks or filesystem I/O; an outer owner must
+enforce its lifetime. The function supplies no model call, launch CLI, readiness
+override, native source/image attestation, suite approval or deadline approval.
+The 90-minute grading allowance and full schedule fit remain launch-plan gates.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_grading_stages.py -v
+```
