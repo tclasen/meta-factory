@@ -1,4 +1,5 @@
 """Private security observation requires owned peer/guard/deadline continuity."""
+import base64
 from pathlib import Path
 import tempfile
 import threading
@@ -42,6 +43,33 @@ class SecurityRuntimeTest(unittest.TestCase):
         self.assertEqual(self.peers,[('log_canaries',1),('log_canaries',1)])
         for path in runtime.directory.rglob('*'):
             if path.is_file():self.assertNotIn(CANARY.encode(),path.read_bytes())
+
+    def test_binary_grant_delivers_bytes_and_sanitizes_parent_evidence(self):
+        raw=b'PK\x03\x04\x00\xffprivate-binary-runtime'
+        def reader(values,*,timeout):
+            self.calls.append((values,timeout));return dict(PASS,raw_binary=raw)
+        runtime=self.runtime(inspections={'log_binary_canaries':reader})
+        self.assertEqual(read_security(runtime.broker.configuration,'log_binary_canaries',canaries=[raw]),PASS)
+        self.assertEqual(self.calls,[([raw],30)])
+        self.assertEqual(self.peers,[('log_binary_canaries',1),('log_binary_canaries',1)])
+        for path in runtime.directory.rglob('*'):
+            if path.is_file():
+                for secret in (raw,base64.b64encode(raw),raw.hex().encode()):
+                    self.assertNotIn(secret,path.read_bytes())
+
+    def test_binary_requires_separate_grant(self):
+        runtime=self.runtime()
+        with self.assertRaises(SecurityObservationError):
+            read_security(runtime.broker.configuration,'log_binary_canaries',canaries=[b'private-binary'])
+        self.assertEqual(self.calls,[]);self.assertEqual(self.peers,[])
+
+    def test_binary_lost_guard_suppresses_callback_receipt(self):
+        def reader(values,*,timeout):
+            self.status=0;return PASS
+        runtime=self.runtime(inspections={'log_binary_canaries':reader})
+        with self.assertRaises(SecurityObservationError):
+            read_security(runtime.broker.configuration,'log_binary_canaries',canaries=[b'private-binary'])
+        self.assertEqual(len(self.peers),1)
 
     def test_password_inspection_receives_no_worker_scope(self):
         runtime=self.runtime()

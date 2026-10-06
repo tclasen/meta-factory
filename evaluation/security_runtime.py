@@ -19,8 +19,9 @@ class SecurityRuntime:
     Each reader(canaries, timeout=...) must enforce command/time/source bounds and
     return a sanitized verdict. Password canaries are always None; its immutable
     account/profile scope stays parent-side. Log source inventory/history remains
-    parent-side; missing coverage cannot produce a pass. peer_check(operation,
-    timeout=...) must return exactly True for the independently bound active peer.
+    parent-side; missing coverage cannot produce a pass. log_binary_canaries
+    readers receive known bytes; log_canaries readers receive known strings.
+    peer_check(operation, timeout=...) must return exactly True for the independently bound active peer.
     No reader, source, profile or command is selected by builder/worker output.
     """
     def __init__(self,directory,sandbox,guard,*,inspections,peer_check,monotonic_deadline,

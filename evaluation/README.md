@@ -1201,12 +1201,18 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_log_tran
 
 ### Sanitized parent security observations
 
-`security_broker.SecurityBroker` provides two fixed read-only parent operations:
-`password_storage` (APP-002; AC-004) and `log_canaries` (APP-007; AC-018). Its trusted
+`security_broker.SecurityBroker` provides three fixed read-only parent operations:
+`password_storage` (APP-002; AC-004) and `log_canaries`/`log_binary_canaries`
+(APP-007; AC-018). Its trusted
 `reader(operation, canaries)` must independently bind the actual inspection scope,
 verify the active guard/deadlines and use bounded private readers. Password
-requests accept no account/profile selection. Log requests accept only bounded
+requests accept no account/profile selection. Text log requests accept only bounded
 known canary strings; they cannot select Pods, history, paths or commands.
+`log_binary_canaries` accepts one to four exact binary values (8 bytes minimum,
+32,768 bytes total maximum). Canonical base64 is used only on the private wire;
+the trusted reader receives bytes. The existing 65,536-byte message bound remains
+in force. Binary and text inspections use separate operations and grants; missing
+binary grants remain inconclusive. Neither operation selects logging sources.
 Requests, callback exceptions and raw callback extras are discarded.
 
 The response contains only `verdict`, an enumerated `reason` and a finite integer

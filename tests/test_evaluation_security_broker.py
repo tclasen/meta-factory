@@ -1,4 +1,5 @@
 """Security scope stays parent-side; raw callback/request data never becomes evidence."""
+import base64
 import socket
 import threading
 import unittest
@@ -95,6 +96,56 @@ class SecurityBrokerTest(unittest.TestCase):
         for operation,canaries,timeout in [('commands',None,1),('password_storage',[CANARY],1),('log_canaries',[],1),
                                            ('log_canaries',['short'],1),('password_storage',None,True),('password_storage',None,61)]:
             with self.assertRaises(ValueError):read_security({},operation,canaries=canaries,timeout=timeout)
+
+
+class BinarySecurityBrokerTest(unittest.TestCase):
+    raw=b'PK\x03\x04\x00\xffbinary-private-fixture'
+
+    def test_private_binary_request_decodes_and_projects_only_receipt(self):
+        seen=[]
+        def reader(operation,values):
+            seen.append((operation,values))
+            return dict(verdict='fail',reason='canary_present',observations_checked=1,raw=values)
+        with SecurityBroker(reader) as broker:
+            receipt=read_security(broker.configuration,'log_binary_canaries',canaries=[self.raw])
+        self.assertEqual(seen,[('log_binary_canaries',[self.raw])])
+        self.assertEqual(receipt,dict(verdict='fail',reason='canary_present',observations_checked=1))
+        self.assertNotIn(self.raw.hex(),repr(receipt))
+
+    def test_maximum_aggregate_binary_scope_fits_unchanged_wire_limit(self):
+        raw=b'\xff'*32768
+        with SecurityBroker(lambda operation,values:PASS if values==[raw] else None) as broker:
+            self.assertEqual(read_security(broker.configuration,'log_binary_canaries',canaries=[raw]),PASS)
+
+    def test_invalid_binary_worker_values_refused_before_socket(self):
+        for values in (None,[],[CANARY],[b'short'],[b'x'*32769],[b'x'*16385]*2,[self.raw]*5):
+            with self.assertRaises(ValueError):
+                read_security({},'log_binary_canaries',canaries=values)
+
+    def test_noncanonical_or_injected_wire_requests_never_invoke_reader(self):
+        seen=[]
+        with SecurityBroker(lambda *args:seen.append(args)) as broker:
+            encoded=base64.b64encode(self.raw).decode()
+            for values in ([encoded+'='],[encoded+'\n'],['!invalid!'],['YWJjZGVmZ2j='],[1],[],[base64.b64encode(b'x'*32769).decode()]):
+                connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);connection.settimeout(2)
+                with connection:
+                    connection.connect(str(broker.path))
+                    with connection.makefile('rwb') as stream:
+                        send(stream,dict(token=broker.token,operation='log_binary_canaries',canaries=values))
+                        self.assertEqual(receive(stream),{'status':'inconclusive'})
+            connection=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);connection.settimeout(2)
+            with connection:
+                connection.connect(str(broker.path))
+                with connection.makefile('rwb') as stream:
+                    send(stream,dict(token=broker.token,operation='log_binary_canaries',canaries=[encoded],pod='selected'))
+                    self.assertEqual(receive(stream),{'status':'refused'})
+        self.assertEqual(seen,[])
+
+    def test_binary_callback_exception_is_fixed_unavailable(self):
+        def reader(*args):raise RuntimeError(self.raw.hex())
+        with SecurityBroker(reader) as broker:
+            with self.assertRaisesRegex(SecurityObservationError,'^Security inspection unavailable$'):
+                read_security(broker.configuration,'log_binary_canaries',canaries=[self.raw])
 
 
 if __name__=='__main__':unittest.main()

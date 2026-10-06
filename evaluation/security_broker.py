@@ -4,18 +4,20 @@ Requests expose neither SQL, credential rows, hash profiles, source identities,
 log text nor command/path selection. Actual inspection and its reviewed scope
 remain parent-side; this channel is not a security verifier or scope attestation.
 """
+import base64
 import hmac
 import socket
 
 from .audit_broker import AuditBroker,AuditObservationError,receive,send
 from .evidence import positive
-from .secret_scan import canary_patterns
+from .secret_scan import canary_patterns,binary_canary_patterns
 
 
-OPERATIONS = {'password_storage','log_canaries'}
+OPERATIONS = {'password_storage','log_canaries','log_binary_canaries'}
 FAILURES = {
     'password_storage': {'plaintext','forbidden_algorithm','wrong_defaults','reused_salt','password_mismatch'},
     'log_canaries': {'canary_present'},
+    'log_binary_canaries': {'canary_present'},
 }
 RECEIPT_FIELDS = {'verdict','reason','observations_checked'}
 
@@ -29,8 +31,31 @@ def request_values(operation,canaries):
         raise ValueError('Unreviewed security operation')
     if operation=='password_storage':
         if canaries is not None:raise ValueError('Password storage accepts no worker-selected scope')
+    elif operation=='log_binary_canaries':
+        binary_canary_patterns(canaries)
+        if sum(map(len,canaries))>32768:
+            raise ValueError('Binary security request exceeds private channel bound')
     else:
         canary_patterns(canaries)
+
+
+def decode_binary_canaries(values):
+    """Bound canonical base64 before decoding; retain bytes only privately."""
+    if (not isinstance(values,list) or not 1<=len(values)<=4
+            or any(not isinstance(value,str) or len(value)>43692 for value in values)
+            or sum(map(len,values))>43704):
+        raise ValueError('Invalid private binary controls')
+    decoded=[]
+    try:
+        for value in values:
+            raw=base64.b64decode(value,validate=True)
+            if base64.b64encode(raw).decode('ascii')!=value:
+                raise ValueError('Noncanonical encoding')
+            decoded.append(raw)
+        request_values('log_binary_canaries',decoded)
+    except (ValueError,TypeError):
+        raise ValueError('Invalid private binary controls') from None
+    return decoded
 
 
 def project(operation,value,*,wire=False):
@@ -62,7 +87,9 @@ class SecurityBroker(AuditBroker):
     cannot choose Pods, history, library/profile, accounts or commands. Incomplete
     inspection must return inconclusive or raise; assertions/raw exception text
     are never automatically forwarded as application failures. Callback extras
-    are stripped and never logged or exposed.
+    are stripped and never logged or exposed. log_binary_canaries delivers a
+    bounded list of exact bytes to the trusted reader; its wire encoding is never
+    evidence. Existing log_canaries continues to deliver strings.
     """
     def __init__(self,reader,**bounds):
         for name in ('request_seconds','cleanup_seconds'):
@@ -80,12 +107,14 @@ class SecurityBroker(AuditBroker):
                     connection.settimeout(self.request_seconds)
                     with connection.makefile('rwb') as stream:
                         request=receive(stream);operation=request.get('operation')
-                        fields={'token','operation','canaries'} if operation=='log_canaries' else {'token','operation'}
+                        fields={'token','operation','canaries'} if operation in ('log_canaries','log_binary_canaries') else {'token','operation'}
                         if (set(request)!=fields or not isinstance(request.get('token'),str)
                                 or not hmac.compare_digest(request['token'],self.token)):
                             send(stream,{'status':'refused'});continue
                         try:
-                            canaries=request.get('canaries');request_values(operation,canaries)
+                            canaries=request.get('canaries')
+                            if operation=='log_binary_canaries':canaries=decode_binary_canaries(canaries)
+                            request_values(operation,canaries)
                             if self.closing.is_set() or self.remaining<=0:raise ValueError('Security capability unavailable')
                             self.remaining-=1
                             receipt=project(operation,self.reader(operation,canaries))
@@ -114,6 +143,7 @@ def read_security(configuration,operation,*,canaries=None,timeout=45):
         with connection.makefile('rwb') as stream:
             request=dict(token=configuration['token'],operation=operation)
             if operation=='log_canaries':request['canaries']=list(canaries)
+            elif operation=='log_binary_canaries':request['canaries']=[base64.b64encode(value).decode('ascii') for value in canaries]
             send(stream,request);response=receive(stream)
             if set(response)!={'status','observation'} or response['status']!='observed':
                 raise SecurityObservationError('Security inspection unavailable')
