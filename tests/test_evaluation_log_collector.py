@@ -60,6 +60,15 @@ class NamespaceCollectorTest(unittest.TestCase):
         self.assertEqual(self.c.poll()['pending_containers'],1)
         self.assertEqual(self.c.summary()['attached_sources'],1)
 
+    def test_summary_discloses_unattached_identities_before_and_between_polls(self):
+        self.assertEqual(self.c.summary()['unresolved_sources'],1)
+        self.file();self.c.poll()
+        start=self.h.begin()
+        self.h.accept(event(pod(name='new',uid='new',current='containerd://new'),'ADDED'))
+        self.h.finish(receipt(start,1))
+        self.assertEqual(self.c.summary()['unresolved_sources'],1)
+        self.assertEqual(self.c.summary()['attached_sources'],1)
+
     def test_restart_selectors_do_not_duplicate_previous_source(self):
         self.file();self.c.poll();start=self.h.begin()
         self.h.accept(event(pod(count=1,current='containerd://two',prior='containerd://one')))

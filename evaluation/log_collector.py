@@ -38,7 +38,7 @@ class NamespaceLogCollector:
         self._history, self._retention = history, retention
         self._resolve, self._check, self._deadline = resolve, check, deadline
         self._owner, self._lock = os.getpid(), threading.RLock()
-        self._followers, self._unresolved = {}, 0
+        self._followers = {}
         self._polls, self._closed, self._failed, self._cleanup_ok = 0, False, False, True
 
     def _owned(self):
@@ -67,7 +67,6 @@ class NamespaceLogCollector:
                 if self._closed or self._failed or self._polls >= 4096:
                     raise ValueError('Private namespace collection unavailable')
                 self._verify(); self._polls += 1
-                self._unresolved = 0
                 for entry in self._history.sources():
                     source = entry['source']
                     key = tuple(source[field] for field in
@@ -78,7 +77,6 @@ class NamespaceLogCollector:
                     bound = self._resolve(copy.deepcopy(entry), 5)
                     self._verify()
                     if bound is None:
-                        self._unresolved += 1
                         continue
                     if not isinstance(bound, dict) or set(bound) != {'directory', 'node_uid', 'check'}:
                         raise ValueError('Private source resolution unavailable')
@@ -100,7 +98,7 @@ class NamespaceLogCollector:
         with self._lock:
             history = self._history.summary()
             return dict(outcome='private_namespace_collection', polls=self._polls,
-                        attached_sources=len(self._followers), unresolved_sources=self._unresolved,
+                        attached_sources=len(self._followers), unresolved_sources=history['identities']-len(self._followers),
                         pending_containers=history['pending_containers'],
                         identity_gap=history['identity_gap'],
                         valid=not self._failed and not self._closed and history['valid']
