@@ -1192,6 +1192,13 @@ missing source coverage cannot be silently replaced by a clean current snapshot.
 This adapter does not discover or prove complete application log inventory/history;
 no deployment resolver, capability socket or acceptance case is wired to it.
 
+Known binary values can be supplied privately as
+`transport(binary_values=[known_bytes], timeout=...)`, alone or with text canaries.
+The same fixed source, output/time bounds and before/after identity checks apply;
+raw bytes and encoded representations are discarded. Unsupported binary scopes
+are refused before starting a client. This does not establish complete inventory
+or historical log coverage.
+
 Run its focused lifecycle checks with:
 
 ```sh

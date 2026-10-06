@@ -1,4 +1,5 @@
 """Fixed private log snapshots require source/guard continuity and complete output."""
+import base64
 import copy
 import json
 from pathlib import Path
@@ -20,6 +21,9 @@ if mode=='flags':
  assert sys.argv[2:]==['logs','--namespace=incident-app','worker.fixture-1','--container=worker','--timestamps=true','--tail=-1','--previous=false','--request-timeout=1s']
  print('ordinary log')
 if mode in ('leak','failed-leak'):print('Private-log-canary-2026!')
+if mode in ('binary','binary-diagnostics'):
+ destination=sys.stderr.buffer if mode=='binary-diagnostics' else sys.stdout.buffer
+ destination.write(b'PK\x03\x04\x00\xffprivate-log-binary')
 if mode=='large':print('x'*8192)
 if mode=='diagnostics':print('Private-log-canary-2026!',file=sys.stderr)
 if mode=='diagnostic-limit':print('x'*131072,file=sys.stderr)
@@ -53,6 +57,24 @@ class LogTransportTest(unittest.TestCase):
         self.assertTrue(result['client_group_absent'])
         self.assertEqual(self.calls,[(SOURCE,6),(SOURCE,5)])
         self.assert_private()
+
+    def test_binary_stream_and_diagnostics_stay_private(self):
+        raw=b'PK\x03\x04\x00\xffprivate-log-binary'
+        for mode,expected in [('binary','canary_detected'),('binary-diagnostics','observed_clean')]:
+            result=self.reader(mode)(binary_values=[raw],timeout=1)
+            self.assertEqual(result['outcome'],expected)
+            self.assertTrue(result['source_verified_before'] and result['source_verified_after'])
+            self.assertTrue(result['client_group_absent'])
+        for path in self.attempt.directory.rglob('*'):
+            if path.is_file():
+                for secret in (raw,base64.b64encode(raw),raw.hex().encode()):self.assertNotIn(secret,path.read_bytes())
+
+    def test_invalid_binary_controls_refused_before_client(self):
+        before=set(self.attempt.directory.iterdir())
+        for values in ([],['private-string'],[b'short'],[b'x'*65537]):
+            with self.assertRaises(ValueError):self.reader('binary')(binary_values=values,timeout=1)
+        self.assertEqual(self.calls,[])
+        self.assertEqual(before,set(self.attempt.directory.iterdir()))
 
     def test_raw_leak_is_only_reported_as_sanitized_receipt(self):
         result=self.reader('leak')([CANARY],timeout=1)

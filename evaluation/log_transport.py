@@ -16,7 +16,7 @@ import time
 import uuid
 
 from .evidence import atomic_json,kill_group,positive,utc_now
-from .secret_scan import DEFAULT_BYTES,canary_patterns,scan_secret_chunks
+from .secret_scan import DEFAULT_BYTES,canary_patterns,binary_canary_patterns,scan_secret_chunks
 
 
 SOURCE_FIELDS = {'namespace','pod_name','pod_uid','container_name','container_id','previous'}
@@ -58,10 +58,14 @@ class LogTransport:
         self.attempt,self.prefix,self.source=attempt,tuple(peer_prefix),source_binding(source)
         self.check,self.cwd,self.max_output_bytes=check,Path(cwd),max_output_bytes
 
-    def __call__(self,canaries,*,timeout=15):
+    def __call__(self,canaries=None,*,binary_values=None,timeout=15):
         positive(timeout,'log command timeout')
         if timeout>30:raise ValueError('Log command timeout exceeds bound')
-        canary_patterns(canaries)  # Refuse invalid controls before starting a client.
+        # Refuse unsupported controls before client creation or evidence writes.
+        if canaries is None and binary_values is None:
+            raise ValueError('Known log canaries required')
+        if canaries is not None:canary_patterns(canaries)
+        if binary_values is not None:binary_canary_patterns(binary_values)
         source=copy.deepcopy(self.source)
         started=time.monotonic()
         record=dict(started=utc_now(),outcome='incomplete',exit_code=None,stdout_bytes=0,stderr_bytes=0,
@@ -107,7 +111,7 @@ class LogTransport:
                 client_complete=True;record['client_outcome']='observed'
         stream=chunks()
         try:
-            receipt=scan_secret_chunks(stream,canaries,max_bytes=self.max_output_bytes)
+            receipt=scan_secret_chunks(stream,canaries,binary_values=binary_values,max_bytes=self.max_output_bytes)
             record['scan']=receipt
             record['outcome']='canary_detected' if receipt['canary_present'] else (
                 'observed_clean' if receipt['complete'] and client_complete else 'incomplete')
