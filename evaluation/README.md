@@ -1217,6 +1217,31 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_log_tran
 ```
 
 
+### Available Kubernetes log inventory
+
+`log_inventory.available_log_inventory(namespace, pods, binding=...)` privately
+parses a complete unfiltered `PodList` and exact operator-bound namespace name/UID.
+It includes regular, init, restartable sidecar and ephemeral container sources,
+including available current and previous container IDs. Missing or ambiguous
+status, pagination, duplicate identities and unsupported bounds are unavailable.
+A known never-started waiting container has no log source; waiting after a restart
+is refused because its current identity may be stale.
+
+The result contains private source bindings, the list resource version, a stable
+identity/restart-count fingerprint and `restart_history_gap`. More than one restart
+sets that flag because a snapshot cannot recover all earlier container logs.
+A false flag or unchanged fingerprint does not prove absence of deleted Pods,
+transient replacements, log rotation or lost intervals. The caller still owns
+trusted API/client binding, unfiltered namespace scope, bounded collection and
+continuous inventory/history evidence. This parser is not a full-history verifier
+or a deployment resolver. Private identities and raw Pod fields must not enter
+public evidence; unsupported inventory must remain inconclusive.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_log_inventory.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
