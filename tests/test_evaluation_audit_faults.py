@@ -74,7 +74,7 @@ class AuditFaultTest(unittest.TestCase):
 
     def test_successful_context_binds_identities_and_restores(self):
         with self.fault() as observation:
-            self.assertEqual(observation, {'audit_insert_failure_verified': True})
+            self.assertEqual(observation, {'audit_insert_failure_verified': True, 'audit_constraint_canary': self.name})
             self.assertTrue(self.installed)
         self.assertFalse(self.installed)
         self.assertTrue(self.result()['restoration_verified'])

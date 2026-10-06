@@ -165,7 +165,8 @@ class FaultRuntimeTest(unittest.TestCase):
         options['database_peer']['prefix'] = ['untrusted']
         with patch('evaluation.fault_runtime.DatabaseTransport', side_effect=self.transport):
             with remote_fault(runtime.broker.configuration, 'audit') as observation:
-                self.assertEqual(observation, {'service_outage_verified':False,'audit_insert_failure_verified':True})
+                self.assertEqual(observation, {'service_outage_verified':False,'audit_insert_failure_verified':True,
+                    'audit_constraint_canary':self.audit_gate})
                 self.assertIsNotNone(self.audit_gate)
         self.assertIsNone(self.audit_gate)
         self.assertEqual(len(self.audit_calls), 8)

@@ -132,6 +132,30 @@ class BrokerTest(unittest.TestCase):
                         'audit_insert_failure_verified': supplied is True})
                 self.assertFalse(broker.aborted)
 
+    def test_audit_diagnostic_canary_requires_verified_audit_role(self):
+        marker='factory_audit_fault_'+'a'*32
+        for role, verified, included in [('audit',True,True),('audit',False,False),('audit',1,False),('storage',True,False)]:
+            @contextmanager
+            def factory(selected):
+                yield dict(audit_insert_failure_verified=verified, audit_constraint_canary=marker, raw_exception='private SQL')
+            with FaultBroker([role],factory) as broker:
+                with remote_fault(broker.configuration,role) as observed:
+                    self.assertEqual(observed.get('audit_constraint_canary'),marker if included else None)
+                    self.assertNotIn('raw_exception',observed)
+
+    def test_invalid_audit_diagnostic_canary_restores_and_refuses(self):
+        for marker in ('private SQL',None,1,'factory_audit_fault_'+'A'*32,'factory_audit_fault_'+'a'*33):
+            restored=[]
+            @contextmanager
+            def factory(role):
+                try:yield dict(audit_insert_failure_verified=True,audit_constraint_canary=marker)
+                finally:restored.append(True)
+            with FaultBroker(['audit'],factory) as broker:
+                with self.assertRaises(FaultSetupError):
+                    with remote_fault(broker.configuration,'audit'):pass
+                self.assertTrue(broker.wait_idle())
+                self.assertEqual(restored,[True])
+
     def test_workload_receipt_requires_literal_true_and_excludes_identity_details(self):
         for supplied in (True, False, 'true', 1, None):
             @contextmanager

@@ -434,7 +434,13 @@ Use a dedicated child `Attempt` when called from the broker, to avoid concurrent
 writes to grader evidence. The adapter verifies runtime/operator database/table
 identities, a successful baseline insertion, rejection by the exact installed
 constraint under the runtime identity, exact removal, recovered insertion, and
-unchanged runtime identity. It yields only `audit_insert_failure_verified: true`.
+unchanged runtime identity. It yields `audit_insert_failure_verified: true` and
+`audit_constraint_canary`, the exact generated constraint name. The private fault
+broker projects that bounded identifier only for a verified audit fault, allowing
+protected cases to detect its appearance in application errors/logs. It never
+forwards SQL, connection details, rows or arbitrary exception text. Constraint
+identity remains in operator restoration metadata; it is a diagnostic canary,
+not a credential. Missing markers cannot establish diagnostic leak coverage.
 
 A durable restoration plan precedes mutation; exact constraint identity is saved
 when received. Lost installation replies remain explicitly uncertain: the adapter

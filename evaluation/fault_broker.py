@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import hmac
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -121,6 +122,13 @@ class FaultBroker:
                                     projected['workload_suspended_verified'] = observations['workload_suspended_verified'] is True
                                 if isinstance(observations, dict) and 'audit_insert_failure_verified' in observations:
                                     projected['audit_insert_failure_verified'] = observations['audit_insert_failure_verified'] is True
+                                    if (request['role'] == 'audit' and projected['audit_insert_failure_verified']
+                                            and 'audit_constraint_canary' in observations):
+                                        marker = observations['audit_constraint_canary']
+                                        if (not isinstance(marker, str)
+                                                or not re.fullmatch(r'factory_audit_fault_[0-9a-f]{32}', marker)):
+                                            raise FaultSetupError('Invalid audit diagnostic canary')
+                                        projected['audit_constraint_canary'] = marker
                                 send(stream, {'status': 'suspended', 'observations': projected})
                                 restarted = False
                                 while True:

@@ -104,7 +104,7 @@ def audit_insert_failure(attempt, binding, *, execute, check):
                 and failed.get('schema') == schema and failed.get('table') == table):
             raise FaultSetupError('Exact runtime audit insertion failure not observed')
         result['fault_established'] = True
-        yield {'audit_insert_failure_verified': True}
+        yield {'audit_insert_failure_verified': True, 'audit_constraint_canary': name}
     except BaseException as error:
         result['body_error_type'] = type(error).__name__
         raise
