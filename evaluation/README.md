@@ -2061,3 +2061,36 @@ Neither a callback's presence nor synthetic fixture success grants acceptance.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_ops_broker.py -v
 ```
+
+
+### Reviewable resource dry run
+
+Controller unit 5 (D-049, REQ-015/020) includes a resource plan that creates only
+local evidence. Choose an existing workspace parent outside the controller,
+workload, protected suite and evidence directories:
+
+```sh
+uv run --locked python -m evaluation plan \
+  --workload .factory-planning/first-test \
+  --suite .factory-planning/protected-first-test \
+  --workspace-parent /Users/t.clasen/projects \
+  --port 18080
+```
+
+Unique `.factory-planning/evaluation-plan-logs/run-*` directories retain revision,
+worktree, Python/uv versions, command statuses and `plan.json`/`result.json`.
+The plan records exact builder/grader creation and manual-stop commands, separate
+project/specification/capture paths, loopback forwarding, current workload/suite/
+controller hashes and the required lifecycle sequence. Command rendering is
+shared with the live sandbox adapter. Builder termination must be independently
+verified before capture and before the grader reuses the port. Protected source,
+evidence and controller paths are excluded from the proposed mounts.
+
+The 24-hour builder ceiling and 8-vCPU/16-GiB allocation cite D-048; preparation,
+capture, grading and cleanup limits remain proposals. Exit zero means a plan was
+recorded, with outcome `planned_not_ready` and `launch_enabled: false`. It creates
+no workspace, sandbox, port reservation or model call, changes no host policy,
+and has no execute/launch switch. Paths and names are proposals rather than owned
+resources. A future executor must recheck identities, acquire exclusive ownership,
+verify remaining readiness gates and obtain separate launch authorization. A plan
+cannot freeze or approve the protected suite.

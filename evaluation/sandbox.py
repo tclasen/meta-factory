@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import posixpath
+import re
 import stat
 import uuid
 
@@ -26,6 +27,27 @@ def stopped_from_listing(text, name):
         return False
     matches = [line.split() for line in rows[1:] if line.split() and line.split()[0] == name]
     return len(matches) == 1 and len(matches[0]) >= 3 and matches[0][2] == "stopped"
+
+
+def sandbox_create_argv(project, specification, *, name, port, role,
+                        project_readonly=False, primary_workspace=None):
+    """Pure command rendering shared by dry-run planning and live creation."""
+    if (role not in ('builder', 'grader') or type(port) is not int or not 1024 <= port <= 65535
+            or not isinstance(name, str) or not re.fullmatch('factory-eval-'+role+'-[0-9a-f]{16}', name)
+            or type(project_readonly) is not bool):
+        raise ValueError('Invalid planned sandbox identity, role or port')
+    project, specification = disjoint(project, specification)
+    primary = Path(primary_workspace).resolve() if primary_workspace is not None else None
+    if project_readonly != (primary is not None):
+        raise ValueError('Readonly projects require a writable primary workspace')
+    if primary is not None:disjoint(primary, project, specification)
+    paths = [project, specification] + ([primary] if primary is not None else [])
+    if any(':' in str(path) for path in paths):raise ValueError('Invalid sandbox mount path')
+    mounts = ([str(primary)] if primary is not None else [])
+    mounts += [str(project)+(':ro' if project_readonly else ''), str(specification)+':ro']
+    return ['sbx', 'create', '--name', name, '--cpus', '8', '--memory', '16g',
+            '--skills', 'off', '--publish', f'127.0.0.1:{port}:8080',
+            'codex' if role=='builder' else 'shell', *mounts]
 
 
 class Sandbox:
@@ -55,11 +77,9 @@ class Sandbox:
         self.stopped = False
 
     def create_argv(self):
-        mounts = ([str(self.primary_workspace)] if self.primary_workspace else [])
-        mounts += [str(self.project) + (":ro" if self.project_readonly else ""), str(self.specification) + ":ro"]
-        return ["sbx", "create", "--name", self.name, "--cpus", "8", "--memory", "16g",
-                "--skills", "off", "--publish", f"127.0.0.1:{self.port}:8080",
-                "codex" if self.role == "builder" else "shell", *mounts]
+        return sandbox_create_argv(self.project, self.specification, name=self.name,
+            port=self.port, role=self.role, project_readonly=self.project_readonly,
+            primary_workspace=self.primary_workspace)
 
     def create(self):
         if self.creation_attempted:
