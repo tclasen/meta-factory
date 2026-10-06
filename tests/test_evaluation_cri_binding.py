@@ -128,6 +128,29 @@ class CRIBindingTest(unittest.TestCase):
             self.assertEqual(str(raised.exception),'Private CRI log binding unavailable')
             self.assertNotIn(SECRET,repr(raised.exception.__dict__))
 
+    def test_human_inspect_times_compare_exact_nanoseconds_without_float_rounding(self):
+        s=snapshots()
+        s['container_detail']['status']['createdAt']='2023-11-14T22:13:20.000000001Z'
+        s['sandbox_detail']['status']['createdAt']='2023-11-14T22:13:20Z'
+        self.assertEqual(bind_cri_log_source(pending_history(),ENTRY,NODE,s,FILE)['source'],SOURCE)
+        s['container_detail']['status']['createdAt']='2023-11-15T00:13:20.000000001+02:00'
+        self.assertEqual(bind_cri_log_source(pending_history(),ENTRY,NODE,s,FILE)['source'],SOURCE)
+        s['container_detail']['status']['createdAt']='2023-11-14T22:13:20.000000002Z'
+        with self.assertRaises(ValueError) as raised:bind_cri_log_source(pending_history(),ENTRY,NODE,s,FILE)
+        self.assertEqual(raised.exception.reason,'creation_order')
+
+    def test_inspect_time_calendar_precision_timezone_and_epoch_bounds_refuse(self):
+        for value in ('2023-11-14T22:13:20.0000000001Z','2023-02-30T22:13:20Z',
+                      '2023-11-14T22:13:60Z','2023-11-14T22:13:20+24:00',
+                      '2023-11-14T22:13:20+00:60','2023-11-14T22:13:20-00:00',
+                      '1969-12-31T23:59:59Z','9999-12-31T23:59:59Z',
+                      '2023-11-14T22:13:20',SECRET):
+            s=snapshots();s['container_detail']['status']['createdAt']=value
+            with self.subTest(value=value),self.assertRaises(ValueError) as raised:
+                bind_cri_log_source(pending_history(),ENTRY,NODE,s,FILE)
+            self.assertEqual(raised.exception.reason,'timestamp')
+            self.assertNotIn(SECRET,repr(raised.exception.__dict__))
+
     def test_node_file_bounds_history_ownership_and_private_copies(self):
         for mode in ('node-name','node-uid','node-kind','node-deleted','runtime','file','bounds','history','owner'):
             with self.subTest(mode=mode):

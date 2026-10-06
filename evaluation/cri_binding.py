@@ -1,5 +1,7 @@
 """Validate private CRI file attribution against anchored API declarations."""
 import copy
+import calendar
+from datetime import datetime
 import json
 import re
 import uuid
@@ -13,6 +15,7 @@ from .pod_history import PodIdentityHistory
 MAX_INPUT_BYTES = 2 * 1024 * 1024
 _ID = re.compile(r'[0-9a-f]{64}')
 _TIME = re.compile(r'[1-9][0-9]{0,18}')
+_INSPECT_TIME = re.compile(r'([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.([0-9]{1,9}))?(Z|[+-][0-9]{2}:[0-9]{2})')
 
 
 class _Refusal(ValueError):
@@ -30,6 +33,27 @@ def _created(value):
     if not isinstance(value, str) or not _TIME.fullmatch(value) or int(value) > 2**63-1:
         raise _Refusal('timestamp')
     return int(value)
+
+
+def _inspected_created(value):
+    # crictl formats inspect timestamps for humans while list timestamps remain
+    # decimal nanoseconds. Never use floats or datetime's truncated microseconds.
+    if isinstance(value,str) and _TIME.fullmatch(value): return _created(value)
+    match = _INSPECT_TIME.fullmatch(value) if isinstance(value,str) else None
+    if match is None: raise _Refusal('timestamp')
+    try:
+        base = datetime.strptime(match[1], '%Y-%m-%dT%H:%M:%S')
+        seconds = calendar.timegm(base.timetuple())
+        zone = match[3]
+        if zone != 'Z':
+            hours, minutes = int(zone[1:3]), int(zone[4:6])
+            if hours > 23 or minutes > 59 or zone == '-00:00': raise ValueError()
+            seconds -= (1 if zone[0] == '+' else -1) * (hours*3600+minutes*60)
+        result = seconds*1000000000 + int((match[2] or '').ljust(9,'0'))
+        if not 0 < result <= 2**63-1: raise ValueError()
+        return result
+    except Exception:
+        raise _Refusal('timestamp') from None
 
 
 def _labels(value, expected):
@@ -120,7 +144,8 @@ def bind_cri_log_source(history, entry, node, snapshot, file_identity):
                 or any(value.get('state') not in ('SANDBOX_READY','SANDBOX_NOTREADY') for value in (sandbox,sandbox_status))):
             raise _Refusal('sandbox_metadata')
         container_created, sandbox_created = _created(container.get('createdAt')), _created(sandbox.get('createdAt'))
-        if (status.get('createdAt') != container['createdAt'] or sandbox_status.get('createdAt') != sandbox['createdAt']
+        if (_inspected_created(status.get('createdAt')) != container_created
+                or _inspected_created(sandbox_status.get('createdAt')) != sandbox_created
                 or sandbox_created > container_created):
             raise _Refusal('creation_order')
         expected_path = ('/var/log/pods/'+entry['namespace']+'_'+entry['pod_name']+'_'+entry['pod_uid']

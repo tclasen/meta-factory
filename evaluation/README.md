@@ -1717,3 +1717,9 @@ CRI binding refusals retain a fixed public error message and a `reason` attribut
 with a code-owned category such as `scope_labels`, `sandbox_link`, `log_path`, or
 `api_identity`. Malformed upstream inputs/history map to `input_or_history`. Raw
 runtime/OCI diagnostics and field values never become diagnostic reasons.
+
+The pinned `crictl` client renders list creation times as decimal nanoseconds and
+inspect creation times as RFC 3339 strings. Binding normalizes inspect times with
+integer arithmetic and preserves all nine fractional digits before comparing
+immutable creation times. Calendar, timezone, precision and positive signed-int64
+bounds are checked; one-nanosecond disagreement still refuses attribution.
