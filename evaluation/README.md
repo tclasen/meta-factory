@@ -1361,10 +1361,17 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_log_rete
 node_uid=..., check=..., deadline=...)` follows an existing independently bound
 CRI file on a trusted Linux node. `poll()` drains inotify events and reads growth
 through held descriptors; captured prefixes are rehashed to refuse overwrite or
-truncation. Rename cookies establish rotation order. The old writer must close
-after rename before the collector advances to the new inode; late old writes
-are read first. Unlink does not erase bytes from a held descriptor. Directory
+truncation. Rename cookies establish rotation order. A close-write notification
+after rename is required before the collector advances to the new inode; observed
+late old writes are read first. Unlink does not erase bytes from a held descriptor. Directory
 and active-file symlinks/nonregular files are refused.
+
+Retired read-only descriptors remain held until collection ends. Each poll checks
+their captured sizes and rehashes their prefixes, refusing later growth, truncation
+or overwrite even after a file moves outside the watched directory or is unlinked.
+This consumes at most one additional descriptor per accepted rotation. A close
+notification does not prove all writable handles are gone; independent writer
+fencing remains necessary. Prior captured positives survive invalidation.
 
 The fixed active filename is a canonical numeric restart index followed by
 `.log`. The caller must independently verify its container/node mapping and

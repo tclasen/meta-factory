@@ -42,6 +42,9 @@ class LinuxCRIFollower:
     close events permit rotation, never mtime sorting. Multiple overlapping
     rotations/queue overflow/late old-file writes or identity/lifetime failures
     permanently invalidate collection. Private retention keeps prior positives.
+    Retired descriptors remain held and their sizes/prefixes are checked on each
+    poll, even after their paths leave the watched directory. A close notification
+    is not proof that all writers are gone; no writer-completion claim is made.
 
     This does not recursively discover Pods/containers, recover older rotations,
     prove namespace coverage, bind time/watch fences or survive owner death.
@@ -64,7 +67,7 @@ class LinuxCRIFollower:
         self._owner, self._lock = os.getpid(), threading.RLock()
         self._dir_fd = self._notify_fd = None
         self._current = self._pending = None
-        self._retired = set()
+        self._retired = {}
         self._polls = self._rotations = self._bytes = 0
         self._failed = self._closed = self._unlinked = False
         self._cleanup_ok = True
@@ -159,7 +162,8 @@ class LinuxCRIFollower:
                     self._unlinked = True
             elif name.startswith(self._name+'.'):
                 if self._pending is not None and cookie == self._pending['cookie'] and mask & MOVED_TO:
-                    if self._pending['name'] is not None: raise ValueError('Private CRI rotation cookie unavailable')
+                    if self._pending['name'] is not None or name in self._retired:
+                        raise ValueError('Private CRI rotation cookie unavailable')
                     self._pending['name'] = name
                 elif self._pending is not None and name == self._pending['name']:
                     if mask & MODIFY: self._pending['closed'] = False
@@ -174,8 +178,8 @@ class LinuxCRIFollower:
         observed = os.stat(self._name, dir_fd=self._dir_fd, follow_symlinks=False)
         return stat.S_ISREG(observed.st_mode) and (observed.st_dev, observed.st_ino) == (state['identity']['device'], state['identity']['inode'])
 
-    def _read_current(self):
-        state = self._current
+    def _verify_prefix(self, state):
+        self._verify()
         observed = os.fstat(state['fd'])
         if observed.st_size < state['offset']: raise ValueError('Private CRI truncation')
         digest, offset = hashlib.sha256(), 0
@@ -185,6 +189,17 @@ class LinuxCRIFollower:
             if not data: raise ValueError('Private CRI captured prefix unavailable')
             digest.update(data); offset += len(data)
         if digest.digest() != state['digest'].digest(): raise ValueError('Private CRI captured prefix changed')
+        return observed
+
+    def _verify_retired(self):
+        for state in self._retired.values():
+            observed = self._verify_prefix(state)
+            if observed.st_size != state['offset'] or os.fstat(state['fd']).st_size != state['offset']:
+                raise ValueError('Private CRI retired generation changed')
+
+    def _read_current(self):
+        state = self._current
+        observed = self._verify_prefix(state)
         while state['offset'] < observed.st_size:
             self._verify()
             data = os.pread(state['fd'], min(65536, observed.st_size-state['offset']), state['offset'])
@@ -214,11 +229,11 @@ class LinuxCRIFollower:
                     if final_size != self._current['offset'] or self._rotations >= MAX_ROTATIONS:
                         raise ValueError('Private CRI rotation boundary unavailable')
                     self._retention.rotate(self._source, self._current['identity'], self._pending['new']['identity'], final_size=final_size)
-                    os.close(self._current['fd'])
-                    self._retired.add(self._pending['name'])
+                    self._retired[self._pending['name']] = self._current
                     self._current = self._pending['new']; self._pending = None
                     self._rotations += 1
                     self._read_current()
+                self._verify_retired()
                 self._verify()
                 return dict(outcome='private_cri_polled', polls=self._polls,
                             rotations=self._rotations, bytes_collected=self._bytes,
@@ -234,6 +249,8 @@ class LinuxCRIFollower:
         descriptors = [self._dir_fd, self._notify_fd]
         if self._current is not None: descriptors.append(self._current['fd'])
         if self._pending is not None and self._pending['new'] is not None: descriptors.append(self._pending['new']['fd'])
+        descriptors.extend(state['fd'] for state in self._retired.values())
+        self._retired = {}
         self._dir_fd = self._notify_fd = self._current = self._pending = None
         closed = True
         for descriptor in set(value for value in descriptors if value is not None):
@@ -277,6 +294,7 @@ class LinuxCRIDescriptorFollower(LinuxCRIFollower):
         self._node, self._check, self._deadline = node_uid, check, deadline
         self._owner, self._lock = os.getpid(), threading.RLock()
         self._dir_fd = self._notify_fd = self._current = self._pending = None
+        self._retired = {}
         self._polls = self._rotations = self._bytes = 0
         self._failed = self._closed = False
         self._cleanup_ok = True

@@ -73,6 +73,74 @@ class CRIFollowerTest(unittest.TestCase):
         follower.poll()
         self.assertTrue(self.retention.inspect(['private-unlinked-canary'])['canary_present'])
 
+    def test_retired_growth_outside_watched_directory_invalidates_collection(self):
+        remaining=self.path.open('r+b',buffering=0);self.addCleanup(remaining.close)
+        follower=self.follow();self.writer.write(frame(b'private-prior-canary'));follower.poll()
+        self.rotate();self.assertEqual(follower.poll()['rotations'],1)
+        with tempfile.TemporaryDirectory() as outside:
+            (self.directory/'0.log.1').rename(Path(outside)/'moved.log')
+            remaining.seek(0,os.SEEK_END);remaining.write(frame(b'private-late-canary'))
+            with self.assertRaisesRegex(ValueError,'^Private CRI collection unavailable$'):
+                follower.poll()
+        receipt=self.retention.inspect(['private-prior-canary'])
+        self.assertTrue(receipt['canary_present']);self.assertFalse(receipt['retention_valid'])
+        self.assertFalse(self.retention.inspect(['private-late-canary'])['canary_present'])
+        self.assertTrue(follower.close()['descriptors_closed'])
+
+    def test_retired_same_size_rewrite_outside_watch_invalidates_collection(self):
+        remaining=self.path.open('r+b',buffering=0);self.addCleanup(remaining.close)
+        follower=self.follow();raw=frame(b'private-prior-canary')
+        self.writer.write(raw);follower.poll();self.rotate();follower.poll()
+        with tempfile.TemporaryDirectory() as outside:
+            (self.directory/'0.log.1').rename(Path(outside)/'moved.log')
+            remaining.seek(0);remaining.write(b'x'*len(raw))
+            with self.assertRaisesRegex(ValueError,'^Private CRI collection unavailable$'):
+                follower.poll()
+        receipt=self.retention.inspect(['private-prior-canary'])
+        self.assertTrue(receipt['canary_present']);self.assertFalse(receipt['retention_valid'])
+        self.assertTrue(follower.close()['descriptors_closed'])
+
+    def test_stable_unlinked_retired_descriptor_is_held_until_cleanup(self):
+        follower=self.follow();self.writer.write(frame(b'private-prior-canary'));follower.poll()
+        self.rotate();follower.poll()
+        retired=follower._retired['0.log.1']['fd']
+        (self.directory/'0.log.1').unlink()
+        self.assertEqual(follower.poll()['rotations'],1)
+        self.assertEqual(os.fstat(retired).st_nlink,0)
+        self.assertTrue(self.retention.inspect(['private-prior-canary'])['retention_valid'])
+        self.assertTrue(follower.close()['descriptors_closed'])
+        with self.assertRaises(OSError):os.fstat(retired)
+
+    def test_reused_retired_name_refuses_and_closes_prior_descriptors(self):
+        follower=self.follow();self.writer.write(frame(b'private-prior-canary'));follower.poll()
+        self.rotate();follower.poll()
+        retired=follower._retired['0.log.1']['fd']
+        current=follower._current['fd']
+        self.rotate()
+        with self.assertRaises(ValueError):follower.poll()
+        self.assertTrue(follower.close()['descriptors_closed'])
+        for descriptor in (retired,current):
+            with self.assertRaises(OSError):os.fstat(descriptor)
+        receipt=self.retention.inspect(['private-prior-canary'])
+        self.assertTrue(receipt['canary_present']);self.assertFalse(receipt['retention_valid'])
+
+    def test_actual_rotation_limit_retains_and_closes_every_generation(self):
+        follower=self.follow();self.writer.write(frame(b'private-prior-canary'));follower.poll()
+        for index in range(128):
+            self.rotate(str(index+1))
+            self.assertEqual(follower.poll()['rotations'],index+1)
+        descriptors=[state['fd'] for state in follower._retired.values()]
+        self.assertEqual(len(descriptors),128)
+        for descriptor in descriptors:os.fstat(descriptor)
+        descriptors.append(follower._current['fd'])
+        self.rotate('129')
+        with self.assertRaises(ValueError):follower.poll()
+        self.assertTrue(follower.close()['descriptors_closed'])
+        for descriptor in descriptors:
+            with self.assertRaises(OSError):os.fstat(descriptor)
+        receipt=self.retention.inspect(['private-prior-canary'])
+        self.assertTrue(receipt['canary_present']);self.assertFalse(receipt['retention_valid'])
+
     def test_same_size_overwrite_or_truncation_invalidates_without_erasing_positive(self):
         for corruption in ('rewrite','truncate'):
             with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
