@@ -1951,3 +1951,27 @@ semantics and production integration remain required. Window-end receipts retain
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_client.py -v
 ```
+
+### RPC disposal and retained collection positives
+
+A caller can pass `PrivateCRILiveCollection.close` as the runtime connection's
+`invalidate` callback. This disposes owned collection follower descriptors and
+metadata while leaving already captured private prefixes available through
+`inspect`. Inspect and record findings before calling `release`; release drops
+those references. A closed or invalid retention is never healthy collection, and
+neither intentional RPC window end nor absence of new data establishes complete
+history. Do not convert an existing captured positive into a clean result when
+transport later fails.
+
+The RPC/collection composition fixtures exercise real held Unix sockets and log
+file descriptors with synthetic independent API/runtime attribution metadata.
+Runtime/client EOF, original runtime or client-owner guard loss, runtime endpoint
+replacement, deadline exhaustion, callback failure and intentional window end
+all close owned descriptors and release metadata while retaining the captured
+positive. Borrowed caller descriptors remain caller-owned. These fixtures do not
+prove native log attribution, persisted positives after process death or actual
+production collector integration.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_rpc_collection.py -v
+```
