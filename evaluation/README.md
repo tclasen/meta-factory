@@ -2311,3 +2311,37 @@ The 90-minute grading allowance and full schedule fit remain launch-plan gates.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_grading_stages.py -v
 ```
+
+
+### Inspecting a staged resource plan
+
+`build_plan(..., stage_assignments=[{"id": "journey", "case_ids": [...]}, ...])`
+optionally partitions the full registered suite into sequential grading stages.
+The default remains the existing single-grader plan. Assignments contain only
+stage IDs and registered case IDs; they cannot supply targets, commands, mounts,
+callbacks or approval. Each case must occur exactly once, with registry order
+preserved inside its stage. The plan records distinct derived sandbox names,
+absent project paths, exact creation/stop commands and a shared forwarded port.
+The proposed 5,400-second grading allowance covers the whole sequence.
+
+The read-only CLI accepts the same protected JSON list through
+`--stage-assignments /operator/path/stages.json` (ordinary file, at most 64 KiB).
+The resulting `plan.json` embeds the normalized assignments and concrete resource
+references. Keep this file and its assignment input outside builder mounts.
+Planning creates no workspace or sandbox and confers no launch authority.
+
+`prepare_workspace` and `verify_prepared_workspace` reconstruct every stage
+assignment/resource against the original suite identity and inspected plan.
+Preparation creates only the owned workspace, empty builder project and reviewed
+specification copy. All grader projects and capture remain absent; unexpected
+projects, altered names/mounts/ports or incomplete/overlapping case partitions
+refuse. The durable preparation receipt binds the entire plan, including stages.
+Reinspection still supplies no mounted isolation, native application/runtime or
+acceptance evidence. A future authorized executor must bind these resources to
+`grade_stages`, provide reviewed targets/adapters and revalidate ownership after
+builder termination; this change does not introduce that executor.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_plan.py -v
+uv run --locked python -m unittest discover -s tests -p test_evaluation_workspace.py -v
+```

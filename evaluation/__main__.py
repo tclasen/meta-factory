@@ -1,6 +1,7 @@
 """Inspect evaluator readiness with durable local logs; no experiment launch."""
 
 import argparse
+import json
 from pathlib import Path
 import tempfile
 import sys
@@ -8,6 +9,7 @@ import sys
 from .evidence import Attempt, atomic_json, collect
 from .readiness import audit
 from .plan import build_plan
+from .preparation import read_regular
 
 
 def main():
@@ -25,6 +27,8 @@ def main():
     plan.add_argument('--host-attempt', type=Path)
     plan.add_argument('--workspace-parent', type=Path, required=True)
     plan.add_argument('--port', type=int, required=True)
+    plan.add_argument('--stage-assignments', type=Path,
+                      help='Protected JSON list of id/case_ids assignments; exact full-registry partition')
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
     base = repository / '.factory-planning' / ('evaluation-plan-logs' if args.command=='plan' else 'evaluation-readiness-logs')
@@ -43,8 +47,12 @@ def main():
                 if result['outcome'] != 'passed':
                     raise RuntimeError('Repository inspection failed')
             if args.command=='plan':
+                assignments = None
+                if args.stage_assignments is not None:
+                    assignments = json.loads(read_regular(args.stage_assignments, 65536, lambda: None))
                 report = build_plan(args.workload,args.suite,args.workspace_parent,attempt.directory,
-                    port=args.port,suite_approval=args.suite_approval,host_attempt=args.host_attempt,repository=repository)
+                    port=args.port,suite_approval=args.suite_approval,host_attempt=args.host_attempt,repository=repository,
+                    stage_assignments=assignments)
                 atomic_json(directory/'plan.json',report)
             else:
                 report = audit(args.workload, args.suite, suite_approval=args.suite_approval,

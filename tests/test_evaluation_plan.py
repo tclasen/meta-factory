@@ -164,3 +164,61 @@ class PlanTest(unittest.TestCase):
         with patch('evaluation.plan.sha256',side_effect=racing_hash):
             with self.assertRaises(ValueError):self.plan(repository=repository)
         self.assertEqual(list(self.parent.iterdir()),[])
+
+
+class StagedPlanTest(unittest.TestCase):
+    plan = PlanTest.plan
+
+    def setUp(self):
+        PlanTest.setUp(self)
+        path = self.suite/'suite.json'
+        manifest = json.loads(path.read_text())
+        second = dict(manifest['cases'][0]); second['id'] = 'second'
+        manifest['cases'].append(second); atomic_json(path, manifest)
+        self.assignments = [dict(id='journey',case_ids=['check']),
+                            dict(id='sample',case_ids=['second'])]
+
+    def test_staged_plan_lists_exact_distinct_resources_without_effects(self):
+        before = set(self.root.rglob('*'))
+        with patch('subprocess.Popen',side_effect=AssertionError('No execution')):
+            value = self.plan(stage_assignments=self.assignments)
+        self.assertEqual(set(self.root.rglob('*')),before)
+        self.assertEqual(set(value['resources']),{'builder','grader-journey','grader-sample'})
+        self.assertNotIn('grader-project',value['paths'])
+        self.assertEqual(len({r['name'] for r in value['resources'].values()}),3)
+        for stage in value['grading_stages']:
+            resource = value['resources'][stage['resource']]
+            self.assertEqual(resource['create_argv'],sandbox_create_argv(
+                resource['project'],resource['specification'],name=resource['name'],port=18080,role='grader'))
+            self.assertFalse(Path(resource['project']).exists())
+        self.assertFalse(value['launch_enabled'])
+        self.assertEqual(value['limits']['grading_seconds']['value'],5400)
+        self.assignments[0]['case_ids'].append('second')
+        self.assertEqual(value['grading_stages'][0]['case_ids'],['check'])
+
+    def test_invalid_stage_partition_refuses_before_effects(self):
+        for assignments in ([], [{'id':'journey','case_ids':['check']}],
+                [{'id':'journey','case_ids':['check','second']},{'id':'sample','case_ids':['second']}],
+                [{'id':'journey','case_ids':['check']},{'id':'journey','case_ids':['second']}],
+                [{'id':'../escape','case_ids':['check','second']}],
+                [{'id':'journey','case_ids':['unknown']}],
+                [{'id':'journey','case_ids':['check','second'],'target':{}}]):
+            with self.subTest(assignments=assignments):
+                with self.assertRaises(ValueError):self.plan(stage_assignments=assignments)
+        self.assertEqual(list(self.parent.iterdir()),[])
+
+    def test_registry_order_is_preserved_within_each_stage(self):
+        value = self.plan(stage_assignments=[dict(id='all',case_ids=['second','check'])])
+        self.assertEqual(value['grading_stages'][0]['case_ids'],['check','second'])
+
+    def test_cli_records_staged_assignment(self):
+        path = self.root/'assignments.json';atomic_json(path,self.assignments)
+        command = [sys.executable,'-m','evaluation','plan','--workload',str(self.workload),
+            '--suite',str(self.suite),'--workspace-parent',str(self.parent),'--port','18080',
+            '--stage-assignments',str(path)]
+        result = subprocess.run(command,capture_output=True,text=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+        directory = Path(result.stdout.split('Logs: ',1)[1].splitlines()[0])
+        value = json.loads((directory/'plan.json').read_text())
+        self.assertEqual([s['id'] for s in value['grading_stages']],['journey','sample'])
+        self.assertFalse(Path(value['workspace']).exists())

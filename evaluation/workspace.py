@@ -8,7 +8,8 @@ import stat
 import time
 
 from .evidence import atomic_json, positive, private_file
-from .plan import controller_identities
+from .plan import controller_identities, normalize_stage_assignments, planned_stage_resources
+from .grading import Suite
 from .preparation import prepare_specification, read_regular, snapshot
 from .readiness import audit
 from .sandbox import disjoint, sandbox_create_argv
@@ -35,6 +36,57 @@ def verify_plan_sources(plan, workload, suite_root, repository, check, *,
                 <= set(review.get('approved_scope', []))):
         raise ValueError('Reviewed first-test workload and envelope required')
     check()
+
+
+def validate_workspace_resources(plan, workload, suite_root, suite_approval=None):
+    """Reconstruct all exact proposed resources; no stage project is created."""
+    workspace = Path(plan['workspace'])
+    if (not workspace.is_absolute() or workspace != workspace.resolve()
+            or not re.fullmatch('factory-eval-[0-9a-f]{16}', workspace.name)):
+        raise ValueError('Canonical planned workspace identity required')
+    token = workspace.name.removeprefix('factory-eval-')
+    paths = {name: workspace / name for name in
+             ('builder-project', 'specification', 'capture')}
+    resources = plan['resources']
+    port = resources['builder']['host_port']
+    name = 'factory-eval-builder-' + token
+    expected = dict(builder=dict(name=name, project=str(paths['builder-project']),
+        specification=str(paths['specification']),
+        create_argv=sandbox_create_argv(paths['builder-project'], paths['specification'],
+                                       name=name, port=port, role='builder'),
+        manual_stop=['sbx','stop',name], cpus=8, memory_gib=16, host_port=port,
+        created=False, termination_verified=False))
+    if 'grading_stages' in plan:
+        declared = plan['grading_stages']
+        if not isinstance(declared, list) or not declared:
+            raise ValueError('Nonempty staged resource plan required')
+        if any(not isinstance(item,dict) or set(item) != {'id','case_ids','resource'} for item in declared):
+            raise ValueError('Exact staged resource references required')
+        packages = json.loads((workload/'builder/packages.json').read_text())['packages']
+        suite = Suite(suite_root, packages, approval=suite_approval)
+        if suite.digest != plan['source_identities']['suite_sha256']:
+            raise ValueError('Staged workspace registry identity changed')
+        assignments = normalize_stage_assignments(
+            [dict(id=item['id'],case_ids=item['case_ids']) for item in declared], suite)
+        staged, canonical = planned_stage_resources(workspace, assignments, port)
+        if json.dumps(declared,sort_keys=True) != json.dumps(canonical,sort_keys=True):
+            raise ValueError('Stage assignments or resource references changed')
+        expected.update(staged)
+        paths.update({key+'-project':Path(value['project']) for key,value in staged.items()})
+    else:
+        paths['grader-project'] = workspace/'grader-project'
+        name = 'factory-eval-grader-' + token
+        expected['grader'] = dict(name=name, project=str(paths['grader-project']),
+            specification=str(paths['specification']),
+            create_argv=sandbox_create_argv(paths['grader-project'],paths['specification'],
+                                           name=name,port=port,role='grader'),
+            manual_stop=['sbx','stop',name],cpus=8,memory_gib=16,host_port=port,
+            created=False,termination_verified=False)
+    if (json.dumps(resources,sort_keys=True) != json.dumps(expected,sort_keys=True)
+            or plan['paths'] != {name:str(path) for name,path in paths.items()}):
+        raise ValueError('Resource identity or effects differ from inspected plan')
+    disjoint(*paths.values())
+    return paths
 
 
 def prepare_workspace(attempt, plan, workload, suite_root, *, monotonic_deadline,
@@ -69,29 +121,10 @@ def prepare_workspace(attempt, plan, workload, suite_root, *, monotonic_deadline
     if (not workspace.is_absolute() or workspace != workspace.resolve()
             or not re.fullmatch('factory-eval-[0-9a-f]{16}', workspace.name)):
         raise ValueError('Canonical planned workspace identity required')
-    token = workspace.name.removeprefix('factory-eval-')
-    paths = {name: workspace / name for name in
-             ('builder-project', 'grader-project', 'specification', 'capture')}
-    if plan['paths'] != {name: str(path) for name, path in paths.items()}:
-        raise ValueError('Workspace paths differ from resource plan')
+    paths = validate_workspace_resources(plan, workload, suite_root, suite_approval)
     old_evidence = Path(plan['evidence']).resolve(strict=True)
     for protected in (repository, workload, suite_root, old_evidence, attempt.directory):
         disjoint(workspace, protected)
-    resources = plan['resources']
-    if set(resources) != {'builder', 'grader'}:
-        raise ValueError('Exact builder and grader resource plan required')
-    for role, resource in resources.items():
-        name = 'factory-eval-' + role + '-' + token
-        expected = dict(name=name, project=str(paths[role + '-project']),
-                        specification=str(paths['specification']),
-                        create_argv=sandbox_create_argv(paths[role + '-project'],
-                            paths['specification'], name=name, port=resource['host_port'], role=role),
-                        manual_stop=['sbx', 'stop', name], cpus=8, memory_gib=16,
-                        host_port=resource['host_port'], created=False, termination_verified=False)
-        if json.dumps(resource, sort_keys=True) != json.dumps(expected, sort_keys=True):
-            raise ValueError('Resource identity or effects differ from inspected plan')
-    if resources['builder']['host_port'] != resources['grader']['host_port']:
-        raise ValueError('Sequential planned origin required')
 
     def verify_sources():
         verify_plan_sources(plan, workload, suite_root, repository, check,
@@ -131,7 +164,8 @@ def prepare_workspace(attempt, plan, workload, suite_root, *, monotonic_deadline
             if (current.st_dev, current.st_ino, current.st_mode) != (identity.st_dev, identity.st_ino, identity.st_mode):
                 raise ValueError('Owned workspace directory replaced')
         if (list(paths['builder-project'].iterdir()) or paths['capture'].exists()
-                or paths['grader-project'].exists()):
+                or any(path.exists() or path.is_symlink() for name,path in paths.items()
+                       if name.startswith('grader'))):
             raise ValueError('Unexpected application or capture content during preparation')
         if set(path.name for path in workspace.iterdir()) != {'builder-project', 'specification'}:
             raise ValueError('Unexpected prepared workspace content')
@@ -183,6 +217,7 @@ def verify_prepared_workspace(attempt, plan, workload, suite_root, *,
         raw = read_regular(attempt.directory / 'workspace-preparation.json', 1024 * 1024, check)
         prepared = json.loads(raw, object_pairs_hook=unique_pairs)
         workspace = Path(plan['workspace'])
+        validate_workspace_resources(plan, workload, suite_root, suite_approval)
         if (prepared.get('outcome') != 'workspace_prepared'
                 or prepared.get('workspace_created') is not True
                 or prepared.get('launch_enabled') is not False

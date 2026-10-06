@@ -1,10 +1,12 @@
 """Reviewable first-test resource plan; no provisioning or experiment execution."""
 from pathlib import Path
+import copy
+import re
 import json
 import hashlib
 import uuid
 
-from .grading import sha256
+from .grading import Suite, select_cases, sha256
 from .readiness import audit
 from .sandbox import disjoint, sandbox_create_argv
 
@@ -16,8 +18,49 @@ def controller_identities(repository):
     return {str(path.relative_to(repository)):sha256(path) for path in paths}
 
 
+def normalize_stage_assignments(assignments, suite):
+    """Exact operator case partition; targets/adapters are supplied separately."""
+    if not isinstance(assignments, (list, tuple)) or not assignments:
+        raise ValueError('Nonempty grading stage assignments required')
+    stages = []; identifiers = set(); assigned = []
+    for item in assignments:
+        if not isinstance(item, dict) or set(item) != {'id', 'case_ids'}:
+            raise ValueError('Stage assignment requires only id and case_ids')
+        identifier = item['id']
+        if (not isinstance(identifier, str)
+                or not re.fullmatch('[a-z][a-z0-9-]{0,57}', identifier)
+                or identifier in identifiers):
+            raise ValueError('Unique grading stage identifiers required')
+        selected = [case['id'] for case in select_cases(suite, item['case_ids'])]
+        stages.append(dict(id=identifier, case_ids=selected))
+        identifiers.add(identifier); assigned.extend(selected)
+    if len(set(assigned)) != len(assigned) or set(assigned) != {case['id'] for case in suite.cases}:
+        raise ValueError('Grading stages must partition the full registry exactly once')
+    return stages
+
+
+def planned_stage_resources(workspace, assignments, port):
+    """Derive distinct names/projects/argv from the inspected workspace identity."""
+    resources = {}; stages = []
+    token = workspace.name.removeprefix('factory-eval-')
+    for stage in assignments:
+        key = 'grader-' + stage['id']
+        suffix = hashlib.sha256((token + ':' + stage['id']).encode()).hexdigest()[:16]
+        name = 'factory-eval-grader-' + suffix
+        project = workspace / (key + '-project')
+        specification = workspace / 'specification'
+        resources[key] = dict(name=name, project=str(project), specification=str(specification),
+            create_argv=sandbox_create_argv(project, specification, name=name, port=port, role='grader'),
+            manual_stop=['sbx', 'stop', name], cpus=8, memory_gib=16, host_port=port,
+            created=False, termination_verified=False)
+        stages.append(dict(id=stage['id'], case_ids=stage['case_ids'], resource=key))
+    if len({value['name'] for value in resources.values()}) != len(resources):
+        raise ValueError('Planned grading name collision')
+    return resources, stages
+
+
 def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
-               repository=None, suite_approval=None, host_attempt=None):
+               repository=None, suite_approval=None, host_attempt=None, stage_assignments=None):
     """Resolve and hash operator inputs; reserve no resource and run no command.
 
     A plan is not permission to launch. Its paths are proposals, not created or
@@ -39,6 +82,13 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
     readiness=audit(workload,suite_root,suite_approval=suite_approval,host_attempt=host_attempt,repository=repository)
     if readiness['details']['reviewed_workload_unchanged'] is not True:
         raise ValueError('Reviewed workload identity changed')
+    assignments = None
+    if stage_assignments is not None:
+        packages = json.loads((workload/'builder/packages.json').read_text())['packages']
+        registry = Suite(suite_root, packages, approval=suite_approval)
+        assignments = normalize_stage_assignments(copy.deepcopy(stage_assignments), registry)
+        if registry.digest != readiness['details']['suite_sha256']:
+            raise ValueError('Stage registry differs from inspected readiness')
     token=uuid.uuid4().hex[:16]
     workspace=parent/('factory-eval-'+token)
     if workspace.exists() or workspace.is_symlink():raise ValueError('Proposed workspace already exists')
@@ -53,6 +103,13 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
             create_argv=sandbox_create_argv(project,paths['specification'],name=name,port=port,role=role),
             manual_stop=['sbx','stop',name],cpus=8,memory_gib=16,host_port=port,
             created=False,termination_verified=False)
+    stages = None
+    if assignments is not None:
+        del paths['grader-project']; del resources['grader']
+        staged_resources, stages = planned_stage_resources(workspace, assignments, port)
+        resources.update(staged_resources)
+        paths.update({key+'-project':Path(value['project']) for key,value in staged_resources.items()})
+        disjoint(*paths.values())
     identities=controller_identities(repository)
     report=dict(schema_version=1,outcome='planned_not_ready',launch_enabled=False,
         workspace=str(workspace),paths={key:str(value) for key,value in paths.items()},
@@ -80,6 +137,13 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
         changes_made=dict(evidence_only=True,workspace_created=False,sandboxes_created=False,
                           policy_changed=False,model_calls=0),
         limits_note='Planning evidence only. No workspace ownership, source copy, sandbox, port reservation, policy, model, suite approval or launch authority is established.')
+
+    if stages is not None:
+        report['grading_stages'] = stages
+        report['sequence'][6:9] = [
+            'After verified builder termination, grade every assigned stage against one frozen capture and registry',
+            'Create each fresh planned grader only after prior verified cleanup; reuse one port sequentially',
+            'Bootstrap and bind independent stage fixtures; aggregate the full registry within one shared grading budget']
 
     settled=audit(workload,suite_root,suite_approval=suite_approval,host_attempt=host_attempt,repository=repository)
     if (settled['details']!=readiness['details']

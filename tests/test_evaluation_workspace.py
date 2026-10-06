@@ -9,7 +9,7 @@ import test_evaluation_plan as plan_fixtures
 from evaluation.evidence import Attempt
 from evaluation.plan import build_plan, controller_identities
 from evaluation.preparation import prepare_specification
-from evaluation.sandbox import Sandbox
+from evaluation.sandbox import Sandbox, sandbox_create_argv
 from evaluation.workspace import prepare_workspace,verify_prepared_workspace
 
 
@@ -271,3 +271,58 @@ class WorkspaceTest(unittest.TestCase):
             with self.assertRaises(ValueError):self.verify()
         path.write_bytes(b'{"outcome":"workspace_prepared","outcome":"workspace_prepared"}')
         with self.assertRaises(ValueError):self.verify()
+
+
+class StagedWorkspaceTest(unittest.TestCase):
+    prepare = WorkspaceTest.prepare
+    verify = WorkspaceTest.verify
+    receipt = WorkspaceTest.receipt
+
+    def setUp(self):
+        plan_fixtures.StagedPlanTest.setUp(self)
+        self.attempt = Attempt(self.root/'workspace-evidence',{})
+        self.addCleanup(self.attempt.close)
+        self.clock = 10
+        self.plan = build_plan(self.workload,self.suite,self.parent,self.evidence,
+                               port=18080,stage_assignments=self.assignments)
+        self.workspace = Path(self.plan['workspace'])
+
+    def test_staged_preparation_and_reinspection_leave_all_grader_projects_absent(self):
+        with patch('subprocess.Popen',side_effect=AssertionError('No provisioning')):
+            prepared = self.prepare(); verified = self.verify()
+        self.assertEqual(prepared['outcome'],'workspace_prepared')
+        self.assertEqual(verified['outcome'],'workspace_verified_for_inspection')
+        for stage in self.plan['grading_stages']:
+            resource = self.plan['resources'][stage['resource']]
+            self.assertFalse(Path(resource['project']).exists())
+            self.assertEqual(sandbox_create_argv(resource['project'],resource['specification'],
+                name=resource['name'],port=18080,role='grader'),resource['create_argv'])
+        self.assertFalse(prepared['launch_enabled'])
+
+    def test_stage_resource_or_partition_tampering_refuses_before_ownership(self):
+        for mode in ('case','missing','reference','name','project','port','mount','created'):
+            plan = copy.deepcopy(self.plan)
+            stage = plan['grading_stages'][0]; resource = plan['resources'][stage['resource']]
+            if mode=='case':stage['case_ids']=['second']
+            elif mode=='missing':plan['grading_stages'].pop()
+            elif mode=='reference':stage['resource']='grader-sample'
+            elif mode=='name':resource['name']=plan['resources']['grader-sample']['name']
+            elif mode=='project':resource['project']=str(self.suite)
+            elif mode=='port':resource['host_port']=18081
+            elif mode=='mount':resource['create_argv'][-1]=str(self.suite)+':ro'
+            else:resource['created']=True
+            with self.subTest(mode=mode):
+                with self.assertRaises(ValueError):self.prepare(plan)
+                self.assertFalse(self.workspace.exists())
+                self.assertFalse((self.attempt.directory/'workspace-preparation.lock').exists())
+
+    def test_unexpected_stage_project_after_preparation_refuses_reinspection(self):
+        self.prepare()
+        path = Path(self.plan['resources']['grader-journey']['project']);path.mkdir()
+        with self.assertRaises(ValueError):self.verify()
+        self.assertTrue(path.exists())
+
+    def test_stage_registry_drift_refuses_acquisition(self):
+        (self.suite/'case.py').write_text('changed')
+        with self.assertRaises(ValueError):self.prepare()
+        self.assertFalse(self.workspace.exists())
