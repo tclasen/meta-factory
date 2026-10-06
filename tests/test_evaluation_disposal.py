@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from evaluation.disposal import verify_disposable_operations
+from evaluation.disposal import project_disposable_result,verify_disposable_operations
 from evaluation.evidence import Attempt
 
 
@@ -42,6 +42,16 @@ class DisposalTest(unittest.TestCase):
         result=self.execute();self.assertEqual(result['verdict'],'pass');self.assertFalse(result['abort_suite'])
         self.assertEqual([value[0] for value in self.commands],['disposable-test-failure','disposable-destroy-first','disposable-destroy-repeat'])
         self.assertTrue(all(value[1][:5]==['sbx','exec','-w',str(self.box.project),self.box.name] for value in self.commands))
+        self.assertEqual(project_disposable_result(result),{'outcome':'disposable_operations_checked',
+            'verdict':'pass','abort_suite':False,'stage':'verified','test_failure_propagated':True})
+    def test_projection_rejects_invented_or_incomplete_pass(self):
+        complete=dict(outcome='disposable_operations_checked',verdict='pass',abort_suite=False,
+                      stage='verified',test_exit_code=7)
+        for change in ({'outcome':'other'},{'verdict':'passed'},{'abort_suite':True},
+                       {'stage':'first_destroy'},{'test_exit_code':0},{'test_exit_code':True}):
+            value=dict(complete,**change)
+            with self.assertRaises(ValueError):project_disposable_result(value)
+        with self.assertRaises(ValueError):project_disposable_result(dict(complete,private='path'))
     def test_hidden_test_failure_is_fail_and_never_destroys(self):
         def runner(*args,**kwargs):self.commands.append((args[1],args[2]));return {'outcome':'passed','exit_code':0}
         result=self.execute('hidden',command_runner=runner);self.assertEqual(result['verdict'],'fail');self.assertEqual(len(self.commands),1)

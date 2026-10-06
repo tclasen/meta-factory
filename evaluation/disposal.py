@@ -9,6 +9,26 @@ from .verdicts import Inconclusive
 from .watchdog import NAME
 
 
+def project_disposable_result(value):
+    """Return the only AC-003 fields allowed to cross into a protected target."""
+    allowed={'outcome','verdict','abort_suite','stage','test_exit_code','reason','error_type'}
+    if (not isinstance(value,dict) or not set(value)<=allowed or value.get('outcome') not in
+            ('disposable_operations_checked','disposable_operations_incomplete')
+            or value.get('verdict') not in ('pass','fail','inconclusive')
+            or type(value.get('abort_suite')) is not bool
+            or value['abort_suite']!=(value['verdict']!='pass')
+            or value.get('stage') not in ('precondition','test_failure_setup','test_failure',
+                                          'first_destroy','repeat_destroy','verified')):
+        raise ValueError('Disposable operations result unavailable')
+    if value['verdict']=='pass' and (value['outcome']!='disposable_operations_checked'
+            or value['stage']!='verified' or type(value.get('test_exit_code')) is not int
+            or value['test_exit_code']==0):
+        raise ValueError('Complete disposable operations pass unavailable')
+    return dict(outcome=value['outcome'],verdict=value['verdict'],
+                abort_suite=value['abort_suite'],stage=value['stage'],
+                test_failure_propagated=(value['verdict']=='pass'))
+
+
 def verify_disposable_operations(attempt, sandbox, guard, *, observe, verify_destroyed,
                                  failure_setup, source_check, monotonic_deadline,
                                  wall_deadline, test_timeout=1800, destroy_timeout=900,
