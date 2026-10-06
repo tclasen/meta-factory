@@ -102,6 +102,8 @@ class PodWatchTest(unittest.TestCase):
         for binding in (dict(BINDING,name='other/namespace'),dict(BINDING,uid=''),dict(BINDING,extra='secret')):
             with self.assertRaises(ValueError):
                 PodWatchTransport(self.attempt,['unused'],binding,resource_version='1',check=self.guard,cwd=self.root)
+        with self.assertRaises(ValueError):
+            PodWatchTransport(self.attempt,['unused'],BINDING,resource_version='0',check=self.guard,cwd=self.root)
         for timeout in (True,0,31,float('inf')):
             with self.assertRaises(ValueError):self.transport('quiet')(lambda value:None,timeout=timeout)
         for value in ({'type':'MODIFIED','object':{}},{'type':'BOOKMARK','object':{'apiVersion':'v1','kind':'Pod','metadata':{}}}):

@@ -80,18 +80,23 @@ class PodWatchTransport:
             raise ValueError('Independent private namespace watch binding required')
         self.attempt, self.prefix, self.binding = attempt, tuple(peer_prefix), copy.deepcopy(binding)
         self.version, self.check, self.cwd = _version(resource_version), check, Path(cwd)
+        if self.version == '0': raise ValueError('Anchored private watch resource version required')
 
-    def __call__(self, consume, *, timeout=15):
+    def __call__(self, consume, *, timeout=15, window_id=None):
         positive(timeout, 'Pod watch timeout')
         if timeout > 30 or not callable(consume): raise ValueError('Bounded private watch consumer required')
+        if window_id is None: window_id = 'pod-watch-'+uuid.uuid4().hex
+        if not isinstance(window_id, str) or not re.fullmatch(r'pod-watch-[0-9a-f]{32}', window_id):
+            raise ValueError('Private watch window identity required')
         started = time.monotonic()
         record = dict(started=utc_now(), outcome='incomplete', events=0, stdout_bytes=0, stderr_bytes=0,
                       source_verified_before=False, source_verified_after=False, client_group_absent=False,
                       binding_sha256=hashlib.sha256(json.dumps(self.binding, sort_keys=True).encode()).hexdigest(),
                       anchor_sha256=hashlib.sha256(self.version.encode()).hexdigest(),
                       client_prefix_sha256=hashlib.sha256(json.dumps(self.prefix).encode()).hexdigest())
-        directory = self.attempt.directory / ('pod-watch-'+uuid.uuid4().hex)
+        directory = self.attempt.directory / window_id
         directory.mkdir(mode=0o700)
+        record['window_id'] = window_id
         process, buffer = None, b''
         def verify(reserve):
             if self.check(copy.deepcopy(self.binding), reserve) is not True:

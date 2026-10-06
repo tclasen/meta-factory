@@ -1267,6 +1267,31 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_pod_watc
 ```
 
 
+### Private watch resumption cursor
+
+`watch_cursor.PodWatchCursor(binding, resource_version)` starts from an
+independently verified complete PodList anchor. `begin()` returns a private
+resource version and fresh window ID. Use those for the next `PodWatchTransport`
+constructor and its `window_id` argument; feed every event through `accept()`.
+`finish(receipt)` commits only the matching successful window with exact event
+count, namespace/anchor hashes, identity checks and verified client cleanup.
+A quiet window preserves its existing anchor; bookmarks advance it without
+numeric ordering assumptions. Kubernetes' unanchored special version `0` is
+refused. Raw versions/events never appear in commit summaries.
+
+Incomplete/foreign/replayed windows, missed consumer events, malformed data,
+overlapping windows, late events, bounds and abandonment permanently invalidate
+the cursor. Call `abandon()` if a transport invocation fails before returning a
+receipt; never silently relist or reset the cursor to hide a gap. Cursor access
+requires its original parent PID. At most 4,096 windows are allowed. This manages
+resumption state, not a time fence or complete log-history attestation; deleted
+and rotated log retention and owner-death handling remain separate work.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_watch_cursor.py -v
+```
+
+
 ### Sanitized parent security observations
 
 `security_broker.SecurityBroker` provides three fixed read-only parent operations:
