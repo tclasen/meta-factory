@@ -111,6 +111,13 @@ def symlink_record(source, path):
             'size': len(encoded), 'executable': False}
 
 
+def capture_identity(value):
+    # Reads may update atime, but ownership/mode/link/content metadata must stay
+    # fixed across the snapshot. ctime detects rewrites that restore mtime.
+    return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns,
+            value.st_ctime_ns, value.st_mode, value.st_nlink, value.st_uid, value.st_gid)
+
+
 def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 1024**3, max_files=100000, selected_files=None):
     """Copy source bytes and safe relative links; never execute Git/build/hooks.
 
@@ -157,7 +164,7 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
             raise ValueError("Capture size limit exceeded")
         os.symlink(record['target'], destination / relative)
         after = path.lstat()
-        if (before.st_ino, before.st_mtime_ns, before.st_size) != (after.st_ino, after.st_mtime_ns, after.st_size):
+        if capture_identity(before) != capture_identity(after):
             raise ValueError("Symlink changed during capture")
         inventory[str(relative)] = record
         total += record['size']
@@ -184,11 +191,10 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                     raise ValueError("Non-regular or hardlinked file in capture")
                 if len(inventory) >= max_files or total + before.st_size > max_bytes:
                     raise ValueError("Capture size limit exceeded")
-                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+                descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
                 try:
                     current = os.fstat(descriptor)
-                    if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != (
-                            before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns):
+                    if capture_identity(current) != capture_identity(before):
                         raise ValueError("Source changed during capture")
                     target = destination / relative / name
                     out_fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700 if before.st_mode & 0o111 else 0o600)
@@ -202,7 +208,7 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                             out.write(chunk)
                             digest.update(chunk)
                     after = os.fstat(descriptor)
-                    if size != before.st_size or after.st_mtime_ns != before.st_mtime_ns:
+                    if size != before.st_size or capture_identity(after) != capture_identity(before):
                         raise ValueError("Source changed during capture")
                     inventory[str(relative / name)] = {"sha256": digest.hexdigest(), "size": size,
                                                        "executable": bool(before.st_mode & 0o111)}

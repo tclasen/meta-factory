@@ -53,7 +53,9 @@ model configuration and runtime telemetry are not provider-side attestation.
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
 restart the sandbox). Source capture reads regular files without executing Git,
-hooks or build scripts on the host; bounds and unsafe paths fail capture rather
+hooks or build scripts on the host; nonblocking source opens reject special-file
+swaps, and metadata checks refuse mode/ownership/hardlink changes or rewrites
+that restore modification time. Bounds and unsafe paths fail capture rather
 than manufacture an application failure. Live sbx behavior still needs Mac
 preflight. No global policy mutation or resource deletion is implemented here.
 

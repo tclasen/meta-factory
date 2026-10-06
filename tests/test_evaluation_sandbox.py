@@ -1,9 +1,12 @@
 """Resource boundaries and untrusted-source capture fixtures."""
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evaluation.evidence import Attempt
 from evaluation.sandbox import Sandbox, capture_tree, disjoint, stopped_from_listing
@@ -52,6 +55,72 @@ class SandboxTest(unittest.TestCase):
         os.link(self.project / "file", self.project / "link")
         with self.assertRaises(ValueError):
             capture_tree(self.project, self.root / "second", termination_verified=True)
+
+    def test_mode_and_hardlink_changes_at_open_are_capture_incomplete(self):
+        for mode in ('permissions', 'hardlink'):
+            with self.subTest(mode=mode):
+                source = self.project / mode; source.write_text('bytes'); source.chmod(0o600)
+                original_open = os.open
+                def mutate_at_open(path, flags, *args, **kwargs):
+                    if Path(path) == source:
+                        if mode == 'permissions': source.chmod(0o700)
+                        else: os.link(source, self.root / 'external-alias')
+                    return original_open(path, flags, *args, **kwargs)
+                with patch('evaluation.sandbox.os.open', side_effect=mutate_at_open):
+                    with self.assertRaises(ValueError):
+                        capture_tree(self.project, self.root / ('capture-' + mode), termination_verified=True)
+                source.unlink()
+
+    def test_permission_change_during_read_is_capture_incomplete(self):
+        source = self.project / 'file'; source.write_text('bytes'); source.chmod(0o600)
+        original_read = os.read
+        changed = []
+        def mutate_after_read(descriptor, amount):
+            data = original_read(descriptor, amount)
+            if data and not changed:
+                source.chmod(0o700); changed.append(True)
+            return data
+        with patch('evaluation.sandbox.os.read', side_effect=mutate_after_read):
+            with self.assertRaises(ValueError): self.capture()
+        self.assertEqual(changed, [True])
+
+    def test_rewrite_with_restored_modification_time_is_capture_incomplete(self):
+        source = self.project / 'file'; source.write_text('first')
+        before = source.stat(); original_read = os.read; changed = []
+        def rewrite_after_read(descriptor, amount):
+            data = original_read(descriptor, amount)
+            if data and not changed:
+                source.write_text('other')
+                os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+                changed.append(True)
+            return data
+        with patch('evaluation.sandbox.os.read', side_effect=rewrite_after_read):
+            with self.assertRaises(ValueError): self.capture()
+        self.assertEqual(changed, [True])
+        self.assertEqual(source.stat().st_mtime_ns, before.st_mtime_ns)
+
+    def test_fifo_swap_at_open_cannot_block_capture(self):
+        # Run this race in a bounded child: a regression must not hang unittest.
+        program = """import os,sys
+from pathlib import Path
+from unittest.mock import patch
+from evaluation.sandbox import capture_tree
+root=Path(sys.argv[1]);source=root/'project'/'file';source.write_text('bytes')
+original=os.open
+changed=[]
+def swap(path,flags,*args,**kwargs):
+    if Path(path)==source and not changed:
+        source.unlink();os.mkfifo(source);changed.append(True)
+    return original(path,flags,*args,**kwargs)
+with patch('evaluation.sandbox.os.open',side_effect=swap):
+    try:capture_tree(root/'project',root/'capture',termination_verified=True)
+    except ValueError:pass
+    else:raise AssertionError('FIFO accepted')
+assert changed
+"""
+        result = subprocess.run([sys.executable, '-c', program, str(self.root)],
+                                capture_output=True, timeout=3)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
 
     def test_exact_stopped_identity_required(self):
         text = "SANDBOX AGENT STATUS PORTS WORKSPACE\nother codex stopped\nours codex running\n"
