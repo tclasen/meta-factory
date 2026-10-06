@@ -126,6 +126,10 @@ class PrivateCRIEventReceiver:
             self._connection = connection
             if connection.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_SEQPACKET:
                 raise ValueError('Private event socket type unavailable')
+            # Python's timeout wrapper can wait before recvmsg even with
+            # MSG_DONTWAIT. Ownership has transferred; clear that wrapper and
+            # keep per-call nonblocking flags for receives and acknowledgements.
+            connection.settimeout(None)
             self._verify()
         except BaseException as error:
             self._cleanup()

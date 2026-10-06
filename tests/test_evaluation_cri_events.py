@@ -77,6 +77,22 @@ class CRIEventsTest(unittest.TestCase):
         self.assertFalse(result['history_complete'])
         self.assertIsNone(self.connection.gettimeout())
 
+    def test_timed_socket_handoff_keeps_idle_poll_nonblocking(self):
+        sender,connection=socket.socketpair(socket.AF_UNIX,socket.SOCK_SEQPACKET)
+        connection.settimeout(1)
+        receiver=None
+        try:
+            receiver=PrivateCRIEventReceiver(self.staging,connection,peer=self.peer,
+                node_uid='node-uid',check=lambda _:True,event_check=lambda *args:True,
+                deadline=time.monotonic()+30)
+            self.assertIsNone(connection.gettimeout())
+            receipt=receiver.poll()
+            self.assertEqual(receipt['events'],0);self.assertTrue(receipt['valid'])
+            self.assertFalse(receipt['history_complete'])
+        finally:
+            if receiver is not None:receiver.close()
+            connection.close();sender.close()
+
     def test_bad_packets_close_all_received_fds_and_staging(self):
         cases=[dict(sequence=2),dict(magic=b'bad!'),dict(device=0),dict(inode=0),
                dict(path=PATH.replace('/var/log/pods/','/tmp/')),
