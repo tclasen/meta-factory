@@ -59,7 +59,10 @@ preflight. No global policy mutation or resource deletion is implemented here.
 
 
 `grading.py` and `grade_worker.py` run externally stored, hash-verified operator
-suite code in bounded processes. The suite binds its package mapping, enumerates
+suite code in bounded processes. Worker verdicts remain in each `grade-CASE/`
+command directory. The final `CASE-verdict.json`, case-result event and aggregate
+report use the verdict after broker settlement checks; an unsettled broker can
+never leave a saved final pass. The suite binds its package mapping, enumerates
 case-to-criterion coverage, and declares which criteria have complete coverage.
 Independent review must bind the suite manifest hash before final acceptance.
 Missing tests, partial coverage, unapproved suites, changed source, worker crashes,

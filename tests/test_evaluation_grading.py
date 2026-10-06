@@ -97,6 +97,37 @@ class GradingTest(unittest.TestCase):
             self.assertNotIn('second', report['case_results'])
             self.assertEqual(report['criteria']['AC-002']['verdict'], 'untested')
 
+    def test_broker_refusals_preserve_worker_verdict_and_sync_final_evidence(self):
+        from types import SimpleNamespace
+        modes = [
+            ('fault', {'mutates_runtime': True}, {'fault_broker': SimpleNamespace(configuration={}, wait_idle=lambda: False, aborted=False)}),
+            ('audit', {'reads_audit': True}, {'audit_broker': SimpleNamespace(configuration={}, wait_idle=lambda: False)}),
+            ('job', {'reads_jobs': True}, {'job_broker': SimpleNamespace(configuration={}, wait_idle=lambda: False)}),
+            ('staging', {'stages_jobs': True, 'mutates_runtime': True, 'reads_jobs': True},
+             {'staging_broker': SimpleNamespace(configuration={}, wait_idle=lambda: False, aborted=False),
+              'job_broker': SimpleNamespace(configuration={}, wait_idle=lambda: True)}),
+            ('security', {'inspects_security': True}, {'security_broker': SimpleNamespace(configuration={}, wait_idle=lambda: False)}),
+        ]
+        for mode, declarations, brokers in modes:
+            with self.subTest(mode=mode):
+                self.manifest['cases'] = [dict(id='first', source='cases.py', function='good',
+                    criteria=['AC-001'], timeout_seconds=2, **declarations),
+                    dict(id='second', source='cases.py', function='good', criteria=['AC-002'], timeout_seconds=2)]
+                self.save()
+                with Attempt(self.root / ('retained-' + mode), {}) as attempt:
+                    report = run_suite(attempt, Suite(self.suite, self.packages), {'value': 1},
+                                       deadline_seconds=5, development=True, **brokers)
+                    worker = json.loads((attempt.directory / 'grade-first' / 'worker-verdict.json').read_text())
+                    final = json.loads((attempt.directory / 'first-verdict.json').read_text())
+                    events = [json.loads(line) for line in (attempt.directory / 'events.jsonl').read_text().splitlines()]
+                self.assertEqual(worker['verdict'], 'pass')
+                self.assertEqual(final, report['case_results']['first'])
+                self.assertEqual(final['verdict'], 'inconclusive')
+                self.assertEqual([e['payload'] for e in events if e['type'] == 'case.result'], [final])
+                self.assertTrue(report['aborted'])
+                self.assertNotIn('second', report['case_results'])
+                self.assertFalse(report['project_success'])
+
     def test_worker_preserves_explicit_missing_evidence_verdicts(self):
         for exception, verdict in [('Inconclusive', 'inconclusive'), ('Untested', 'untested')]:
             with self.subTest(exception=exception):

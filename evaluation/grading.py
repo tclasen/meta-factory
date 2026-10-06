@@ -148,6 +148,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
         if remaining <= 0:
             break
         path = attempt.directory / (case["id"] + "-verdict.json")
+        worker_path = attempt.directory / ("grade-" + case["id"]) / "worker-verdict.json"
         worker_target = target_path
         capabilities = {}
         if case.get('mutates_runtime', False) and not case.get('stages_jobs', False) and fault_broker is not None:
@@ -177,15 +178,15 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             atomic_json(path, results[case["id"]])
         else:
             argv = [sys.executable, "-m", "evaluation.grade_worker", "--suite", str(suite.root),
-                    "--case", case["id"], "--target", str(worker_target), "--result", str(path),
+                    "--case", case["id"], "--target", str(worker_target), "--result", str(worker_path),
                     "--manifest-sha256", suite.digest]
             command = collect(attempt, "grade-" + case["id"], argv, cwd=Path(__file__).resolve().parents[1],
                               timeout=min(remaining, case["timeout_seconds"]))
-            if command["outcome"] != "passed" or not path.is_file():
+            if command["outcome"] != "passed" or not worker_path.is_file():
                 results[case["id"]] = {"case_id": case["id"], "verdict": "inconclusive",
                                        "reason": "grader_" + command["outcome"]}
             else:
-                value = json.loads(path.read_text())
+                value = json.loads(worker_path.read_text())
                 if value.get("case_id") != case["id"] or value.get("verdict") not in VERDICTS:
                     raise ValueError("Malformed grader result")
                 results[case["id"]] = value
@@ -210,7 +211,7 @@ def run_suite(attempt, suite, target, *, deadline_seconds, development=False, fa
             if not security_broker.wait_idle():
                 results[case['id']] = {'case_id':case['id'], 'verdict':'inconclusive',
                                         'reason':'security_reader_unsettled', 'abort_suite':True}
-                atomic_json(path, results[case['id']])
+        atomic_json(path, results[case["id"]])
         attempt.emit("grader", "case.result", results[case["id"]])
         shared_state_uncertain = (case.get("mutates_shared_state", False)
                                   and results[case["id"]]["verdict"] != "pass")
