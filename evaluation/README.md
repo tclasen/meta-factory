@@ -1543,3 +1543,34 @@ Run its focused deployment checks with:
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
 ```
+
+### Coordinating observed namespace log sources
+
+`log_collector.NamespaceLogCollector(history, retention, resolve, check=...,
+ deadline=...)` attaches a `LinuxCRIFollower` to each immutable identity from
+`PodIdentityHistory`. Both inputs must have the same exact Namespace name/UID
+and original process. Trusted `resolve(entry, reserve)` privately returns
+`directory`, `node_uid`, and the per-source `check`, or `None` for a binding that
+is not yet available. The restart index determines the canonical active filename.
+The resolver must independently verify the source/node/file binding, including
+historical sources; builder-selected paths are not trusted. The global
+`check(reserve)` verifies the original Namespace, owner, and clock bindings.
+Run callbacks and filesystem operations inside an owned bounded child.
+
+`poll()` retries unresolved identities, attaches each immutable source only once,
+and polls every attached follower. Current/previous selector changes and Pod
+deletion do not detach sources. Public summaries disclose unresolved sources,
+pending containers and observed identity gaps without exposing raw identities or
+bytes. Failure or `close()` closes all followers and abandons shared retention;
+already captured positives remain inspectable until retention itself is closed.
+
+This connects observed API identities to existing Linux files. It does not
+capture files before CID publication, discover unseen generations, establish
+bootstrap/API/time/closed-writer fences, prove owner-death cleanup or complete
+namespace history. All receipts retain `history_complete=False`; absence cannot
+pass acceptance. This supports D-049 and REQ-012/015/020 without removing those
+evidence limits.
+
+```bash
+uv run --locked python -m unittest discover -s tests -p test_evaluation_log_collector.py -v
+```
