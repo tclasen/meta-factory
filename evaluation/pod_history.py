@@ -248,6 +248,7 @@ class PodIdentityHistory:
                         deleted_pods=sum(value['deleted'] for value in self._pods.values()),
                         identities=sum(len(value['ids']) for pod in self._pods.values() for value in pod['containers'].values()),
                         pending_containers=sum(value['pending'] for pod in self._pods.values() if not pod['deleted'] for value in pod['containers'].values()),
+                        unresolved_deleted_containers=sum(value['pending'] for pod in self._pods.values() if pod['deleted'] for value in pod['containers'].values()),
                         identity_gap=self._gap)
 
     def abandon(self):

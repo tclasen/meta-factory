@@ -1658,3 +1658,10 @@ that all-source shutdown. D-049/REQ-012/015/020 evidence boundaries remain in fo
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_birth.py -v
 ```
+
+`PodIdentityHistory.summary()` and `NamespaceLogCollector.summary()` also expose
+`unresolved_deleted_containers`. Active pending declarations and deleted pending
+declarations are counted separately: deletion and same-name recreation cannot
+erase uncertainty about a container whose CID was never observed. This count
+does not prove it ran; independent node/runtime accounting must resolve that
+uncertainty before a complete-history claim is possible.

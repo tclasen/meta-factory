@@ -100,6 +100,7 @@ class NamespaceLogCollector:
             return dict(outcome='private_namespace_collection', polls=self._polls,
                         attached_sources=len(self._followers), unresolved_sources=history['identities']-len(self._followers),
                         pending_containers=history['pending_containers'],
+                        unresolved_deleted_containers=history['unresolved_deleted_containers'],
                         identity_gap=history['identity_gap'],
                         valid=not self._failed and not self._closed and history['valid']
                         and self._retention._valid and not self._retention._closed,

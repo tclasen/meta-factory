@@ -69,6 +69,17 @@ class NamespaceCollectorTest(unittest.TestCase):
         self.assertEqual(self.c.summary()['unresolved_sources'],1)
         self.assertEqual(self.c.summary()['attached_sources'],1)
 
+    def test_deleted_unresolved_declarations_do_not_disappear_from_collection_summary(self):
+        self.file();self.c.poll();start=self.h.begin()
+        value=pod(name='pending',uid='pending');value['status']={}
+        self.h.accept(event(value,'ADDED'));self.h.accept(event(value,'DELETED'))
+        self.h.finish(receipt(start,2))
+        result=self.c.poll()
+        self.assertEqual(result['pending_containers'],0)
+        self.assertEqual(result['unresolved_deleted_containers'],1)
+        self.assertEqual(result['unresolved_sources'],0)
+        self.assertFalse(result['history_complete'])
+
     def test_restart_selectors_do_not_duplicate_previous_source(self):
         self.file();self.c.poll();start=self.h.begin()
         self.h.accept(event(pod(count=1,current='containerd://two',prior='containerd://one')))

@@ -59,6 +59,16 @@ class PodHistoryTest(unittest.TestCase):
         sources=h.sources();self.assertEqual([s['available_as'] for s in sources],['historical','current'])
         self.assertNotIn(SECRET,repr(h._pods));self.assertNotIn('pod-one',repr(summary));self.assertFalse(summary['history_complete'])
 
+    def test_deleted_pending_declarations_remain_explicit_across_same_name_recreation(self):
+        value=pod();value['status']={}
+        h=history([value]);start=h.begin();h.accept(event(value,'DELETED'))
+        h.accept(event(pod(uid='new-pod',current='containerd://new'),'ADDED'))
+        summary=h.finish(receipt(start,2))
+        self.assertEqual(summary['pending_containers'],0)
+        self.assertEqual(summary['unresolved_deleted_containers'],1)
+        self.assertEqual(summary['identities'],1)
+        self.assertFalse(summary['history_complete'])
+
     def test_waiting_after_restart_does_not_alias_cached_current_id_as_new_instance(self):
         h=history([pod()]);start=h.begin()
         h.accept(event(pod(count=1,current='containerd://one',prior='containerd://one',state='waiting')))
