@@ -1,6 +1,7 @@
 """Incremental private CRI JSON admission; incomplete streams invalidate dependents."""
 import codecs
 import json
+import math
 import os
 import threading
 
@@ -11,6 +12,13 @@ MAX_CHUNK_BYTES = 65536
 MAX_EVENT_BYTES = 2 * 1024 * 1024
 MAX_STREAM_BYTES = 16 * 1024 * 1024
 MAX_EVENTS = 4096
+
+
+def _finite_float(value):
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError('Private nonfinite value')
+    return parsed
 
 
 class _Refusal(ValueError):
@@ -40,6 +48,7 @@ class PrivateCRIEventDecoder:
         self._text, self._bytes, self._events = '', 0, 0
         self._utf8 = codecs.getincrementaldecoder('utf-8')('strict')
         self._json = json.JSONDecoder(object_pairs_hook=_unique,
+            parse_float=_finite_float,
             parse_constant=lambda _: (_ for _ in ()).throw(ValueError('Private nonfinite value')))
         try: self._verify()
         except BaseException as error:

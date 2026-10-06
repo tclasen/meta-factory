@@ -55,6 +55,21 @@ class CRIStreamTest(unittest.TestCase):
                     result=d.close();self.assertFalse(result['valid']);self.assertFalse(result['dependents_invalidated'])
             finally:d.close()
 
+    def test_numeric_overflow_invalidates_prior_admission_before_consumer(self):
+        for suffix in (b'400}', b'9999,"nested":[1]}'):
+            values=[];closed=[]
+            def invalidate():closed.append(True);values.clear()
+            d=PrivateCRIEventDecoder(values.append,check=lambda _:True,invalidate=invalidate)
+            try:
+                d.feed(b'{"finite":1e308}')
+                self.assertEqual(len(values),1)
+                d.feed(b'{"private":-1e')
+                with self.assertRaisesRegex(ValueError,'^Private CRI stream unavailable$'):
+                    d.feed(suffix)
+                self.assertEqual(values,[]);self.assertEqual(closed,[True])
+                self.assertTrue(d.summary()['dependents_invalidated'])
+            finally:d.close()
+
     def test_bounds_invalidate_without_retaining_input(self):
         for constant,value,raw in (('MAX_EVENT_BYTES',1,b'{}'),('MAX_STREAM_BYTES',1,b'{}'),('MAX_EVENTS',0,b'{}'),('MAX_CHUNK_BYTES',1,b'{}')):
             closed=[];d=PrivateCRIEventDecoder(lambda _:None,check=lambda _:True,invalidate=lambda:closed.append(True))
