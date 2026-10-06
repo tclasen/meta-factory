@@ -1762,3 +1762,38 @@ remain in force.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_archive.py -v
 ```
+
+
+### Private held runtime RPC connection
+
+`cri_rpc.PrivateCRIRPCConnection(connection, peer=..., endpoint=..., check=...,
+invalidate=..., deadline=...)` takes ownership of an already connected Linux
+Unix stream socket. Supply the independently captured original runtime PID,
+UID/GID, start ticks, mount namespace, executable and endpoint device/inode
+projection. The trusted `check(reserve)` separately verifies the original Node,
+Namespace, full cgroup, owner and clocks. Admission verifies the actual connected
+FD's kernel peer, rather than authenticating a separate probe connection.
+
+`send(private_bytes)` returns the number consumed, including zero when busy;
+retry only the unconsumed suffix. `receive()` returns private bytes or `None`
+when idle. Every operation rechecks the original identity and independent guard
+before and after IO on that same held descriptor. Python timeout mode is cleared;
+IO uses `MSG_DONTWAIT`, with 65,536-byte chunks and a shared 64-MiB traffic bound.
+Unexpected EOF, identity or endpoint replacement, guard loss, bounds and callback
+failure permanently close the FD and call dependent invalidation. `close()` also
+invalidates dependents; successful cleanup is reported separately. Diagnostics
+and summaries omit endpoint, identity and RPC contents. Run callbacks and the
+connection in a bounded operator-owned process; callback deadlines are not
+implemented by Python thread interruption.
+
+An unobserved swap restored before a check cannot redirect an existing held FD.
+Each new connection needs its own admission; the actual peer check rejects a
+substitute even after original path restoration. This primitive supplies private
+bytes, without implementing gRPC, subscription acknowledgement, runtime births,
+bootstrap, all-source coverage or writer/API/time fences. It does not yet replace
+external CLI RPC transport or establish healthy grading. Every summary retains
+`history_complete=False`; D-049 and REQ-012/015/020 boundaries apply.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_cri_rpc.py -v
+```
