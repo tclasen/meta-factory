@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluation.evidence import Attempt
-from evaluation.sandbox import Sandbox, capture_tree, disjoint, stopped_from_listing
+from evaluation.sandbox import Sandbox, capture_tree, disjoint, listing_rows, stopped_from_listing
 
 
 class SandboxTest(unittest.TestCase):
@@ -223,3 +223,35 @@ assert changed
                     self.assertEqual(calls,[['sbx','ls']])
                     self.assertFalse(box.creation_attempted)
                     self.assertFalse((attempt.directory/'builder-resource.json').exists())
+
+
+class ListingNoticeTest(unittest.TestCase):
+    def listing(self):
+        return ('SANDBOX AGENT STATUS PORTS WORKSPACE\nours shell stopped - /tmp/owned\n\n'
+            '╭────────╮\n│ Docker Sandboxes Update Available │\n├────────┤\n'
+            '│ v0.46.0  →  v0.47.0 │\n├────────┤\n'
+            '│ Release notes  https://github.com/docker/sbx-releases/releases/tag/v0.47.0 │\n'
+            '├────────┤\n│ To upgrade     brew upgrade docker/tap/sbx │\n╰────────╯\n')
+
+    def test_recognized_notice_preserves_present_and_absent_resource_identities(self):
+        from evaluation.recovery import state_from_listing
+        value=self.listing()
+        self.assertEqual(listing_rows(value),[['ours','shell','stopped','-','/tmp/owned']])
+        self.assertTrue(stopped_from_listing(value,'ours'))
+        self.assertFalse(stopped_from_listing(value,'missing'))
+        self.assertEqual(state_from_listing(value,'ours'),'stopped')
+        self.assertEqual(state_from_listing(value,'missing'),'absent')
+
+    def test_unknown_truncated_or_injected_notice_never_establishes_absence_or_stop(self):
+        from evaluation.recovery import state_from_listing
+        value=self.listing()
+        for corrupted in (value.replace('v0.47.0 │','v0.48.0 │',1),
+                value.replace('Docker Sandboxes Update Available','Other notice'),
+                value.replace('https://github.com/docker/','https://untrusted.invalid/'),
+                value.replace('╰────────╯',''),value+'hidden shell running\n',
+                value.replace('│ To upgrade','hidden shell running\n│ To upgrade'),
+                value.replace('ours shell stopped','ours shell stopped\nours shell stopped')):
+            with self.subTest(corrupted=corrupted):
+                with self.assertRaises(ValueError):listing_rows(corrupted)
+                with self.assertRaises(ValueError):state_from_listing(corrupted,'missing')
+                self.assertFalse(stopped_from_listing(corrupted,'ours'))

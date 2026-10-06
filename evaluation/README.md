@@ -2382,3 +2382,12 @@ plans remain `planned_not_ready` with launch disabled.
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_planned_grading.py -v
 ```
+
+Pinned `sbx ls` parsing accepts the observed optional trailing Docker Sandboxes
+upgrade notice without treating its box/text as sandbox rows. The notice must
+have the expected title, border/field sequence, pinned current version, matching
+release version/URL and exact upgrade command. Unknown, truncated, injected or
+inconsistent suffixes and duplicate sandbox identities refuse. The shared parser
+is used for planned-name availability, stopped-state verification and recovery;
+a recognized notice never grants ownership of a present name or permission to
+execute an upgrade.

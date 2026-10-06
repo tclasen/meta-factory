@@ -20,13 +20,42 @@ def disjoint(*paths):
     return resolved
 
 
-def stopped_from_listing(text, name):
-    """Pinned sbx 0.46.0 table; never use exec to check a stopped sandbox."""
+def listing_rows(text):
+    """Pinned table with its optional recognized trailing upgrade notice."""
     rows = text.splitlines()
     if not rows or rows[0].split()[:3] != ["SANDBOX", "AGENT", "STATUS"]:
+        raise ValueError('Unknown sandbox listing header')
+    entries = []; index = 1
+    while index < len(rows) and rows[index].strip():
+        entry = rows[index].split()
+        if len(entry) < 3:
+            raise ValueError('Unknown sandbox listing row')
+        entries.append(entry); index += 1
+    suffix = [line.strip() for line in rows[index:] if line.strip()]
+    if suffix:
+        if (len(suffix) != 9 or not re.fullmatch('╭─+╮', suffix[0])
+                or not re.fullmatch('╰─+╯', suffix[8])
+                or any(not re.fullmatch('├─+┤', suffix[i]) for i in (2,4,6))
+                or any(not line.startswith('│') or not line.endswith('│') for line in suffix[1:8:2])):
+            raise ValueError('Unknown sandbox listing suffix')
+        title, versions, release, upgrade = [suffix[i][1:-1].strip() for i in (1,3,5,7)]
+        match = re.fullmatch(r'v0\.46\.0\s+→\s+(v[0-9]+\.[0-9]+\.[0-9]+)', versions)
+        if (title != 'Docker Sandboxes Update Available' or match is None
+                or release != 'Release notes  https://github.com/docker/sbx-releases/releases/tag/'+match[1]
+                or upgrade != 'To upgrade     brew upgrade docker/tap/sbx'):
+            raise ValueError('Unknown sandbox upgrade notice')
+    if len({row[0] for row in entries}) != len(entries):
+        raise ValueError('Duplicate sandbox listing identity')
+    return entries
+
+
+def stopped_from_listing(text, name):
+    """Pinned sbx 0.46.0 table; never use exec to check a stopped sandbox."""
+    try:
+        matches = [row for row in listing_rows(text) if row[0] == name]
+    except ValueError:
         return False
-    matches = [line.split() for line in rows[1:] if line.split() and line.split()[0] == name]
-    return len(matches) == 1 and len(matches[0]) >= 3 and matches[0][2] == "stopped"
+    return len(matches) == 1 and matches[0][2] == "stopped"
 
 
 def sandbox_create_argv(project, specification, *, name, port, role,
@@ -96,12 +125,8 @@ class Sandbox:
             if (checked.get('outcome') != 'passed' or type(checked.get('exit_code')) is not int
                     or checked['exit_code'] != 0):
                 raise ValueError('Inspected sandbox name availability unverified')
-            rows = (self.attempt.directory / f'{self.role}-name-check/stdout.log').read_text().splitlines()
-            entries = [row.split() for row in rows[1:] if row.split()]
-            if (not rows or rows[0].split()[:3] != ['SANDBOX', 'AGENT', 'STATUS']
-                    or any(len(row) < 3 for row in entries)
-                    or len({row[0] for row in entries}) != len(entries)
-                    or any(row[0] == self.name for row in entries)):
+            entries = listing_rows((self.attempt.directory / f'{self.role}-name-check/stdout.log').read_text())
+            if any(row[0] == self.name for row in entries):
                 raise ValueError('Inspected sandbox name is present or listing is unknown')
         self.creation_attempted = True
         atomic_json(self.attempt.directory / f"{self.role}-resource.json", {

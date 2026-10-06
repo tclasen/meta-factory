@@ -11,7 +11,7 @@ import tempfile
 import sys
 
 from .evidence import Attempt, atomic_json, collect
-from .sandbox import disjoint
+from .sandbox import disjoint, listing_rows
 from .watchdog import NAME
 
 
@@ -82,10 +82,7 @@ def resources(directory):
 
 
 def state_from_listing(output, name):
-    lines = output.splitlines()
-    if not lines or lines[0].split()[:3] != ['SANDBOX', 'AGENT', 'STATUS']:
-        raise ValueError('Unknown sbx listing format')
-    rows = [line.split() for line in lines[1:] if line.split() and line.split()[0] == name]
+    rows = [row for row in listing_rows(output) if row[0] == name]
     if not rows:
         return 'absent'
     if len(rows) != 1 or len(rows[0]) < 3:
