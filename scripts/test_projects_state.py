@@ -20,8 +20,11 @@ from evaluation.evidence import Attempt, atomic_json, collect, utc_now
 
 
 class Fixture:
-    def __init__(self, attempt, seconds):
+    def __init__(self, attempt, seconds, *, state_interface='project'):
+        if state_interface not in ('project', 'graphql'):
+            raise ValueError('Explicit native state interface required')
         self.attempt = attempt
+        self.state_interface = state_interface
         self.deadline = time.monotonic() + seconds
         self.sequence = 0
 
@@ -47,6 +50,16 @@ class Fixture:
         return data['data']
 
     def edit(self, project, item, field, *, option=None, text=None):
+        if self.state_interface == 'graphql':
+            value = {'singleSelectOptionId': option} if option else {'text': text}
+            updated = self.graphql('native-graphql-item-edit', '''mutation($project: ID!,
+              $item: ID!, $field: ID!, $value: ProjectV2FieldValue!) {
+              updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item,
+                fieldId: $field, value: $value}) { projectV2Item { id } }
+            }''', dict(project=project, item=item, field=field, value=value))
+            if updated['updateProjectV2ItemFieldValue']['projectV2Item']['id'] != item:
+                raise ValueError('Native update returned another item')
+            return
         argv = ['gh', 'project', 'item-edit', '--project-id', project,
                 '--id', item, '--field-id', field]
         argv += ['--single-select-option-id', option] if option else ['--text', text]
@@ -182,6 +195,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--owner', required=True, help='Explicitly assigned authenticated GitHub user')
     parser.add_argument('--execute', action='store_true', help='Create the assigned disposable private fixture')
+    parser.add_argument('--state-interface', choices=('project', 'graphql'), default='project',
+                        help='Explicit native edit interface; never switch automatically on failure')
     args = parser.parse_args(argv)
     if not re.fullmatch('[A-Za-z0-9][A-Za-z0-9-]{0,38}', args.owner):
         parser.error('Ordinary GitHub user login required')
@@ -190,6 +205,7 @@ def main(argv=None):
     directory = Path(tempfile.mkdtemp(prefix='run-', dir=planning)) / 'attempt'
     print(f'Evidence directory: {directory}', flush=True)
     report = dict(started=utc_now(), outcome='planned_not_executed', owner=args.owner,
+        state_interface=args.state_interface,
         project_title='factory-req007-fixture-' + directory.parent.name,
         changes='One private synthetic project, fields and two draft items; retained for review.',
         cleanup=dict(outcome='no_resource_created'),
@@ -198,7 +214,7 @@ def main(argv=None):
     status = 0
     with Attempt(directory, dict(owner=args.owner, execute=args.execute)) as attempt:
         try:
-            fixture = Fixture(attempt, 600)
+            fixture = Fixture(attempt, 600, state_interface=args.state_interface)
             report['tested_revision'] = fixture.command('revision', ['git', 'rev-parse', 'HEAD']).strip()
             if fixture.command('worktree', ['git', 'status', '--porcelain']):
                 raise ValueError('Clean committed worktree required')

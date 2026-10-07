@@ -17,6 +17,30 @@ def page(identifier, *, more=False, cursor=None, fields_more=False):
 
 
 class ProjectsScriptTest(unittest.TestCase):
+    def test_explicit_graphql_edit_uses_native_values_without_cli_scope_expansion(self):
+        fixture = script.Fixture(None, 10, state_interface='graphql')
+        reply = {'updateProjectV2ItemFieldValue': {'projectV2Item': {'id': 'owned-item'}}}
+        with patch.object(fixture, 'graphql', return_value=reply) as query, \
+                patch.object(fixture, 'command', side_effect=AssertionError('No CLI or auth refresh')):
+            fixture.edit('owned-project', 'owned-item', 'status-field', option='todo-option')
+            self.assertEqual(query.call_args.args[2]['value'], {'singleSelectOptionId': 'todo-option'})
+            fixture.edit('owned-project', 'owned-item', 'progress-field', text='Finding')
+            self.assertEqual(query.call_args.args[2]['value'], {'text': 'Finding'})
+
+    def test_cli_failure_never_silently_switches_native_interface(self):
+        fixture = script.Fixture(None, 10)
+        with patch.object(fixture, 'command', side_effect=RuntimeError('scope precondition')), \
+                patch.object(fixture, 'graphql', side_effect=AssertionError('No fallback')):
+            with self.assertRaises(RuntimeError):
+                fixture.edit('project', 'item', 'field', text='Finding')
+
+    def test_graphql_wrong_item_response_is_refused(self):
+        fixture = script.Fixture(None, 10, state_interface='graphql')
+        with patch.object(fixture, 'graphql', return_value={
+                'updateProjectV2ItemFieldValue': {'projectV2Item': {'id': 'other-item'}}}):
+            with self.assertRaises(ValueError):
+                fixture.edit('project', 'owned-item', 'field', text='Finding')
+
     def test_native_pagination_keeps_all_items_and_checks_cursor(self):
         fixture = script.Fixture(None, 10)
         with patch.object(fixture, 'graphql', side_effect=[

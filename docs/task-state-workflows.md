@@ -312,6 +312,13 @@ python3 scripts/test_projects_state.py --owner ASSIGNED_LOGIN
 python3 scripts/test_projects_state.py --owner ASSIGNED_LOGIN --execute
 ```
 
+If the pinned CLI's Projects subcommand requires scopes beyond the assigned
+credential, select `--state-interface graphql` explicitly before a fresh fixture.
+It uses equivalent native `gh api graphql` field edits with the same readback
+checks. The selected interface is recorded; there is no automatic interface
+switch or token-scope expansion. Retain the original failed fixture and freeze
+the verified native interface before any comparison.
+
 Each attempt prints a unique evidence directory under
 `.factory-planning/projects-state-logs/` at startup and completion. It retains
 bounded command stdout/stderr, exit statuses, UTC times, CLI version, factory
