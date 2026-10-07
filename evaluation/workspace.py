@@ -60,14 +60,16 @@ def validate_workspace_resources(plan, workload, suite_root, suite_approval=None
         declared = plan['grading_stages']
         if not isinstance(declared, list) or not declared:
             raise ValueError('Nonempty staged resource plan required')
-        if any(not isinstance(item,dict) or set(item) != {'id','case_ids','resource'} for item in declared):
+        if any(not isinstance(item,dict)
+               or set(item) != {'id','case_ids','resource','lane'} for item in declared):
             raise ValueError('Exact staged resource references required')
         packages = json.loads((workload/'builder/packages.json').read_text())['packages']
         suite = Suite(suite_root, packages, approval=suite_approval)
         if suite.digest != plan['source_identities']['suite_sha256']:
             raise ValueError('Staged workspace registry identity changed')
         assignments = normalize_stage_assignments(
-            [dict(id=item['id'],case_ids=item['case_ids']) for item in declared], suite)
+            [dict(id=item['id'],case_ids=item['case_ids'],lane=item['lane'])
+             for item in declared], suite)
         staged, canonical = planned_stage_resources(workspace, assignments, port)
         if json.dumps(declared,sort_keys=True) != json.dumps(canonical,sort_keys=True):
             raise ValueError('Stage assignments or resource references changed')

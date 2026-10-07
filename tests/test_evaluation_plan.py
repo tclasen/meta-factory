@@ -191,6 +191,9 @@ class StagedPlanTest(unittest.TestCase):
             self.assertEqual(resource['create_argv'],sandbox_create_argv(
                 resource['project'],resource['specification'],name=resource['name'],port=18080,role='grader'))
             self.assertFalse(Path(resource['project']).exists())
+            self.assertEqual(stage['lane'],0)
+        self.assertEqual(value['grading_lanes'],[
+            {'lane':0,'host_port':18080,'stage_ids':['journey','sample']}])
         self.assertFalse(value['launch_enabled'])
         self.assertEqual(value['limits']['grading_seconds']['value'],5400)
         self.assignments[0]['case_ids'].append('second')
@@ -202,7 +205,9 @@ class StagedPlanTest(unittest.TestCase):
                 [{'id':'journey','case_ids':['check']},{'id':'journey','case_ids':['second']}],
                 [{'id':'../escape','case_ids':['check','second']}],
                 [{'id':'journey','case_ids':['unknown']}],
-                [{'id':'journey','case_ids':['check','second'],'target':{}}]):
+                [{'id':'journey','case_ids':['check','second'],'target':{}}],
+                [{'id':'journey','case_ids':['check'],'lane':True},{'id':'sample','case_ids':['second']}],
+                [{'id':'journey','case_ids':['check'],'lane':32},{'id':'sample','case_ids':['second']}]):
             with self.subTest(assignments=assignments):
                 with self.assertRaises(ValueError):self.plan(stage_assignments=assignments)
         self.assertEqual(list(self.parent.iterdir()),[])
@@ -210,6 +215,19 @@ class StagedPlanTest(unittest.TestCase):
     def test_registry_order_is_preserved_within_each_stage(self):
         value = self.plan(stage_assignments=[dict(id='all',case_ids=['second','check'])])
         self.assertEqual(value['grading_stages'][0]['case_ids'],['check','second'])
+
+    def test_parallel_lanes_receive_distinct_deterministic_ports(self):
+        assignments=[dict(id='journey',case_ids=['check'],lane=1),
+                     dict(id='sample',case_ids=['second'],lane=0)]
+        value=self.plan(stage_assignments=assignments)
+        self.assertEqual(value['grading_lanes'],[
+            {'lane':0,'host_port':18080,'stage_ids':['sample']},
+            {'lane':1,'host_port':18081,'stage_ids':['journey']}])
+        self.assertEqual(value['resources']['grader-journey']['host_port'],18081)
+        self.assertIn('127.0.0.1:18081:8080',
+                      value['resources']['grader-journey']['create_argv'])
+        with self.assertRaises(ValueError):
+            self.plan(port=65535,stage_assignments=assignments)
 
     def test_cli_records_staged_assignment(self):
         path = self.root/'assignments.json';atomic_json(path,self.assignments)

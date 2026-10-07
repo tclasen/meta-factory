@@ -2357,14 +2357,18 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_grading_
 
 ### Inspecting a staged resource plan
 
-`build_plan(..., stage_assignments=[{"id": "journey", "case_ids": [...]}, ...])`
-optionally partitions the full registered suite into sequential grading stages.
+`build_plan(..., stage_assignments=[{"id": "journey", "case_ids": [...],
+"lane": 1}, ...])` optionally partitions the full registered suite into grading
+stages and explicit scheduling lanes.
 The default remains the existing single-grader plan. Assignments contain only
-stage IDs and registered case IDs; they cannot supply targets, commands, mounts,
-callbacks or approval. Each case must occur exactly once, with registry order
-preserved inside its stage. The plan records distinct derived sandbox names,
-absent project paths, exact creation/stop commands and a shared forwarded port.
-The proposed 5,400-second grading allowance covers the whole sequence.
+stage IDs, registered case IDs and an optional integer lane from 0 through 31;
+they cannot supply targets, commands, mounts, callbacks or approval. Omitted lanes
+default to lane 0, preserving the sequential plan. Each case must occur exactly
+once, with registry order preserved inside its stage. Stages in a lane are
+sequential; distinct lanes receive deterministic consecutive loopback ports and
+require independent runtime owners before they can execute concurrently. The plan
+records distinct derived sandbox names, absent project paths and exact creation/
+stop commands. The proposed 5,400-second allowance remains shared by the schedule.
 
 The read-only CLI accepts the same protected JSON list through
 `--stage-assignments /operator/path/stages.json` (ordinary file, at most 64 KiB).

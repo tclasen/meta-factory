@@ -19,20 +19,24 @@ def controller_identities(repository):
 
 
 def normalize_stage_assignments(assignments, suite):
-    """Exact operator case partition; targets/adapters are supplied separately."""
+    """Exact operator case partition and explicit parallel-lane assignment."""
     if not isinstance(assignments, (list, tuple)) or not assignments:
         raise ValueError('Nonempty grading stage assignments required')
     stages = []; identifiers = set(); assigned = []
     for item in assignments:
-        if not isinstance(item, dict) or set(item) != {'id', 'case_ids'}:
-            raise ValueError('Stage assignment requires only id and case_ids')
+        if (not isinstance(item, dict) or not {'id', 'case_ids'} <= set(item)
+                or not set(item) <= {'id', 'case_ids', 'lane'}):
+            raise ValueError('Stage assignment requires id, case_ids and optional lane')
         identifier = item['id']
         if (not isinstance(identifier, str)
                 or not re.fullmatch('[a-z][a-z0-9-]{0,57}', identifier)
                 or identifier in identifiers):
             raise ValueError('Unique grading stage identifiers required')
+        lane = item.get('lane', 0)
+        if type(lane) is not int or not 0 <= lane <= 31:
+            raise ValueError('Stage lane must be an integer from 0 through 31')
         selected = [case['id'] for case in select_cases(suite, item['case_ids'])]
-        stages.append(dict(id=identifier, case_ids=selected))
+        stages.append(dict(id=identifier, case_ids=selected, lane=lane))
         identifiers.add(identifier); assigned.extend(selected)
     if len(set(assigned)) != len(assigned) or set(assigned) != {case['id'] for case in suite.cases}:
         raise ValueError('Grading stages must partition the full registry exactly once')
@@ -49,11 +53,14 @@ def planned_stage_resources(workspace, assignments, port):
         name = 'factory-eval-grader-' + suffix
         project = workspace / (key + '-project')
         specification = workspace / 'specification'
+        host_port = port + stage['lane']
+        if host_port > 65535:
+            raise ValueError('Planned grading lane exceeds available host ports')
         resources[key] = dict(name=name, project=str(project), specification=str(specification),
-            create_argv=sandbox_create_argv(project, specification, name=name, port=port, role='grader'),
-            manual_stop=['sbx', 'stop', name], cpus=8, memory_gib=16, host_port=port,
+            create_argv=sandbox_create_argv(project, specification, name=name, port=host_port, role='grader'),
+            manual_stop=['sbx', 'stop', name], cpus=8, memory_gib=16, host_port=host_port,
             created=False, termination_verified=False)
-        stages.append(dict(id=stage['id'], case_ids=stage['case_ids'], resource=key))
+        stages.append(dict(id=stage['id'], case_ids=stage['case_ids'], resource=key, lane=stage['lane']))
     if len({value['name'] for value in resources.values()}) != len(resources):
         raise ValueError('Planned grading name collision')
     return resources, stages
@@ -140,9 +147,13 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
 
     if stages is not None:
         report['grading_stages'] = stages
+        report['grading_lanes'] = [
+            dict(lane=lane, host_port=port + lane,
+                 stage_ids=[stage['id'] for stage in stages if stage['lane'] == lane])
+            for lane in sorted({stage['lane'] for stage in stages})]
         report['sequence'][6:9] = [
             'After verified builder termination, grade every assigned stage against one frozen capture and registry',
-            'Create each fresh planned grader only after prior verified cleanup; reuse one port sequentially',
+            'Run stages sequentially within each lane; distinct lanes use distinct loopback ports and require independent owners',
             'Bootstrap and bind independent stage fixtures; aggregate the full registry within one shared grading budget']
 
     settled=audit(workload,suite_root,suite_approval=suite_approval,host_attempt=host_attempt,repository=repository)

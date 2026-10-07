@@ -102,6 +102,8 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
             or verified.get('files') != expected_files):
         raise ValueError('Prepared reviewed specification differs from plan')
     declarations = plan['grading_stages']
+    if any(declaration.get('lane') != 0 for declaration in declarations):
+        raise ValueError('Parallel grading lanes require the concurrent runtime handoff')
     if (not isinstance(configurations, (list, tuple))
             or len(configurations) != len(declarations)):
         raise ValueError('Exact operator configuration for every planned stage required')
