@@ -96,7 +96,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
     prepared = []; assigned = []; names = set(); identifiers = set(); projects = []
     for stage in stages:
         if (not isinstance(stage, dict) or not {'id','name','project','case_ids','target'} <= set(stage)
-                or not set(stage) <= {'id','name','project','case_ids','target','options'}):
+                or not set(stage) <= {'id','name','project','case_ids','target','options','port'}):
             raise ValueError('Explicit stage identity/resource/case/target fields required')
         identifier, name = stage['id'], stage['name']
         if (not isinstance(identifier, str) or not re.fullmatch('[a-z][a-z0-9-]{0,57}', identifier)
@@ -125,9 +125,14 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                 raise ValueError('Stage bootstrap exceeds proposed preparation ceiling')
         target = copy.deepcopy(stage['target'])
         json.dumps(target, allow_nan=False)
-        create_argv = sandbox_create_argv(project, specification, name=name, port=port, role='grader')
+        stage_port = stage.get('port', port)
+        if type(stage_port) is not int or not 1024 <= stage_port <= 65535:
+            raise ValueError('Stage port must be a nonprivileged TCP port')
+        create_argv = sandbox_create_argv(project, specification, name=name,
+                                          port=stage_port, role='grader')
         prepared.append(dict(id=identifier, name=name, project=project, case_ids=selected,
-                             target=target, options=options, parent=expected_parent, create_argv=create_argv))
+                             target=target, options=options, port=stage_port,
+                             parent=expected_parent, create_argv=create_argv))
         assigned.extend(selected);names.add(name);identifiers.add(identifier);projects.append(project)
     if len(set(assigned)) != len(assigned) or set(assigned) != {case['id'] for case in frozen.cases}:
         raise ValueError('Fresh stages must partition every registered case exactly once')
@@ -155,7 +160,8 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
         verify_capture(source, inventory)
     # Exclusive intent prevents reuse of any completed or interrupted sequence.
     summary = [dict(id=stage['id'], sandbox=stage['name'], project=str(stage['project']),
-                    case_ids=stage['case_ids'], create_argv=stage['create_argv'],
+                    case_ids=stage['case_ids'], port=stage['port'],
+                    create_argv=stage['create_argv'],
                     option_names=sorted(stage['options'])) for stage in prepared]
     with private_file(attempt.directory / 'grading-stages-intent.json') as stream:
         stream.write(json.dumps(dict(schema_version=1, suite_sha256=frozen.digest,
@@ -200,7 +206,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                 child.transition('preflight')
                 try:
                     observed = deployment(child, source, copy.deepcopy(inventory), specification,
-                        stage['project'], phase_suite, copy.deepcopy(stage['target']), port=port,
+                        stage['project'], phase_suite, copy.deepcopy(stage['target']), port=stage['port'],
                         grading_seconds=min(allowance,remaining()), development=development,
                         sandbox_factory=phase_factory, guard_factory=guard_factory,
                         command_runner=command_runner, suite_runner=phase_runner, **stage['options'])
@@ -213,7 +219,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                         frozen.aggregate(values)
                         results.update(copy.deepcopy(values))
                     resource = json.loads(read_regular(child.directory / 'grader-resource.json',65536,lambda:None))
-                    if not matching_resource(resource,stage,specification,port):
+                    if not matching_resource(resource,stage,specification,stage['port']):
                         raise Inconclusive('Stage private creation intent changed scope')
                     record['creation_attempted'] = True
                     box = owned.get('box')
@@ -264,7 +270,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                         # when a planned-name collision refuses before creation.
                         try:
                             resource = json.loads(read_regular(child.directory / 'grader-resource.json',65536,lambda:None))
-                            if matching_resource(resource,stage,specification,port):
+                            if matching_resource(resource,stage,specification,stage['port']):
                                 record['creation_attempted'] = True
                                 if box.stopped is not True:
                                     box.name,box.project,box.specification = stage['name'],stage['project'],specification

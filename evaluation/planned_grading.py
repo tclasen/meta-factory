@@ -119,7 +119,8 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
         resource = plan['resources'][declaration['resource']]
         stages.append(dict(id=declaration['id'], name=resource['name'],
             project=resource['project'], case_ids=copy.deepcopy(declaration['case_ids']),
-            target=copy.deepcopy(configuration['target']), options=dict(configuration.get('options', {}))))
+            target=copy.deepcopy(configuration['target']), port=resource['host_port'],
+            options=dict(configuration.get('options', {}))))
     inventory = copy.deepcopy(inventory)
     allowed_contents = {path.name for path in paths.values()}
     descriptor = open_directory(paths['capture'])

@@ -127,6 +127,20 @@ class GradingStagesTest(unittest.TestCase):
                                    monotonic=lambda:current['mono'],wall=lambda:current['wall'])
         self.assertEqual(allowances,[12,7]);self.assertTrue(report['project_success'])
         self.assertEqual(report['monotonic_elapsed_seconds'],6);self.assertEqual(report['wall_elapsed_seconds'],10)
+
+    def test_stage_specific_ports_bind_creation_deployment_and_intent(self):
+        self.stages[0]['port']=18081
+        observed=[]
+        def deploy(*args,**kwargs):
+            observed.append(kwargs['port'])
+            return self.simulated_deployment(*args,**kwargs)
+        with Attempt(self.root/'ports',{}) as attempt:
+            report=self.run_stages(attempt,deployment=deploy)
+            intent=json.loads((attempt.directory/'grading-stages-intent.json').read_text())
+        self.assertTrue(report['protocol_valid'])
+        self.assertEqual(observed,[18081,18080])
+        self.assertEqual([stage['port'] for stage in intent['stages']],[18081,18080])
+        self.assertIn('127.0.0.1:18081:8080',intent['stages'][0]['create_argv'])
     def test_wall_expiry_and_invalid_clock_after_first_stage_revoke_acceptance(self):
         for index,clock in enumerate((120,float('nan'),True,90)):
             current={'wall':100}
