@@ -77,7 +77,7 @@ class PlannedGradingTest(unittest.TestCase):
                 self.assertFalse((attempt.directory/'grading-stages-intent.json').exists())
         self.assertEqual(FakeSandbox.instances,[])
 
-    def test_parallel_lane_plan_refuses_until_concurrent_handoff_exists(self):
+    def test_parallel_lane_plan_executes_with_inspected_ports_and_resources(self):
         assignments=[dict(id='journey',case_ids=['check'],lane=1),
                      dict(id='sample',case_ids=['second'],lane=0)]
         plan=build_plan(self.workload,self.suite.root,self.parent,self.evidence,
@@ -91,14 +91,19 @@ class PlannedGradingTest(unittest.TestCase):
             (builder/'ops').mkdir();(builder/'ops/bootstrap.sh').write_text('#!/bin/sh\nexit 0\n')
             inventory=capture_tree(builder,plan['paths']['capture'],termination_verified=True)
             configurations=[dict(id=stage['id'],target={}) for stage in plan['grading_stages']]
-            with Attempt(self.root/'parallel-grading',{}) as attempt,self.assertRaises(ValueError):
-                grade_planned_stages(attempt,preparation,plan,self.workload,self.suite,
+            with Attempt(self.root/'parallel-grading',{}) as attempt:
+                result=grade_planned_stages(attempt,preparation,plan,self.workload,self.suite,
                     configurations,inventory,termination_verified=True,
                     monotonic_deadline=100,wall_deadline=100,
                     monotonic=lambda:10,wall=lambda:10,development=True,
                     sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
                     command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0))
-        self.assertEqual(FakeSandbox.instances,[])
+                intent=json.loads((attempt.directory/'grading-lanes-intent.json').read_text())
+        self.assertTrue(result['protocol_valid'])
+        self.assertEqual(set(result['case_results']),{'check','second'})
+        self.assertEqual({lane['port'] for lane in intent['lanes']},{18080,18081})
+        self.assertEqual({box.port for box in FakeSandbox.instances},{18080,18081})
+        self.assertTrue(all(box.stopped for box in FakeSandbox.instances))
 
     def test_missing_or_modified_reinspection_receipt_refuses_handoff(self):
         path = self.preparation.directory/'workspace-verification.json'

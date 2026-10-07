@@ -2393,9 +2393,9 @@ specification copy. All grader projects and capture remain absent; unexpected
 projects, altered names/mounts/ports or incomplete/overlapping case partitions
 refuse. The durable preparation receipt binds the entire plan, including stages.
 Reinspection still supplies no mounted isolation, native application/runtime or
-acceptance evidence. A future authorized executor must bind these resources to
-`grade_stages`, provide reviewed targets/adapters and revalidate ownership after
-builder termination; this change does not introduce that executor.
+acceptance evidence. The separately authorized planned-grading handoff binds these
+resources only after builder termination and still requires reviewed targets and
+native adapters from its caller.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_plan.py -v
@@ -2407,7 +2407,8 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_workspac
 `planned_grading.grade_planned_stages(attempt, preparation_attempt, plan, workload,
 suite, configurations, inventory, termination_verified=True,
 monotonic_deadline=..., wall_deadline=..., ...)` hands an owned staged workspace
-to `grade_stages`. It requires the matching successful preparation and subsequent
+to `grade_stages` for lane zero or `grade_lanes` for an explicit parallel plan. It
+requires the matching successful preparation and subsequent
 reinspection receipts for that exact plan. Configurations are an ordered list of
 `id`, independent `target`, and optional trusted `options`; names, projects,
 case assignments, origin and the shared proposed grading budget come only from
@@ -2424,7 +2425,9 @@ appear only at the planned paths and their individual lifetime remains checked
 by the stage owner. Caller data is detached before use; callback objects remain
 trusted operator adapters. The binding receipt records hashes and resource IDs,
 not targets or credentials. Loss after an observed pass makes the sequence
-inconclusive, retains the raw observation and prevents the next deployment.
+inconclusive and retains the raw observation. Sequential lanes prevent their next
+deployment; parallel lanes settle already-started deployments and revoke the
+combined result.
 
 This handoff does not acquire a builder, independently stop it, establish capture
 provenance, reserve native names, approve an acceptance suite or confer launch

@@ -6,12 +6,13 @@ import math
 import os
 from pathlib import Path
 import stat
+import threading
 import time
 
 from .deployment import verify_capture
 from .evidence import atomic_json, positive
 from .grading import Suite
-from .grading_stages import grade_stages, suite_identity
+from .grading_stages import grade_lanes, grade_stages, suite_identity
 from .preparation import read_regular, snapshot
 from .source_binding import open_directory
 from .verdicts import Inconclusive
@@ -58,16 +59,18 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
     workspace = Path(plan['workspace'])
     owner = os.getpid()
     previous = None
+    lifetime_lock = threading.Lock()
 
     def lifetime():
         nonlocal previous
-        clocks = monotonic(), wall()
-        if (os.getpid() != owner or any(type(value) not in (int, float)
-                or not math.isfinite(value) for value in clocks)
-                or previous is not None and any(value < before for value, before in zip(clocks, previous))
-                or min(monotonic_deadline-clocks[0], wall_deadline-clocks[1]) <= 0):
-            raise Inconclusive('Planned grading outer lifetime unavailable')
-        previous = clocks
+        with lifetime_lock:
+            clocks = monotonic(), wall()
+            if (os.getpid() != owner or any(type(value) not in (int, float)
+                    or not math.isfinite(value) for value in clocks)
+                    or previous is not None and any(value < before for value, before in zip(clocks, previous))
+                    or min(monotonic_deadline-clocks[0], wall_deadline-clocks[1]) <= 0):
+                raise Inconclusive('Planned grading outer lifetime unavailable')
+            previous = clocks
 
     paths = validate_workspace_resources(plan, workload, suite.root, suite_approval)
     suite.verify()
@@ -102,8 +105,6 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
             or verified.get('files') != expected_files):
         raise ValueError('Prepared reviewed specification differs from plan')
     declarations = plan['grading_stages']
-    if any(declaration.get('lane') != 0 for declaration in declarations):
-        raise ValueError('Parallel grading lanes require the concurrent runtime handoff')
     if (not isinstance(configurations, (list, tuple))
             or len(configurations) != len(declarations)):
         raise ValueError('Exact operator configuration for every planned stage required')
@@ -120,6 +121,7 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
         stages.append(dict(id=declaration['id'], name=resource['name'],
             project=resource['project'], case_ids=copy.deepcopy(declaration['case_ids']),
             target=copy.deepcopy(configuration['target']), port=resource['host_port'],
+            lane=declaration['lane'],
             options=dict(configuration.get('options', {}))))
     inventory = copy.deepcopy(inventory)
     allowed_contents = {path.name for path in paths.values()}
@@ -178,7 +180,12 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
         verification_sha256=digest(raw_verification), suite_sha256=suite.digest,
         workspace=str(workspace), stage_ids=[stage['id'] for stage in stages],
         limits='Owned local receipts, exact inspected stages and current bytes only; caller supplies verified builder termination, native adapters and outer interruption. No readiness, launch, suite approval or source/image/runtime proof.'))
-    return grade_stages(attempt, paths['capture'], inventory, paths['specification'], suite,
+    parallel = len({stage['lane'] for stage in stages}) > 1 or stages[0]['lane'] != 0
+    executor = grade_lanes if parallel else grade_stages
+    if not parallel:
+        for stage in stages:
+            del stage['lane']
+    return executor(attempt, paths['capture'], inventory, paths['specification'], suite,
         stages, port=plan['resources']['builder']['host_port'],
         grading_seconds=plan['limits']['grading_seconds']['value'], sequence_check=check,
         monotonic=monotonic, wall=wall, **grading_options)
