@@ -18,6 +18,11 @@ class FakeSuite:
     approved = False
     def __init__(self, root): self.root = root
     def verify(self): pass
+    def aggregate(self, results):
+        assert not results
+        return dict(criteria={'AC-001':dict(verdict='untested')},
+                    accepted_packages=[], development_passing_packages=[],
+                    project_success=False, suite_approved=self.approved)
 
 
 class FakeSandbox:
@@ -893,3 +898,49 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(result['accepted_packages'],[])
         self.assertEqual(result['ops_cleanup_error'],'RuntimeError')
         self.assertTrue(result['cleanup']['remote_termination_verified'])
+
+
+class DeploymentDenominatorTest(unittest.TestCase):
+    setUp = DeploymentTest.setUp
+    run_grade = DeploymentTest.run_grade
+    def test_actual_registry_denominators_survive_preparation_failure(self):
+        import hashlib
+        import json
+        from evaluation.evidence import atomic_json
+        from evaluation.grading import Suite
+        packages=[dict(id='WP-001',criteria=['AC-001']),
+                  dict(id='WP-002',criteria=['AC-004'])]
+        source='def check(target): pass\n'
+        (self.suite.root/'check.py').write_text(source)
+        atomic_json(self.suite.root/'suite.json',dict(schema_version=1,
+            packages_sha256=hashlib.sha256(json.dumps(packages,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
+            files={'check.py':hashlib.sha256(source.encode()).hexdigest()},
+            cases=[dict(id='foundation',source='check.py',function='check',criteria=['AC-001'],timeout_seconds=10),
+                   dict(id='session',source='check.py',function='check',criteria=['AC-004'],timeout_seconds=10)],
+            coverage_complete=['AC-001','AC-004']))
+        self.suite=Suite(self.suite.root,packages)
+        def loader(*args,**kwargs):raise RuntimeError('private-canary-credential')
+        def runner(*args,**kwargs):self.fail('Protected worker ran after preparation failure')
+        with Attempt(self.root/'denominator-logs',{}) as attempt:
+            result=self.run_grade(attempt,fixture_loader=loader,runner=runner)
+            persisted=json.loads((attempt.directory/'deployment-result.json').read_text())
+        self.assertEqual(result,persisted)
+        self.assertEqual(set(result['criteria']),{'AC-001','AC-004'})
+        self.assertEqual({r['verdict'] for r in result['criteria'].values()},{'untested'})
+        self.assertEqual(result['case_results'],{})
+        self.assertEqual(result['accepted_packages'],[])
+        self.assertEqual(result['development_passing_packages'],[])
+        self.assertTrue(result['aborted'])
+        self.assertEqual(result['reason'],'grading_unavailable')
+        self.assertTrue(result['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private-canary-credential',str(result))
+
+    def test_cleanup_loss_cannot_retain_accepted_packages(self):
+        self.suite.approved=True
+        FakeGuard.stopped=False
+        with patch.object(FakeSandbox,'stop',return_value=False), Attempt(self.root/'denominator-cleanup',{}) as attempt:
+            result=self.run_grade(attempt)
+        self.assertEqual(result['outcome'],'cleanup_incomplete')
+        self.assertEqual(result['accepted_packages'],[])
+        self.assertFalse(result['project_success'])
+        self.assertTrue(result['aborted'])

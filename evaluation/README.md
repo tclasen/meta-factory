@@ -2581,3 +2581,11 @@ Validate the native HTTP boundary with:
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_identity_observer.py' -v
 ```
+
+
+Grading deployment failures retain the complete registry's criterion denominator
+with `untested` verdicts, empty case results and accepted packages, and a bounded
+reason. This applies before bootstrap/fixture preparation reaches the protected
+workers. Cleanup loss also clears accepted packages even if a worker returned
+passing observations. Raw observations are retained; failed preparation or
+unverified cleanup cannot become accepted work.

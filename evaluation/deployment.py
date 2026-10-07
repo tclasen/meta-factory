@@ -116,7 +116,9 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     ops_runtime = None
     security_runtime = None
     browser_binding = None
-    report = {'outcome': 'grading_incomplete', 'project_success': False}
+    report = dict(suite.aggregate({}), outcome='grading_incomplete',
+                  project_success=False, case_results={}, aborted=True,
+                  reason='grading_not_started')
     cleanup = {'remote_termination_verified': False}
     try:
         created = box.create()
@@ -254,7 +256,9 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             report['project_success'] = False
             report['accepted_packages'] = []
     except Exception as error:
-        report.update(outcome='grading_incomplete', project_success=False, error_type=type(error).__name__)
+        report.update(outcome='grading_incomplete', project_success=False,
+                      accepted_packages=[], error_type=type(error).__name__,
+                      reason='grading_unavailable')
     finally:
         if ops_runtime is not None:
             try:
@@ -313,7 +317,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             except Exception as error:
                 cleanup['fallback_error_type'] = type(error).__name__
         if not cleanup.get('remote_termination_verified'):
-            report.update(outcome='cleanup_incomplete', project_success=False)
+            report.update(outcome='cleanup_incomplete', project_success=False,
+                          accepted_packages=[], aborted=True)
         report['cleanup'] = cleanup
         report['manual_stop'] = ['sbx', 'stop', box.name]
         atomic_json(attempt.directory / 'deployment-result.json', report)
