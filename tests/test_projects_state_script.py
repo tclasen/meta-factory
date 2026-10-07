@@ -1,5 +1,6 @@
 """Projects preflight pagination and interruption retain reviewable evidence."""
 import json
+import hashlib
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -114,17 +115,39 @@ class ProjectsScriptTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     fixture.read_items('assigned-project')
 
-    def run_script(self, execute, exercise=None):
+    def run_script(self, execute, exercise=None, package_bytes=None, digest=None):
         with tempfile.TemporaryDirectory() as directory:
+            arguments = ['--owner', 'fixture-owner'] + (['--execute'] if execute else [])
+            if package_bytes is not None:
+                manifest = Path(directory)/'packages.json'; manifest.write_bytes(package_bytes)
+                arguments += ['--package-manifest', str(manifest), '--packages-sha256',
+                              digest or hashlib.sha256(package_bytes).hexdigest()]
             def command(unused, label, argv):
                 return '' if label == 'worktree' else 'fixture-revision\n'
             with patch.object(script, 'ROOT', Path(directory)), \
                     patch.object(script.Fixture, 'command', command), \
                     patch.object(script, 'exercise', side_effect=exercise) as remote:
-                status = script.main(['--owner', 'fixture-owner'] + (['--execute'] if execute else []))
+                status = script.main(arguments)
                 path, = (Path(directory) / '.factory-planning/projects-state-logs').glob('run-*/attempt/summary.json')
                 report = json.loads(path.read_text())
                 return status, report, remote.call_count
+
+    def test_reviewed_manifest_plan_preserves_all_twelve_ids_and_titles(self):
+        packages = [dict(id=f'WP-{number:03d}', title=f'Frozen title {number}') for number in range(1, 13)]
+        raw = json.dumps(dict(schema_version=1, specification_version='fixture-v1', packages=packages)).encode()
+        status, report, calls = self.run_script(False, package_bytes=raw)
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, 0)
+        self.assertEqual(report['seed_packages'], [[p['id'], p['title']] for p in packages])
+        self.assertEqual(report['packages_manifest_sha256'], hashlib.sha256(raw).hexdigest())
+
+    def test_mismatched_manifest_cannot_create_native_resources(self):
+        raw = json.dumps(dict(schema_version=1, specification_version='fixture-v1',
+                             packages=[dict(id='WP-001', title='Frozen')])).encode()
+        status, report, calls = self.run_script(True, package_bytes=raw, digest='0'*64)
+        self.assertEqual(status, 1)
+        self.assertEqual(calls, 0)
+        self.assertEqual(report['cleanup']['outcome'], 'no_resource_created')
 
     def test_default_plan_never_calls_remote_exercise(self):
         status, report, count = self.run_script(False)

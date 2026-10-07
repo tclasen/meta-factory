@@ -17,6 +17,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from evaluation.evidence import Attempt, atomic_json, collect, utc_now
+from evaluation.git_state import render_git_seed
+from evaluation.preparation import read_regular
 
 
 class Fixture:
@@ -174,8 +176,10 @@ def exercise(fixture, owner, report):
         identities[name] = field['id']
     report['fields'] = identities; report['status_options'] = options
     expected = {}; items = []
-    for identifier, title in [('WP-001', 'Synthetic foundation'), ('WP-002', 'Synthetic follow-up')]:
-        content = dict(title=f'{identifier} — {title}', body=f'Synthetic fixture specification v1: {identifier}')
+    packages = report.get('seed_packages', [('WP-001', 'Synthetic foundation'), ('WP-002', 'Synthetic follow-up')])
+    for identifier, title in packages:
+        identity = report.get('packages_manifest_sha256', 'synthetic-v1')
+        content = dict(title=f'{identifier} — {title}', body=f'Synthetic native fixture manifest {identity}: {identifier}')
         item = fixture.graphql('seed-draft-item', '''mutation($project: ID!, $title: String!, $body: String!) {
           addProjectV2DraftIssue(input: {projectId: $project, title: $title, body: $body}) {
             projectItem { id }
@@ -189,7 +193,8 @@ def exercise(fixture, owner, report):
     atomic_json(fixture.attempt.directory / 'summary.json', report)
     def verify():
         return fixture.verify_items(project['id'], expected)
-    verify()
+    report['initial_state'] = verify()
+    atomic_json(fixture.attempt.directory / 'initial-state.json', report['initial_state'])
     for index, state in enumerate(('In progress', 'Blocked', 'In progress', 'Done', 'In progress'), 1):
         item = items[0]
         # Deliberately split fields: verify partial persistence before reconciliation.
@@ -212,6 +217,8 @@ def main(argv=None):
     parser.add_argument('--execute', action='store_true', help='Create the assigned disposable private fixture')
     parser.add_argument('--state-interface', choices=('project', 'graphql'), default='project',
                         help='Explicit native edit interface; never switch automatically on failure')
+    parser.add_argument('--package-manifest', type=Path, help='Exact reviewed packages.json for workload-sized synthetic seeding')
+    parser.add_argument('--packages-sha256', help='Expected packages.json hash from the human workload review')
     args = parser.parse_args(argv)
     if not re.fullmatch('[A-Za-z0-9][A-Za-z0-9-]{0,38}', args.owner):
         parser.error('Ordinary GitHub user login required')
@@ -233,6 +240,16 @@ def main(argv=None):
             report['tested_revision'] = fixture.command('revision', ['git', 'rev-parse', 'HEAD']).strip()
             if fixture.command('worktree', ['git', 'status', '--porcelain']):
                 raise ValueError('Clean committed worktree required')
+            if (args.package_manifest is None) != (args.packages_sha256 is None):
+                raise ValueError('Package manifest and reviewed expected hash must be supplied together')
+            if args.package_manifest is not None:
+                raw = read_regular(args.package_manifest, 1024 * 1024, lambda: None)
+                render_git_seed(raw, args.packages_sha256)  # Reuse the exact Git seed identity/schema validation.
+                manifest = json.loads(raw)
+                report['seed_packages'] = [(p['id'], p['title']) for p in manifest['packages']]
+                report['packages_manifest_sha256'] = args.packages_sha256
+                report['specification_version'] = manifest['specification_version']
+                report['changes'] = f'One private synthetic project with {len(report["seed_packages"])} reviewed-package draft items; retained for review.'
             if args.execute:
                 report['outcome'] = 'synthetic_native_projects_incomplete'
                 exercise(fixture, args.owner, report)

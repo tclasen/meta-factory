@@ -2504,3 +2504,21 @@ workload. Duplicate items, repeated/missing cursors, truncated field values and
 exhausted pagination refuse a clean result. The fixture-wide deadline and
 15-second readback deadline still bound native requests. This fixture evidence
 does not establish that a workload-sized live Project has been seeded.
+
+For workload-sized synthetic Projects preflight, supply the reviewed package
+manifest and its expected hash together. The fixture reuses Git seed validation
+for identical IDs/titles, rejects mismatched bytes before any GitHub operation,
+and retains `initial-state.json` after full native todo readback. Transition tests
+then change the first item, so the retained Project is a fixture rather than a
+benchmark-ready initial state. Obtain the digest from the workload approval record:
+
+```sh
+UV_PYTHON_DOWNLOADS=automatic uv run --isolated --managed-python --python 3.13 --locked \
+  python scripts/test_projects_state.py --owner tclasen-agent --state-interface graphql \
+  --package-manifest .factory-planning/first-test/builder/packages.json \
+  --packages-sha256 189f2e7551ec39a108374f0a5ca56a97daed64c9205a552300d14209574d4e79
+```
+
+This invocation prepares a plan. Add `--execute` only under the assigned native
+fixture authorization. Manifest binding is not full protocol freeze or launch
+authority; the immutable body identifies the manifest and fixture purpose.
