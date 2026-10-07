@@ -48,6 +48,30 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(value['resources']['builder']['host_port'],value['resources']['grader']['host_port'])
         self.assertTrue(any('only after builder termination' in step for step in value['sequence']))
 
+    def test_local_snapshot_plan_binds_both_roles_without_enabling_launch(self):
+        templates={role:dict(reference='factory-req007-'+role+':0123456789abcdef',
+                   manifest_digest='sha256:'+'a'*64,archive_sha256='b'*64)
+                   for role in ('builder','grader')}
+        with patch('subprocess.Popen',side_effect=AssertionError('No execution allowed')):
+            value=self.plan(templates=templates)
+        templates['builder']['reference']='changed:latest'
+        self.assertEqual(value['template_bindings'],value['source_identities']['template_bindings'])
+        for role,resource in value['resources'].items():
+            argv=resource['create_argv']
+            self.assertEqual(argv[argv.index('--template')+1],value['template_bindings'][role]['reference'])
+            self.assertEqual(argv[argv.index('--pull')+1],'never')
+        self.assertFalse(value['launch_enabled'])
+        self.assertFalse(Path(value['workspace']).exists())
+
+    def test_incomplete_or_role_mismatched_snapshot_plan_refuses_before_effects(self):
+        binding=dict(reference='factory-req007-builder:0123456789abcdef',
+                     manifest_digest='sha256:'+'a'*64,archive_sha256='b'*64)
+        for templates in ({},{'builder':binding},{'builder':binding,'grader':binding},
+                          {'builder':None,'grader':None}):
+            with self.subTest(templates=templates), self.assertRaises(ValueError):
+                self.plan(templates=templates)
+        self.assertEqual(list(self.parent.iterdir()),[])
+
     def test_plan_has_no_process_network_or_workspace_effects(self):
         before=set(self.root.rglob('*'))
         with patch('subprocess.Popen',side_effect=AssertionError('Unexpected process')):

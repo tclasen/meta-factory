@@ -12,7 +12,7 @@ from .plan import controller_identities, normalize_stage_assignments, planned_st
 from .grading import Suite
 from .preparation import prepare_specification, read_regular, snapshot
 from .readiness import audit
-from .sandbox import disjoint, sandbox_create_argv
+from .sandbox import disjoint, sandbox_create_argv, local_template_binding
 
 
 def verify_plan_sources(plan, workload, suite_root, repository, check, *,
@@ -48,12 +48,24 @@ def validate_workspace_resources(plan, workload, suite_root, suite_approval=None
     paths = {name: workspace / name for name in
              ('builder-project', 'specification', 'capture')}
     resources = plan['resources']
+    templates = plan.get('template_bindings')
+    if templates is not None:
+        if (not isinstance(templates, dict) or set(templates) != {'builder', 'grader'}
+                or 'grading_stages' in plan
+                or templates != plan['source_identities'].get('template_bindings')):
+            raise ValueError('Exact inspected local snapshot identities required')
+        templates = {role: local_template_binding(templates[role], role) for role in ('builder', 'grader')}
+        if any(value is None for value in templates.values()):
+            raise ValueError('Both inspected local snapshots required')
+    elif 'template_bindings' in plan['source_identities']:
+        raise ValueError('Inspected local snapshot bindings removed')
     port = resources['builder']['host_port']
     name = 'factory-eval-builder-' + token
     expected = dict(builder=dict(name=name, project=str(paths['builder-project']),
         specification=str(paths['specification']),
         create_argv=sandbox_create_argv(paths['builder-project'], paths['specification'],
-                                       name=name, port=port, role='builder'),
+                                       name=name, port=port, role='builder',
+                                       template=templates['builder'] if templates is not None else None),
         manual_stop=['sbx','stop',name], cpus=8, memory_gib=16, host_port=port,
         created=False, termination_verified=False))
     if 'grading_stages' in plan:
@@ -81,7 +93,8 @@ def validate_workspace_resources(plan, workload, suite_root, suite_approval=None
         expected['grader'] = dict(name=name, project=str(paths['grader-project']),
             specification=str(paths['specification']),
             create_argv=sandbox_create_argv(paths['grader-project'],paths['specification'],
-                                           name=name,port=port,role='grader'),
+                                           name=name,port=port,role='grader',
+                                           template=templates['grader'] if templates is not None else None),
             manual_stop=['sbx','stop',name],cpus=8,memory_gib=16,host_port=port,
             created=False,termination_verified=False)
     if (json.dumps(resources,sort_keys=True) != json.dumps(expected,sort_keys=True)

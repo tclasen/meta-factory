@@ -8,7 +8,7 @@ import uuid
 
 from .grading import Suite, select_cases, sha256
 from .readiness import audit
-from .sandbox import disjoint, sandbox_create_argv
+from .sandbox import disjoint, sandbox_create_argv, local_template_binding
 
 
 def controller_identities(repository):
@@ -67,13 +67,21 @@ def planned_stage_resources(workspace, assignments, port):
 
 
 def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
-               repository=None, suite_approval=None, host_attempt=None, stage_assignments=None):
+               repository=None, suite_approval=None, host_attempt=None, stage_assignments=None, templates=None):
     """Resolve and hash operator inputs; reserve no resource and run no command.
 
     A plan is not permission to launch. Its paths are proposals, not created or
     owned directories. A future executor must revalidate all identities, acquire
     exclusive ownership and satisfy the independently reviewed readiness gates.
     """
+    if templates is not None:
+        if not isinstance(templates, dict) or set(templates) != {'builder', 'grader'}:
+            raise ValueError('Exact builder and grader template bindings required')
+        templates = {role: local_template_binding(templates[role], role) for role in ('builder', 'grader')}
+        if any(value is None for value in templates.values()):
+            raise ValueError('Both local template bindings required')
+        if stage_assignments is not None:
+            raise ValueError('Local snapshot bindings for staged plans are not implemented')
     repository=Path(repository or Path(__file__).resolve().parents[1]).resolve(strict=True)
     workload=Path(workload).resolve(strict=True);suite_root=Path(suite_root).resolve(strict=True)
     parent=Path(workspace_parent).resolve(strict=True);evidence=Path(evidence).resolve(strict=True)
@@ -107,7 +115,8 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
         name='factory-eval-'+role+'-'+token
         project=paths[role+'-project']
         resources[role]=dict(name=name,project=str(project),specification=str(paths['specification']),
-            create_argv=sandbox_create_argv(project,paths['specification'],name=name,port=port,role=role),
+            create_argv=sandbox_create_argv(project,paths['specification'],name=name,port=port,role=role,
+                template=templates[role] if templates is not None else None),
             manual_stop=['sbx','stop',name],cpus=8,memory_gib=16,host_port=port,
             created=False,termination_verified=False)
     stages = None
@@ -144,6 +153,10 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
         changes_made=dict(evidence_only=True,workspace_created=False,sandboxes_created=False,
                           policy_changed=False,model_calls=0),
         limits_note='Planning evidence only. No workspace ownership, source copy, sandbox, port reservation, policy, model, suite approval or launch authority is established.')
+
+    if templates is not None:
+        report['template_bindings'] = copy.deepcopy(templates)
+        report['source_identities']['template_bindings'] = copy.deepcopy(templates)
 
     if stages is not None:
         report['grading_stages'] = stages

@@ -2541,3 +2541,11 @@ crosschecking is a sanity check alongside full export verification, not a claim
 that the CLI supplies a complete cryptographic runtime attestation. Missing,
 changed, wrong-role or duplicate cache identities refuse the crosscheck. Keep
 exports and verification evidence outside builder mounts.
+
+
+`build_plan(..., templates={"builder": binding, "grader": binding})` records
+both local snapshot bindings and exact `--pull never` create commands. Owned
+workspace preparation and reinspection reconstruct those commands and refuse
+removed or changed bindings. Plans keep launch disabled and still require native
+cache/export verification. Supplying only one role is invalid. Staged plans do
+not yet support snapshot bindings and refuse that combination explicitly.

@@ -37,6 +37,18 @@ class WorkspaceTest(unittest.TestCase):
     def verification_receipt(self):
         return json.loads((self.attempt.directory/'workspace-verification.json').read_text())
 
+    def test_local_snapshots_survive_preparation_and_changed_binding_refuses(self):
+        templates={role:dict(reference='factory-req007-'+role+':0123456789abcdef',
+                   manifest_digest='sha256:'+'a'*64,archive_sha256='b'*64)
+                   for role in ('builder','grader')}
+        self.plan=build_plan(self.workload,self.suite,self.parent,self.evidence,port=18080,templates=templates)
+        self.workspace=Path(self.plan['workspace'])
+        self.assertEqual(self.prepare()['outcome'],'workspace_prepared')
+        self.assertEqual(self.verify()['outcome'],'workspace_verified_for_inspection')
+        changed=copy.deepcopy(self.plan)
+        changed['template_bindings']['builder']['manifest_digest']='sha256:'+'c'*64
+        with self.assertRaises(ValueError):self.verify(changed)
+
     def test_owned_copy_empty_project_and_no_execution(self):
         with patch('subprocess.Popen',side_effect=AssertionError('No execution allowed')):
             result=self.prepare()
