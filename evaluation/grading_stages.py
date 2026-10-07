@@ -1,5 +1,6 @@
 """Sequential fresh deployments of one frozen registry within one grading budget."""
 import copy
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import math
@@ -61,7 +62,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                  guard_factory=Guard, command_runner=collect, deployment=grade_capture,
                  stop_resource=stop_and_verify,
                  sequence_check=None,
-                 monotonic=time.monotonic, wall=time.time):
+                 monotonic=time.monotonic, wall=time.time, required_case_ids=None):
     """Operator API only; no model/launch entrypoint or readiness override.
 
     Stages exactly partition one registry. Source/specification must already be
@@ -134,8 +135,11 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                              target=target, options=options, port=stage_port,
                              parent=expected_parent, create_argv=create_argv))
         assigned.extend(selected);names.add(name);identifiers.add(identifier);projects.append(project)
-    if len(set(assigned)) != len(assigned) or set(assigned) != {case['id'] for case in frozen.cases}:
-        raise ValueError('Fresh stages must partition every registered case exactly once')
+    required = ({case['id'] for case in frozen.cases} if required_case_ids is None
+                else {case['id'] for case in select_cases(frozen, required_case_ids)})
+    partial_partition = required != {case['id'] for case in frozen.cases}
+    if len(set(assigned)) != len(assigned) or set(assigned) != required:
+        raise ValueError('Fresh stages must partition every required case exactly once')
     started, wall_started = monotonic(), wall()
     owner = os.getpid()
     previous = [started, wall_started]
@@ -318,6 +322,139 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
                       limits='One registry/source, exact case partition and shared grading budget. No model, readiness override, native fixture/source-image proof or launch authority; outer owner must interrupt callbacks/IO. Cleanup may finish after budget expiry without acceptance.')
         if not protocol_valid:
             report['accepted_packages']=[];report['project_success']=False
+        if partial_partition:
+            report['accepted_packages']=[];report['project_success']=False
+            report['limits'] += ' Partial lane reports never confer acceptance before full-registry aggregation.'
         atomic_json(attempt.directory / 'grading-stages-result.json', report)
     if interrupted is not None:raise interrupted
+    return report
+
+
+def grade_lanes(attempt, source, inventory, specification, suite, stages, *, port,
+                grading_seconds=5400, monotonic=time.monotonic, wall=time.time,
+                sequence_check=None, **grading_options):
+    """Run independent sequential grading lanes inside one absolute budget."""
+    if (attempt.directory / 'grading-lanes-intent.json').exists():
+        raise FileExistsError('Fresh grading lanes already have an exclusive intent')
+    positive(grading_seconds, 'shared grading budget')
+    if grading_seconds > 5400:
+        raise ValueError('Shared grading budget exceeds proposed first-test ceiling')
+    if not isinstance(stages, (list, tuple)) or not stages:
+        raise ValueError('Nonempty grading lane partition required')
+    normalized = []
+    for stage in stages:
+        if not isinstance(stage, dict) or type(stage.get('lane')) is not int or not 0 <= stage['lane'] <= 31:
+            raise ValueError('Every concurrent stage requires an explicit lane')
+        normalized.append(copy.deepcopy(stage))
+    assigned = [identifier for stage in normalized for identifier in stage.get('case_ids', [])]
+    registered = {case['id'] for case in suite.cases}
+    if len(assigned) != len(set(assigned)) or set(assigned) != registered:
+        raise ValueError('Grading lanes must partition every registered case exactly once')
+    lanes = {}
+    for stage in normalized:
+        lanes.setdefault(stage.pop('lane'), []).append(stage)
+    if len({stage.get('port', port) for lane in lanes.values() for stage in lane}) != len(lanes):
+        raise ValueError('Concurrent lanes require one distinct port per lane')
+    for lane in lanes.values():
+        if len({stage.get('port', port) for stage in lane}) != 1:
+            raise ValueError('Stages within one lane must share one port')
+    started, wall_started = monotonic(), wall()
+    owner = os.getpid()
+    if (any(type(value) not in (int, float) or not math.isfinite(value)
+            for value in (started, wall_started))):
+        raise Inconclusive('Shared grading clocks unavailable')
+    monotonic_deadline = started + grading_seconds
+    wall_deadline = wall_started + grading_seconds
+    intent = [dict(lane=lane, stage_ids=[stage['id'] for stage in lane_stages],
+                   case_ids=[case for stage in lane_stages for case in stage['case_ids']],
+                   port=lane_stages[0].get('port', port))
+              for lane, lane_stages in sorted(lanes.items())]
+    with private_file(attempt.directory / 'grading-lanes-intent.json') as stream:
+        stream.write(json.dumps(dict(schema_version=1, suite_sha256=suite.digest,
+            grading_seconds=grading_seconds, lanes=intent), sort_keys=True).encode())
+        stream.flush(); os.fsync(stream.fileno())
+
+    def remaining():
+        values = monotonic(), wall()
+        if (os.getpid() != owner or any(type(value) not in (int, float) or not math.isfinite(value)
+                for value in values)):
+            raise Inconclusive('Concurrent grading owner/clocks unavailable')
+        return min(monotonic_deadline - values[0], wall_deadline - values[1])
+
+    def lane_owner(number, lane_stages):
+        allowance = remaining()
+        if allowance <= 0:
+            raise Inconclusive('Shared grading deadline expired before lane start')
+        case_ids = [case for stage in lane_stages for case in stage['case_ids']]
+        with Attempt(attempt.directory / ('lane-' + str(number)),
+                     dict(purpose='independent grading lane', lane=number,
+                          suite_sha256=suite.digest, case_ids=case_ids)) as child:
+            child.transition('preflight')
+            report = grade_stages(child, source, copy.deepcopy(inventory), specification,
+                copy.deepcopy(suite), lane_stages, port=lane_stages[0].get('port', port),
+                grading_seconds=allowance, monotonic=monotonic, wall=wall,
+                sequence_check=sequence_check, required_case_ids=case_ids, **grading_options)
+            child.transition('failed'); child.finish(dict(outcome=report['outcome'], lane=number))
+            return report
+
+    reports = {}; interrupted = None
+    try:
+        with ThreadPoolExecutor(max_workers=len(lanes), thread_name_prefix='grading-lane') as executor:
+            futures = {executor.submit(lane_owner, number, lane): number
+                       for number, lane in lanes.items()}
+            for future in as_completed(futures):
+                try:
+                    reports[futures[future]] = future.result()
+                except BaseException as error:
+                    reports[futures[future]] = dict(protocol_valid=False, aborted=True,
+                        reason=type(error).__name__, case_results={}, stages=[])
+                    if not isinstance(error, Exception):
+                        interrupted = error
+    finally:
+        results = {}
+        records = []
+        protocol_valid = set(reports) == set(lanes)
+        for number in sorted(lanes):
+            report = reports.get(number, {})
+            protocol_valid = protocol_valid and report.get('protocol_valid') is True
+            results.update(copy.deepcopy(report.get('case_results', {})))
+            records.append(dict(lane=number, outcome=report.get('outcome', 'grading_incomplete'),
+                                protocol_valid=report.get('protocol_valid', False),
+                                reason=report.get('reason'), stages=report.get('stages', [])))
+        try:
+            if remaining() <= 0 or sequence_check is not None and sequence_check() is not True:
+                protocol_valid = False
+        except BaseException as error:
+            protocol_valid = False
+            if not isinstance(error, Exception): interrupted = error
+        elapsed = dict(monotonic_elapsed_seconds=None, wall_elapsed_seconds=None)
+        try:
+            values = monotonic(), wall()
+            if (os.getpid() != owner or any(type(value) not in (int, float)
+                    or not math.isfinite(value) for value in values)
+                    or values[0] < started or values[1] < wall_started):
+                raise Inconclusive('Concurrent grading final clocks unavailable')
+            elapsed = dict(monotonic_elapsed_seconds=values[0] - started,
+                           wall_elapsed_seconds=values[1] - wall_started)
+        except BaseException as error:
+            protocol_valid = False
+            if not isinstance(error, Exception): interrupted = error
+        if not protocol_valid:
+            results = {identifier: dict(case_id=identifier, verdict='inconclusive',
+                       reason='concurrent_grading_sequence_unsettled',
+                       observed_verdict=value.get('observed_verdict', value['verdict']))
+                       for identifier, value in results.items()}
+        report = suite.aggregate(results)
+        report.update(outcome=('graded' if protocol_valid and set(results) == registered
+                      and all(value['verdict'] in ('pass', 'fail') for value in report['criteria'].values())
+                      else 'grading_incomplete'), protocol_valid=protocol_valid,
+                      aborted=not protocol_valid or any(item.get('aborted') for item in reports.values()),
+                      case_results=results, lanes=records, grading_seconds=grading_seconds,
+                      **elapsed,
+                      limits='Independent sequential lanes, one registry/source and one shared absolute budget; any lane, identity or cleanup uncertainty revokes acceptance.')
+        if not protocol_valid:
+            report['accepted_packages'] = []; report['project_success'] = False
+        atomic_json(attempt.directory / 'grading-lanes-result.json', report)
+    if interrupted is not None:
+        raise interrupted
     return report

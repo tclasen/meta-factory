@@ -2350,6 +2350,16 @@ enforce its lifetime. The function supplies no model call, launch CLI, readiness
 override, native source/image attestation, suite approval or deadline approval.
 The 90-minute grading allowance and full schedule fit remain launch-plan gates.
 
+`grading_stages.grade_lanes(...)` is the concurrent counterpart for an explicit
+full-registry lane assignment. It runs stages sequentially inside a lane and lane
+owners concurrently, with distinct per-lane ports and evidence directories. Every
+lane receives only the time remaining on the original monotonic/wall budget;
+partial lane reports cannot confer acceptance. The parent aggregates only after
+all lane owners return, and any lane exception, identity failure, uncertain cleanup,
+deadline expiry, or final binding failure revokes all collected observations.
+Sandbox watchdogs remain the owner-death cleanup authority, and an outer process
+must still interrupt arbitrary blocked callbacks or I/O.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_grading_stages.py -v
 ```

@@ -5,13 +5,14 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 import unittest
 
 from evaluation.evidence import Attempt, atomic_json
 from evaluation.grading import Suite
-from evaluation.grading_stages import grade_stages
+from evaluation.grading_stages import grade_lanes, grade_stages
 from evaluation.sandbox import capture_tree, sandbox_create_argv
 
 
@@ -141,6 +142,41 @@ class GradingStagesTest(unittest.TestCase):
         self.assertEqual(observed,[18081,18080])
         self.assertEqual([stage['port'] for stage in intent['stages']],[18081,18080])
         self.assertIn('127.0.0.1:18081:8080',intent['stages'][0]['create_argv'])
+
+    def test_independent_lanes_overlap_and_aggregate_one_registry(self):
+        barrier = threading.Barrier(2)
+        active = set(); overlapped = []
+        lock = threading.Lock()
+        stages = copy.deepcopy(self.stages)
+        for lane, stage in enumerate(stages):
+            stage.update(lane=lane, port=18080 + lane)
+        def deploy(*args, **kwargs):
+            with lock:
+                active.add(args[0].directory.name)
+                overlapped.append(len(active))
+            barrier.wait(timeout=2)
+            result = self.simulated_deployment(*args, **kwargs)
+            with lock: active.remove(args[0].directory.name)
+            return result
+        with Attempt(self.root/'parallel',{}) as attempt:
+            report = grade_lanes(attempt,self.source,self.inventory,self.specification,
+                self.suite,stages,port=18080,deployment=deploy,
+                sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
+                command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0),
+                stop_resource=lambda attempt,name,sbx:dict(remote_termination_verified=True))
+            intent=json.loads((attempt.directory/'grading-lanes-intent.json').read_text())
+        self.assertTrue(report['protocol_valid']);self.assertTrue(report['project_success'])
+        self.assertEqual(set(report['case_results']),{'journey','sample'})
+        self.assertIn(2,overlapped)
+        self.assertEqual([lane['port'] for lane in intent['lanes']],[18080,18081])
+
+    def test_lane_port_alias_refuses_before_creation(self):
+        stages = copy.deepcopy(self.stages)
+        for lane, stage in enumerate(stages):stage.update(lane=lane,port=18080)
+        with Attempt(self.root/'aliased-lanes',{}) as attempt,self.assertRaises(ValueError):
+            grade_lanes(attempt,self.source,self.inventory,self.specification,
+                        self.suite,stages,port=18080)
+        self.assertEqual(FakeSandbox.instances,[])
     def test_wall_expiry_and_invalid_clock_after_first_stage_revoke_acceptance(self):
         for index,clock in enumerate((120,float('nan'),True,90)):
             current={'wall':100}
