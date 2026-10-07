@@ -16,6 +16,8 @@ ARMS = ('conversation', 'git-file', 'github-projects')
 CONTROL_DIGESTS = ('factory_revision', 'toolchain_sha256', 'limits_sha256',
                    'context_configuration_sha256', 'network_policy_sha256', 'grading_suite_sha256')
 RESOURCE_PATH = '.factory/project/task-state-resource.json'
+BOUNDARY_FILES = ('docs/task-state-workflows.md', 'evaluation/instructions/state-common.md',
+                  *(f'evaluation/instructions/state-{arm}.md' for arm in ARMS))
 
 
 def _digest(data):
@@ -117,7 +119,8 @@ def prepare_state_inputs(specification, expected_files, controls, *, projects=No
         limits='Draft inputs only; human boundary review, specification/protocol freeze, native resource verification and separate launch authority remain required.')
 
 
-def prepare_reviewed_state_inputs(workload, controls_path, *, projects_path=None, check=lambda: None):
+def prepare_reviewed_state_inputs(workload, controls_path, *, projects_path=None,
+                                 boundary_approval_path=None, check=lambda: None):
     """Inspect approved workload bytes and explicit operator files; publish no state.
 
     Retain input hashes rather than assuming filenames identify frozen content.
@@ -146,14 +149,40 @@ def prepare_reviewed_state_inputs(workload, controls_path, *, projects_path=None
     inputs = {'controls': Path(controls_path)}
     if projects_path is not None:
         inputs['projects_resource'] = Path(projects_path)
+    if boundary_approval_path is not None:
+        inputs['boundary_approval'] = Path(boundary_approval_path)
     raw = {name: read_regular(path, 65536, check) for name, path in inputs.items()}
     values = {name: json.loads(content, object_pairs_hook=_unique_pairs) for name, content in raw.items()}
     report = prepare_state_inputs(data, expected, values['controls'], projects=values.get('projects_resource'))
+    boundary_sources = {}
+    if boundary_approval_path is not None:
+        boundary = values['boundary_approval']
+        if (not isinstance(boundary, dict) or type(boundary.get('schema_version')) is not int
+                or boundary['schema_version'] != 1
+                or boundary.get('approval_type') != 'native_task_state_boundaries_not_suite_or_launch'
+                or not isinstance(boundary.get('reviewer'), str) or not boundary['reviewer'].strip()
+                or not isinstance(boundary.get('recorded_utc'), str) or not boundary['recorded_utc'].strip()
+                or boundary.get('launch_enabled') is not False
+                or boundary.get('workload_approval_sha256') != _digest(approval_bytes)
+                or not isinstance(boundary.get('artifact_sha256'), dict)
+                or set(boundary['artifact_sha256']) != set(BOUNDARY_FILES)):
+            raise ValueError('Explicit matching human boundary approval required')
+        repository = Path(__file__).resolve().parents[1]
+        for name in BOUNDARY_FILES:
+            content = read_regular(repository / name, 65536, check)
+            digest = _digest(content)
+            if boundary['artifact_sha256'][name] != digest:
+                raise ValueError('Approved boundary artifact changed')
+            if name.startswith('evaluation/instructions/') and report['instruction_files'][Path(name).name] != digest:
+                raise ValueError('Prepared prompt differs from approved boundary instructions')
+            boundary_sources[repository / name] = content
     snapshot(workload / 'builder', expected, 64 * 1024 ** 2, 256, check)
     if (read_regular(approval_path, 65536, check) != approval_bytes
-            or any(read_regular(inputs[name], 65536, check) != content for name, content in raw.items())):
+            or any(read_regular(inputs[name], 65536, check) != content for name, content in raw.items())
+            or any(read_regular(path, 65536, check) != content for path, content in boundary_sources.items())):
         raise ValueError('Reviewed state-input sources changed during inspection')
     check()
     report['operator_source_sha256'] = dict(workload_approval=_digest(approval_bytes),
                                           **{name: _digest(content) for name, content in raw.items()})
+    report['boundary_review_verified'] = boundary_approval_path is not None
     return report

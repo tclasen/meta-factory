@@ -35,6 +35,8 @@ def main():
     state.add_argument('--workload', type=Path, required=True)
     state.add_argument('--controls', type=Path, required=True, help='Explicit operator shared-control identities')
     state.add_argument('--projects-resource', type=Path, help='Assigned immutable native resource IDs, no credentials')
+    state.add_argument('--boundary-approval', type=Path,
+                       help='Human boundary approval bound to current instructions and reviewed workload; no launch authority')
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
     log_names = {'plan': 'evaluation-plan-logs', 'inspect': 'evaluation-readiness-logs',
@@ -64,7 +66,7 @@ def main():
                     if time.monotonic() >= deadline:
                         raise TimeoutError('State-input inspection deadline expired')
                 report = prepare_reviewed_state_inputs(args.workload, args.controls,
-                    projects_path=args.projects_resource, check=check)
+                    projects_path=args.projects_resource, boundary_approval_path=args.boundary_approval, check=check)
                 atomic_json(directory / 'state-inputs.json', report)
             elif args.command=='plan':
                 assignments = None

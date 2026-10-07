@@ -2466,3 +2466,33 @@ inconsistent suffixes and duplicate sandbox identities refuse. The shared parser
 is used for planned-name availability, stopped-state verification and recovery;
 a recognized notice never grants ownership of a present name or permission to
 execute an upgrade.
+
+## Human boundary approval during native state input preparation
+
+For REQ-007, `state-inputs --boundary-approval` verifies an operator-held human
+review record before reporting `boundary_review_verified=true`:
+
+```sh
+UV_PYTHON_DOWNLOADS=automatic uv run --isolated --managed-python --python 3.13 --locked \
+  python -m evaluation state-inputs \
+  --workload .factory-planning/first-test \
+  --controls /operator/path/shared-controls.json \
+  --boundary-approval .factory-planning/REQ-007-BOUNDARY-APPROVAL.json
+```
+
+The record has schema version 1, approval type
+`native_task_state_boundaries_not_suite_or_launch`, nonempty `reviewer` and
+`recorded_utc`, `launch_enabled=false`, the exact `workload_approval_sha256`, and
+`artifact_sha256` covering exactly `docs/task-state-workflows.md` and the four
+`evaluation/instructions/state-*.md` files. The operator owns recording the human
+decision; this check verifies its scope and content bindings, not reviewer
+authentication. It never creates approval or infers one from matching hashes.
+
+Changed, missing or extra approved artifacts, a different workload approval,
+changed input records, and instruction edits during preparation refuse the
+bundle. The generated prompt instruction hashes must match the approved text.
+The approval file's own hash is retained in `operator_source_sha256`. Omitting
+the option leaves review explicitly unverified and still permits draft input
+preparation. Every result keeps launch disabled: boundary review does not approve
+the suite, common runtime controls, or an experiment. The approved workflow
+document remains unchanged when this preparation feature is updated.

@@ -159,7 +159,52 @@ class ReviewedStateInputsTest(unittest.TestCase):
         self.assertEqual(report['operator_source_sha256']['controls'],
                          hashlib.sha256(self.control_path.read_bytes()).hexdigest())
         self.assertNotIn('protected-case', json.dumps(report))
+        self.assertFalse(report['boundary_review_verified'])
         self.assertEqual(before, {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()})
+
+    def boundary_record(self):
+        from evaluation.state_inputs import BOUNDARY_FILES
+        repository = Path(__file__).resolve().parents[1]
+        return dict(schema_version=1, approval_type='native_task_state_boundaries_not_suite_or_launch',
+            reviewer='fixture human', recorded_utc='2026-10-07T22:00:00Z', launch_enabled=False,
+            workload_approval_sha256=hashlib.sha256(self.approval.read_bytes()).hexdigest(),
+            artifact_sha256={name: hashlib.sha256((repository/name).read_bytes()).hexdigest()
+                             for name in BOUNDARY_FILES})
+
+    def test_matching_boundary_approval_is_recorded_without_launch_authority(self):
+        path = self.root/'boundary.json'; path.write_text(json.dumps(self.boundary_record()))
+        report = self.prepare(boundary_approval_path=path)
+        self.assertTrue(report['boundary_review_verified'])
+        self.assertFalse(report['launch_enabled'])
+        self.assertEqual(report['operator_source_sha256']['boundary_approval'],
+                         hashlib.sha256(path.read_bytes()).hexdigest())
+
+    def test_missing_stale_or_wrong_scope_boundary_review_refuses_inputs(self):
+        path = self.root/'boundary.json'
+        for change in ({'reviewer': ''}, {'schema_version': True}, {'launch_enabled': True},
+                       {'approval_type': 'suite_approval'}, {'workload_approval_sha256': '0'*64},
+                       {'artifact_sha256': {}}, {'recorded_utc': None}):
+            with self.subTest(change=change):
+                path.write_text(json.dumps(dict(self.boundary_record(), **change)))
+                with self.assertRaises(ValueError): self.prepare(boundary_approval_path=path)
+        record = self.boundary_record()
+        record['artifact_sha256']['docs/task-state-workflows.md'] = '0'*64
+        path.write_text(json.dumps(record))
+        with self.assertRaises(ValueError): self.prepare(boundary_approval_path=path)
+
+    def test_boundary_record_and_artifact_changes_during_preparation_are_rejected(self):
+        from evaluation.preparation import read_regular
+        path = self.root/'boundary.json'; path.write_text(json.dumps(self.boundary_record()))
+        for changed in (path, Path(__file__).resolve().parents[1]/'docs/task-state-workflows.md'):
+            seen = set()
+            def changing_read(source, limit, check):
+                content = read_regular(source, limit, check)
+                if source == changed and source in seen:
+                    return content + b'\n'
+                seen.add(source)
+                return content
+            with self.subTest(changed=changed), patch('evaluation.state_inputs.read_regular', side_effect=changing_read):
+                with self.assertRaises(ValueError): self.prepare(boundary_approval_path=path)
 
     def test_changed_reviewed_bytes_missing_files_and_extra_files_refuse_bundle(self):
         path = self.workload / 'builder/APPLICATION.md'; original = path.read_bytes()
@@ -196,6 +241,7 @@ class ReviewedStateInputsTest(unittest.TestCase):
     def test_controller_command_records_bundle_and_failed_dirty_attempt(self):
         import sys
         from evaluation import __main__ as cli
+        boundary = self.root/'boundary.json'; boundary.write_text(json.dumps(self.boundary_record()))
         def collect(attempt, label, argv, **kwargs):
             directory = attempt.directory / label; directory.mkdir()
             (directory / 'stdout.log').write_text('untracked-file' if dirty and label == 'worktree' else '')
@@ -205,10 +251,13 @@ class ReviewedStateInputsTest(unittest.TestCase):
                     patch.object(cli, '__file__', str(self.root / 'evaluation/__main__.py')), \
                     patch.object(cli, 'collect', side_effect=collect), \
                     patch.object(sys, 'argv', ['evaluation', 'state-inputs', '--workload', str(self.workload),
-                                            '--controls', str(self.control_path)]):
+                                            '--controls', str(self.control_path),
+                                            '--boundary-approval', str(boundary)]):
                 self.assertEqual(cli.main(), 2 if dirty else 0)
         results = [json.loads(path.read_text()) for path in
                    (self.root / '.factory-planning/state-input-review-logs').glob('run-*/result.json')]
         self.assertEqual({result['outcome'] for result in results},
                          {'state_inputs_prepared_for_review', 'inspection_error'})
         self.assertTrue(all(result['launch_enabled'] is False for result in results))
+        prepared = next(result for result in results if result['outcome'] == 'state_inputs_prepared_for_review')
+        self.assertTrue(prepared['boundary_review_verified'])
