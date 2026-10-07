@@ -41,9 +41,9 @@ Use standard-library `unittest` for template behavior fixtures. No coverage thre
 
 ### Collaborative sandbox and host testing
 
-The agent runs inside Docker `sbx`. The owner authorizes modifying the agent's own working environment, including installing tools and adjusting sandbox-local configuration, to develop and iterate on the setup and its tests. Use this access directly when possible; a missing host-management command inside the sandbox does not establish that it is missing on the Mac. Repository edits still follow the Git workflow below.
+The maintenance agent runs directly on the owner's Mac as the `agent` user, without sudo; it is no longer running inside Docker `sbx`. The owner explicitly authorizes using the shell tool to invoke `sbx` directly for iterative setup and preflight testing, without asking the owner to run scripts. Sandbox-local provisioning and configuration remain authorized for this testing. Use the available host access directly, keep changes scoped to test resources, and do not assume host administrative privileges. Repository edits still follow the Git workflow below.
 
-When a check needs the host Mac, provide a complete, reviewable script and its exact invocation for the owner to run. Save the script in the shared workspace. Scripts must:
+For host checks, prepare complete, reviewable scripts in the shared workspace and run them directly when the `agent` account has the required access. If a check requires unavailable privileges or owner-only access, provide its exact invocation for the owner to run. Scripts must:
 
 - Write logs to a unique per-attempt directory under `.factory-planning/`, using the host checkout path so the agent can read them through the shared mount. Print that directory at startup and completion.
 - Capture stdout, stderr, UTC start/end times, relevant tool versions, tested revisions, each check's exit status, and an overall outcome, including on failure. Preserve the original command status when logging through a pipeline; never treat successful logging as a successful check.
@@ -51,9 +51,9 @@ When a check needs the host Mac, provide a complete, reviewable script and its e
 - Keep credentials and secret values out of logs; avoid shell tracing and wholesale environment/configuration dumps. Keep evidence outside builder-mounted test projects and out of Git.
 - Scope changes to the test resources. Do not silently reset global host policy, alter unrelated sandboxes, or remove unrelated data.
 
-After the owner runs a script, read the resulting files directly, explain what passed or failed and what remains unverified, then adjust the setup or provide the next script. Continue this workflow until the owner is satisfied with the setup. Do not ask for pasted terminal output when the shared logs are available. Host-only execution remains with the owner unless host access is explicitly provided.
+After each script runs, read the resulting files directly, explain what passed or failed and what remains unverified, then adjust the setup and continue testing. For checks that require owner execution, resume from the shared logs when the owner reports completion; do not ask for pasted terminal output when those logs are available. Direct host access is explicitly provided for the scoped testing above.
 
-Continue authorized work autonomously until the current effort's tasks are complete. Do not stop after a successful intermediate check to ask whether to continue. When blocked on host-only execution, provide the next logging script and exact invocation; after the owner reports completion, read its logs and resume independently. Keep the existing scope and evidence boundaries in force.
+Continue authorized work autonomously until the current effort's tasks are complete. Do not stop after a successful intermediate check to ask whether to continue. When blocked on unavailable privileges or owner-only access, provide the next logging script and exact invocation; after the owner reports completion, read its logs and resume independently. Keep the existing scope and evidence boundaries in force.
 
 This authorization covers iterative setup and preflight testing, including sandbox-local provisioning. It does not authorize purchases, benchmark or confirmatory experiment execution, or stable promotion. The subsequent owner authorization separately permits implementing the Python evaluation controller and protected grading suite. Preflight results retain their evidence limits.
 
