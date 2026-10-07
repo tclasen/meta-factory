@@ -43,7 +43,7 @@ def normalize_stage_assignments(assignments, suite):
     return stages
 
 
-def planned_stage_resources(workspace, assignments, port):
+def planned_stage_resources(workspace, assignments, port, *, template=None):
     """Derive distinct names/projects/argv from the inspected workspace identity."""
     resources = {}; stages = []
     token = workspace.name.removeprefix('factory-eval-')
@@ -57,7 +57,7 @@ def planned_stage_resources(workspace, assignments, port):
         if host_port > 65535:
             raise ValueError('Planned grading lane exceeds available host ports')
         resources[key] = dict(name=name, project=str(project), specification=str(specification),
-            create_argv=sandbox_create_argv(project, specification, name=name, port=host_port, role='grader'),
+            create_argv=sandbox_create_argv(project, specification, name=name, port=host_port, role='grader', template=template),
             manual_stop=['sbx', 'stop', name], cpus=8, memory_gib=16, host_port=host_port,
             created=False, termination_verified=False)
         stages.append(dict(id=stage['id'], case_ids=stage['case_ids'], resource=key, lane=stage['lane']))
@@ -80,8 +80,6 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
         templates = {role: local_template_binding(templates[role], role) for role in ('builder', 'grader')}
         if any(value is None for value in templates.values()):
             raise ValueError('Both local template bindings required')
-        if stage_assignments is not None:
-            raise ValueError('Local snapshot bindings for staged plans are not implemented')
     repository=Path(repository or Path(__file__).resolve().parents[1]).resolve(strict=True)
     workload=Path(workload).resolve(strict=True);suite_root=Path(suite_root).resolve(strict=True)
     parent=Path(workspace_parent).resolve(strict=True);evidence=Path(evidence).resolve(strict=True)
@@ -122,7 +120,8 @@ def build_plan(workload, suite_root, workspace_parent, evidence, *, port,
     stages = None
     if assignments is not None:
         del paths['grader-project']; del resources['grader']
-        staged_resources, stages = planned_stage_resources(workspace, assignments, port)
+        staged_resources, stages = planned_stage_resources(workspace, assignments, port,
+            template=templates['grader'] if templates is not None else None)
         resources.update(staged_resources)
         paths.update({key+'-project':Path(value['project']) for key,value in staged_resources.items()})
         disjoint(*paths.values())

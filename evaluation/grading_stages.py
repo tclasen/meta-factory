@@ -12,7 +12,7 @@ import time
 from .deployment import grade_capture, verify_capture
 from .evidence import Attempt, atomic_json, collect, positive, private_file
 from .grading import Suite, run_suite, select_cases
-from .sandbox import Sandbox, disjoint, sandbox_create_argv
+from .sandbox import Sandbox, disjoint, sandbox_create_argv, local_template_binding
 from .source_binding import open_directory
 from .preparation import read_regular
 from .verdicts import Inconclusive
@@ -97,7 +97,7 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
     prepared = []; assigned = []; names = set(); identifiers = set(); projects = []
     for stage in stages:
         if (not isinstance(stage, dict) or not {'id','name','project','case_ids','target'} <= set(stage)
-                or not set(stage) <= {'id','name','project','case_ids','target','options','port'}):
+                or not set(stage) <= {'id','name','project','case_ids','target','options','port','template'}):
             raise ValueError('Explicit stage identity/resource/case/target fields required')
         identifier, name = stage['id'], stage['name']
         if (not isinstance(identifier, str) or not re.fullmatch('[a-z][a-z0-9-]{0,57}', identifier)
@@ -129,11 +129,12 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
         stage_port = stage.get('port', port)
         if type(stage_port) is not int or not 1024 <= stage_port <= 65535:
             raise ValueError('Stage port must be a nonprivileged TCP port')
+        template = local_template_binding(stage.get('template'), 'grader')
         create_argv = sandbox_create_argv(project, specification, name=name,
-                                          port=stage_port, role='grader')
+                                          port=stage_port, role='grader', template=template)
         prepared.append(dict(id=identifier, name=name, project=project, case_ids=selected,
                              target=target, options=options, port=stage_port,
-                             parent=expected_parent, create_argv=create_argv))
+                             parent=expected_parent, create_argv=create_argv, template=template))
         assigned.extend(selected);names.add(name);identifiers.add(identifier);projects.append(project)
     required = ({case['id'] for case in frozen.cases} if required_case_ids is None
                 else {case['id'] for case in select_cases(frozen, required_case_ids)})
@@ -187,6 +188,8 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
             def phase_factory(*args, **kwargs):
                 if owned:
                     raise Inconclusive('Stage sandbox creation factory cannot be reused')
+                if stage['template'] is not None:
+                    kwargs['template'] = copy.deepcopy(stage['template'])
                 box = sandbox_factory(*args, **kwargs, planned_name=stage['name'])
                 if (box.name != stage['name'] or Path(box.project) != stage['project']
                         or Path(box.specification) != specification

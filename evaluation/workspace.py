@@ -51,7 +51,6 @@ def validate_workspace_resources(plan, workload, suite_root, suite_approval=None
     templates = plan.get('template_bindings')
     if templates is not None:
         if (not isinstance(templates, dict) or set(templates) != {'builder', 'grader'}
-                or 'grading_stages' in plan
                 or templates != plan['source_identities'].get('template_bindings')):
             raise ValueError('Exact inspected local snapshot identities required')
         templates = {role: local_template_binding(templates[role], role) for role in ('builder', 'grader')}
@@ -82,7 +81,8 @@ def validate_workspace_resources(plan, workload, suite_root, suite_approval=None
         assignments = normalize_stage_assignments(
             [dict(id=item['id'],case_ids=item['case_ids'],lane=item['lane'])
              for item in declared], suite)
-        staged, canonical = planned_stage_resources(workspace, assignments, port)
+        staged, canonical = planned_stage_resources(workspace, assignments, port,
+            template=templates['grader'] if templates is not None else None)
         if json.dumps(declared,sort_keys=True) != json.dumps(canonical,sort_keys=True):
             raise ValueError('Stage assignments or resource references changed')
         expected.update(staged)

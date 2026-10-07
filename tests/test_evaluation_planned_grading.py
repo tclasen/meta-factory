@@ -22,7 +22,8 @@ class PlannedGradingTest(unittest.TestCase):
         self.preparation = Attempt(self.root/'preparation-evidence', {})
         self.addCleanup(self.preparation.close)
         self.plan = build_plan(self.workload, self.suite, self.parent, self.evidence,
-                               port=18080, stage_assignments=self.assignments)
+                               port=18080, stage_assignments=self.assignments,
+                               templates=getattr(self, 'templates', None))
         self.suite = Suite(self.suite, json.loads((self.workload/'builder/packages.json').read_text())['packages'])
         for function in (prepare_workspace, verify_prepared_workspace):
             function(self.preparation, self.plan, self.workload, self.suite.root,
@@ -176,4 +177,35 @@ class PlannedGradingTest(unittest.TestCase):
         for index,clock in enumerate((100,float('nan'),True)):
             with self.subTest(clock=clock),Attempt(self.root/('clock-'+str(index)),{}) as attempt:
                 with self.assertRaises(Inconclusive):self.run_grading(attempt,wall=lambda:clock)
+        self.assertEqual(FakeSandbox.instances,[])
+
+
+class SnapshotPlannedGradingTest(unittest.TestCase):
+    setUp = PlannedGradingTest.setUp
+    run_grading = PlannedGradingTest.run_grading
+    templates = {role:dict(reference='factory-req007-'+role+':0123456789abcdef',
+                 manifest_digest='sha256:'+'a'*64, archive_sha256='b'*64)
+                 for role in ('builder','grader')}
+
+    def test_snapshot_is_preserved_from_inspection_through_every_child_creation(self):
+        with Attempt(self.root/'snapshot-grading',{}) as attempt:
+            report = self.run_grading(attempt)
+            intent = json.loads((attempt.directory/'grading-stages-intent.json').read_text())
+        self.assertTrue(report['protocol_valid'])
+        self.assertEqual(len(FakeSandbox.instances),2)
+        for stage, box in zip(intent['stages'], FakeSandbox.instances):
+            self.assertEqual(box.template,self.templates['grader'])
+            self.assertEqual(stage['create_argv'],
+                             self.plan['resources']['grader-'+stage['id']]['create_argv'])
+            self.assertIn('--pull',stage['create_argv'])
+
+    def test_removed_or_changed_snapshot_refuses_before_child_creation(self):
+        original = copy.deepcopy(self.plan)
+        for index, mode in enumerate(('removed','digest','command')):
+            self.plan = copy.deepcopy(original)
+            if mode == 'removed':del self.plan['template_bindings']
+            elif mode == 'digest':self.plan['template_bindings']['grader']['manifest_digest']='sha256:'+'c'*64
+            else:self.plan['resources']['grader-journey']['create_argv'].remove('--pull')
+            with self.subTest(mode=mode), Attempt(self.root/('snapshot-invalid-'+str(index)),{}) as attempt:
+                with self.assertRaises(ValueError):self.run_grading(attempt)
         self.assertEqual(FakeSandbox.instances,[])

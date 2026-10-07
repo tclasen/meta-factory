@@ -123,6 +123,8 @@ def grade_planned_stages(attempt, preparation_attempt, plan, workload, suite,
             target=copy.deepcopy(configuration['target']), port=resource['host_port'],
             lane=declaration['lane'],
             options=dict(configuration.get('options', {}))))
+        if 'template_bindings' in plan:
+            stages[-1]['template'] = copy.deepcopy(plan['template_bindings']['grader'])
     inventory = copy.deepcopy(inventory)
     allowed_contents = {path.name for path in paths.values()}
     descriptor = open_directory(paths['capture'])

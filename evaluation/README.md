@@ -2547,5 +2547,6 @@ exports and verification evidence outside builder mounts.
 both local snapshot bindings and exact `--pull never` create commands. Owned
 workspace preparation and reinspection reconstruct those commands and refuse
 removed or changed bindings. Plans keep launch disabled and still require native
-cache/export verification. Supplying only one role is invalid. Staged plans do
-not yet support snapshot bindings and refuse that combination explicitly.
+cache/export verification. Supplying only one role is invalid. Staged plans
+also preserve the grader binding for every fresh deployment and lane. The
+operator configuration cannot override this inspected binding.

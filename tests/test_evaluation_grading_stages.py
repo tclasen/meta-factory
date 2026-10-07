@@ -23,10 +23,11 @@ class FakeSandbox:
     def __init__(self, attempt, project, specification, controller, **kwargs):
         self.attempt=attempt;self.project=project;self.specification=specification
         self.name=kwargs['planned_name'];self.port=kwargs['port']
+        self.template=kwargs.get('template')
         self.creation_attempted=False;self.stopped=False
         self.instances.append(self)
     def create_argv(self):
-        return sandbox_create_argv(self.project,self.specification,name=self.name,port=self.port,role='grader')
+        return sandbox_create_argv(self.project,self.specification,name=self.name,port=self.port,role='grader',template=self.template)
     def create(self):
         self.events.append(('create',self.name))
         self.creation_attempted=True
