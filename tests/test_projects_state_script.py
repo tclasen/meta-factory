@@ -80,6 +80,29 @@ class ProjectsScriptTest(unittest.TestCase):
         self.assertEqual(result['one']['fields'], {'Work package': 'WP-001', 'Status': 'Todo'})
         self.assertEqual(query.call_args_list[1].args[2]['after'], 'next')
 
+    def test_complete_twelve_package_workload_survives_one_item_pagination(self):
+        fixture = script.Fixture(None, 60)
+        pages = [page(f'item-{number}', more=number < 12,
+                      cursor=f'cursor-{number}' if number < 12 else None)
+                 for number in range(1, 13)]
+        for number, response in enumerate(pages, 1):
+            response['node']['items']['nodes'][0]['fieldValues']['nodes'][0]['text'] = f'WP-{number:03d}'
+        with patch.object(fixture, 'graphql', side_effect=pages) as query:
+            result = fixture.read_items('assigned-project')
+        self.assertEqual(len(result), 12)
+        self.assertEqual({item['fields']['Work package'] for item in result.values()},
+                         {f'WP-{number:03d}' for number in range(1, 13)})
+        self.assertEqual(query.call_count, 12)
+
+    def test_pagination_bound_refuses_unending_unique_pages(self):
+        fixture = script.Fixture(None, 60)
+        pages = [page(f'item-{number}', more=True, cursor=f'cursor-{number}')
+                 for number in range(1000)]
+        with patch.object(fixture, 'graphql', side_effect=pages) as query:
+            with self.assertRaisesRegex(ValueError, 'pagination bound'):
+                fixture.read_items('assigned-project')
+        self.assertEqual(query.call_count, 1000)
+
     def test_duplicate_items_truncated_fields_and_repeated_cursors_refuse_clean_result(self):
         cases = [[page('one', more=True, cursor='next'), page('one')],
                  [page('one', fields_more=True)],

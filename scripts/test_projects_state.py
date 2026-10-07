@@ -80,7 +80,10 @@ class Fixture:
           } }
         }'''
         result = {}; cursor = None; seen = set()
-        for _ in range(10):
+        # The reviewed workload has twelve packages. Keep one-item pages for
+        # native pagination coverage; the bound matches the seed renderer's
+        # maximum package count and remains subject to the request deadline.
+        for _ in range(1000):
             data = self.graphql('paginated-read', query, dict(project=project, after=cursor), deadline=deadline)
             page = data['node']['items']
             for item in page['nodes']:

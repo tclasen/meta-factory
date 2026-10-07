@@ -2496,3 +2496,11 @@ the option leaves review explicitly unverified and still permits draft input
 preparation. Every result keeps launch disabled: boundary review does not approve
 the suite, common runtime controls, or an experiment. The approved workflow
 document remains unchanged when this preparation feature is updated.
+
+The native Projects fixture deliberately reads one item per page to exercise
+pagination. Its page bound is 1,000, matching the Git seed renderer's maximum
+package count; the former ten-page bound rejected the twelve-package reviewed
+workload. Duplicate items, repeated/missing cursors, truncated field values and
+exhausted pagination refuse a clean result. The fixture-wide deadline and
+15-second readback deadline still bound native requests. This fixture evidence
+does not establish that a workload-sized live Project has been seeded.
