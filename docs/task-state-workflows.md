@@ -328,3 +328,44 @@ sbx endpoint containment, service/quota interruption handling, compaction,
 measured model usage, human approval, or comparative benchmark results. Operation
 timings are transport evidence, not a benchmark overhead estimate. Freeze actual
 CLI/API identities and credentials only after native verification and review.
+
+## WS-12 Shared launch-input review bundle
+
+`evaluation.state_inputs.prepare_state_inputs(specification, expected_files,
+controls, projects=None)` prepares all three treatment inputs together. Supply
+specification bytes keyed by their paths relative to `/spec`, expected hashes
+from the reviewed workload record, and explicit shared control identities. It
+rejects missing, extra, changed, or unsafe specification paths and binds the full
+package rather than only the task list. It does not copy files or launch a run.
+
+The common and arm-specific instruction sources live in
+`evaluation/instructions/state-*.md`. All arms receive the same common text,
+specification identities, and controls. Controls explicitly identify Luna/medium,
+Codex 0.160.0, factory revision, toolchain, limits, context configuration, network
+policy, and grading suite. The returned shared identity hashes these inputs;
+each arm separately records its complete prompt and initial-file hashes.
+Instruction sources are rechecked before publication and included in controller
+source identities, so changing Markdown prompts invalidates inspected plans.
+
+Only the Git-file arm receives a tracker seed. Conversation receives no persistent
+state artifact. Projects receives only an immutable resource descriptor when one
+has been assigned; the descriptor contains native IDs, not credentials, item state,
+or a mutable local cache. Without it, the bundle explicitly records Projects as
+unassigned and supplies no fallback tracker. An assigned descriptor still needs
+native verification before launch.
+
+All outputs remain `state_inputs_prepared_for_review` with `launch_enabled=false`.
+The caller must save the exact artifact outside builder mounts for human review,
+freeze its identities under the approved protocol, and provide only the assigned
+prompt/files after separately authorized setup. No comparison, overhead estimate,
+protocol approval, or launch authorization is established by rendering inputs.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_state_inputs.py -v
+```
+
+Fixtures verify whole-package identity, equal shared inputs, exclusive native
+state artifacts, explicit missing Projects resources, rejection of mixed source
+snapshots, and controller hashing of instruction changes. The overhead instruction
+retains all native treatment work in total runtime usage and elapsed time; measured
+attribution and comparison reporting remain separate work.

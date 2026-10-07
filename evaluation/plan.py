@@ -13,7 +13,7 @@ from .sandbox import disjoint, sandbox_create_argv
 
 def controller_identities(repository):
     paths=[path for path in (repository/'evaluation').rglob('*')
-           if path.is_file() and path.suffix in ('.py','.json') and '__pycache__' not in path.parts]
+           if path.is_file() and path.suffix in ('.py','.json','.md') and '__pycache__' not in path.parts]
     paths += [repository/'pyproject.toml',repository/'uv.lock']
     return {str(path.relative_to(repository)):sha256(path) for path in paths}
 
