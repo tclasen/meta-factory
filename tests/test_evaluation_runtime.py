@@ -5,9 +5,10 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from evaluation.evidence import Attempt
-from evaluation.runtime import Session, run_session, validate
+from evaluation.evidence import Attempt, kill_group
+from evaluation.runtime import Session, _runtime_timing, run_session, validate
 
 
 class RuntimeTest(unittest.TestCase):
@@ -106,6 +107,9 @@ class RuntimeTest(unittest.TestCase):
         result = self.transport("import time; time.sleep(60)")
         self.assertEqual(result["outcome"], "timeout_incomplete")
         self.assertFalse(result["remote_termination_verified"])
+        self.assertIsNone(result['timing']['builder_elapsed_seconds'])
+        self.assertEqual(result['timing']['interruption_grace_elapsed_seconds'], 0)
+        self.assertGreaterEqual(result['timing']['setup_elapsed_seconds'], 0.5)
 
     def test_fake_server_complete_transport(self):
         code = '''import sys,json
@@ -117,4 +121,60 @@ for line in sys.stdin:
   print(json.dumps({'id':m['id'],'result':{'turn':{'id':'u'}}}),flush=True)
   print(json.dumps({'method':'turn/completed','params':{'threadId':'t','turn':{'id':'u','items':[],'status':'completed'}}}),flush=True)
 '''
-        self.assertEqual(self.transport(code)["outcome"], "completed")
+        result = self.transport(code)
+        self.assertEqual(result["outcome"], "completed")
+        timing = result['timing']
+        self.assertEqual(timing['clock_evidence'], 'monotonic_with_wall_crosscheck')
+        self.assertEqual(timing['local_cleanup_outcome'], 'settled')
+        self.assertAlmostEqual(timing['transport_elapsed_seconds'],
+            timing['setup_elapsed_seconds'] + timing['builder_elapsed_seconds']
+            + timing['local_cleanup_elapsed_seconds'])
+        self.assertFalse(result['remote_termination_verified'])
+
+    def test_native_work_delay_stays_in_builder_interval_without_usage_invention(self):
+        code = '''import sys,json,time
+for line in sys.stdin:
+ m=json.loads(line)
+ if m.get('method')=='initialize':print(json.dumps({'id':m['id'],'result':{}}),flush=True)
+ if m.get('method')=='thread/start':print(json.dumps({'id':m['id'],'result':{'thread':{'id':'t'}}}),flush=True)
+ if m.get('method')=='turn/start':
+  time.sleep(0.1)
+  print(json.dumps({'id':m['id'],'result':{'turn':{'id':'u'}}}),flush=True)
+  print(json.dumps({'method':'turn/completed','params':{'threadId':'t','turn':{'id':'u','items':[],'status':'completed'}}}),flush=True)
+'''
+        result = self.transport(code)
+        self.assertEqual(result['outcome'], 'completed')
+        self.assertGreaterEqual(result['timing']['builder_elapsed_seconds'], 0.1)
+        self.assertIsNone(result['usage_total'])
+        self.assertEqual(result['stage_token_allocation'], 'unallocated')
+
+    def test_grace_is_subset_and_clock_discontinuity_prevents_exact_duration_claim(self):
+        report = _runtime_timing((1, 101), (3, 103), (12, 112), (14, 114), (10, 110))
+        self.assertEqual(report['builder_elapsed_seconds'], 9)
+        self.assertEqual(report['interruption_grace_elapsed_seconds'], 2)
+        self.assertEqual(report['transport_elapsed_seconds'], 13)
+        for stopped in ((12, 200), (2, 102), (float('nan'), 112)):
+            with self.subTest(stopped=stopped):
+                report = _runtime_timing((1, 101), (3, 103), stopped, (14, 114))
+                self.assertEqual(report['clock_evidence'], 'clock_discontinuity')
+                self.assertIsNone(report['builder_elapsed_seconds'])
+                self.assertIsNone(report['transport_elapsed_seconds'])
+                json.dumps(report, allow_nan=False)
+
+    def test_cleanup_failure_retains_timing_even_when_no_runtime_result_returns(self):
+        def broken(process):
+            kill_group(process)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                stream.close()
+            raise OSError('private cleanup diagnostic')
+        with tempfile.TemporaryDirectory() as directory:
+            with Attempt(Path(directory) / 'attempt', {}) as attempt:
+                with patch('evaluation.runtime.kill_group', side_effect=broken):
+                    with self.assertRaises(OSError):
+                        run_session(attempt, [sys.executable, '-c', "print('not json')"],
+                            Session('/work', 'fixture', ['WP-001']), cwd=directory,
+                            builder_seconds=1, setup_seconds=0.5, grace_seconds=0.1)
+                report = json.loads((attempt.directory / 'runtime-timing.json').read_text())
+                self.assertEqual(report['local_cleanup_outcome'], 'incomplete')
+                self.assertIsNone(report['builder_elapsed_seconds'])
+                self.assertNotIn('private cleanup', json.dumps(report))

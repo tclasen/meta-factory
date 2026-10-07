@@ -3,6 +3,7 @@
 from collections import deque
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import selectors
@@ -11,7 +12,7 @@ import time
 
 from jsonschema import Draft7Validator
 
-from .evidence import kill_group, positive, private_file
+from .evidence import atomic_json, kill_group, positive, private_file
 
 
 SCHEMA_DIR = Path(__file__).with_name("schema")
@@ -186,6 +187,33 @@ class Session:
                 "remote_termination_verified": False}
 
 
+def _runtime_timing(started, requested, observed_end, cleaned_end, interrupted=None):
+    """Nonoverlapping local intervals; the interruption grace is a builder subset."""
+    samples = dict(transport_start=started, turn_request=requested,
+                   observation_stop=observed_end, local_cleanup_end=cleaned_end,
+                   interruption_request=interrupted)
+    present = [value for value in (started, requested, interrupted, observed_end, cleaned_end)
+               if value is not None]
+    valid = all(all(math.isfinite(part) for part in value) for value in present)
+    if valid:
+        valid = (all(before[0] <= after[0] and before[1] <= after[1]
+                     for before, after in zip(present, present[1:]))
+                 and all(abs((value[0] - started[0]) - (value[1] - started[1])) <= 5
+                         for value in present))
+    boundaries = {name: None if value is None else dict(
+        monotonic_seconds=value[0] if math.isfinite(value[0]) else None,
+        utc_epoch_seconds=value[1] if math.isfinite(value[1]) else None)
+        for name, value in samples.items()}
+    return dict(clock_evidence='monotonic_with_wall_crosscheck' if valid else 'clock_discontinuity',
+        boundaries=boundaries,
+        setup_elapsed_seconds=(requested or observed_end)[0] - started[0] if valid else None,
+        builder_elapsed_seconds=observed_end[0] - requested[0] if valid and requested else None,
+        local_cleanup_elapsed_seconds=cleaned_end[0] - observed_end[0] if valid else None,
+        transport_elapsed_seconds=cleaned_end[0] - started[0] if valid else None,
+        interruption_grace_elapsed_seconds=(observed_end[0] - interrupted[0] if interrupted else 0) if valid else None,
+        semantics='Builder interval begins when turn/start is queued for writing and ends when local observation stops. It includes native state work, service delays and interruption grace. Local cleanup is separate; remote stop is not established.')
+
+
 def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=60, grace_seconds=60,
                 max_stream_bytes=64 * 1024 * 1024):
     """Transport execution requires separately authorized sandbox/launch setup.
@@ -204,6 +232,8 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
     started = time.monotonic()
     wall_started = time.time()
     builder_start = None
+    builder_wall_start = None
+    interruption_started = None
     stop_at = None
     try:
         with private_file(attempt.directory / "runtime.stderr.log") as err:
@@ -227,6 +257,7 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                         interruption = session.interrupt()
                         stop_at = now + grace_seconds
                         if interruption:
+                            interruption_started = (now, time.time())
                             queued.append(interruption)
                         else:
                             break
@@ -238,6 +269,7 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                         message = queued.popleft()
                         if message.get("method") == "turn/start":
                             builder_start = time.monotonic()
+                            builder_wall_start = time.time()
                             attempt.emit("controller", "builder.request", {"thread_id": session.thread})
                         pending = (json.dumps(message, allow_nan=False) + "\n").encode()
                         if len(pending) > 1024 * 1024:
@@ -274,8 +306,23 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
         session.outcome = "infrastructure_incomplete"
         attempt.emit("controller", "runtime.error", {"error_type": type(error).__name__})
     finally:
-        if process:
-            kill_group(process)
-            for stream in (process.stdin, process.stdout, process.stderr):
-                stream.close()
-    return session.result()
+        observation_stop = (time.monotonic(), time.time())
+        cleanup_outcome = 'incomplete' if process else 'not_started'
+        try:
+            if process:
+                kill_group(process)
+                for stream in (process.stdin, process.stdout, process.stderr):
+                    stream.close()
+                cleanup_outcome = 'settled'
+        finally:
+            requested = None if builder_start is None else (builder_start, builder_wall_start)
+            timing = _runtime_timing((started, wall_started), requested, observation_stop,
+                                     (time.monotonic(), time.time()), interruption_started)
+            timing['local_cleanup_outcome'] = cleanup_outcome
+            atomic_json(attempt.directory / 'runtime-timing.json', timing)
+            attempt.emit('controller', 'runtime.timing', timing)
+            if timing['clock_evidence'] == 'clock_discontinuity':
+                session.outcome = 'clock_discontinuity_incomplete'
+    result = session.result()
+    result['timing'] = timing
+    return result

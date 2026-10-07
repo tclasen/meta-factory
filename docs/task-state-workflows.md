@@ -369,3 +369,29 @@ state artifacts, explicit missing Projects resources, rejection of mixed source
 snapshots, and controller hashing of instruction changes. The overhead instruction
 retains all native treatment work in total runtime usage and elapsed time; measured
 attribution and comparison reporting remain separate work.
+
+## WS-13 Measured runtime interval
+
+The runtime adapter now returns and retains local timing boundaries in
+`runtime-timing.json`. Its builder interval runs continuously from queuing the
+whole-specification turn request to ending local observation. No state operation,
+service delay, or native command pauses that timer. Setup and local transport
+cleanup are separate. Interruption grace is reported as a subset of builder time;
+do not add it again when reconciling the overall interval.
+
+If no turn was requested, builder time is missing. Discontinuous clocks prevent
+an exact duration claim. Cleanup failure still retains the timing record and
+cannot become a passing result. Runtime cumulative usage is preserved without
+adding cumulative snapshots or summing overlapping cache/reasoning categories.
+Missing token telemetry is not estimated from elapsed time.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_runtime.py -v
+```
+
+These fake-server fixtures verify unbroken delay accounting, interval
+reconciliation, clock refusal, missing telemetry, and retained cleanup-failure
+evidence. They do not measure live native tracking overhead or establish the
+approved benchmark clock boundaries. Local observation ending is not evidence
+that the remote builder stopped; independent termination and capture remain
+mandatory before grading.

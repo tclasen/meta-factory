@@ -48,6 +48,22 @@ Deterministic fake-server fixtures cover the adapter; live stage tools, natural
 compaction and remote termination still require bounded host preflight. Reported
 model configuration and runtime telemetry are not provider-side attestation.
 
+`run_session` returns a `timing` record and preserves it independently in
+`runtime-timing.json` and the evaluator event stream, including when local
+cleanup raises. Boundaries retain monotonic seconds and UTC Unix epoch seconds.
+The builder interval starts when `turn/start` is queued for writing and ends
+when local observation stops; native task-state calls and service delays remain
+inside it. Setup and local cleanup are separate nonoverlapping intervals.
+Interruption grace is a subset of builder time, not an additional duration to
+add to the total. If no turn was requested, builder time is missing, not zero.
+Clock regression/nonfinite samples or wall/monotonic divergence beyond the
+existing five-second tolerance yield missing duration measurements and a clock
+discontinuity outcome. Cleanup settlement does not establish remote termination.
+This is local transport timing, not an approved benchmark clock definition,
+observed remote execution time, or separately measured task-state attribution.
+The latest cumulative usage snapshot is retained unchanged; unavailable usage
+and stage allocation remain missing/unallocated rather than inferred from time.
+
 
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
