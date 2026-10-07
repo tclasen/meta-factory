@@ -18,6 +18,12 @@ from test_host_isolation import K3S_IMAGE, PROBE
 
 
 RESTORE = ["sbx", "policy", "allow", "network", "--protocol", "tcp", "**"]
+K3S_PIN = "rancher/k3s@sha256:5e0707cfd1239b358ef73f3254bc3eadc027dd30cd5ec6ca41e29e47652a1b8c"
+BUSYBOX_PIN = "busybox@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e"
+DOCKER_DESTINATIONS = (
+    "registry-1.docker.io:443", "auth.docker.io:443",
+    "production.cloudflare.docker.com:443", "production.cloudfront.docker.com:443",
+)
 
 
 def global_allow_rule(snapshot):
@@ -67,6 +73,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-temporary-global-policy-change", action="store_true")
     parser.add_argument("--pods", action="store_true", help="Include paired sandbox and Kubernetes pod probes")
+    parser.add_argument("--builder-toolchain", action="store_true",
+                        help="Pull pinned images and run a nested k3s job during default deny")
     parser.add_argument("--watchdog", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if platform.system() != "Darwin":
@@ -81,6 +89,9 @@ def main(argv=None):
     sandbox = "factory-allowlist-" + uuid.uuid4().hex[:12]
     summary = {"started": utc_now(), "sandbox": sandbox, "outcome": "running",
                "checks": [], "cleanup": [], "restored": False, "pods": args.pods,
+               "builder_toolchain": args.builder_toolchain,
+               "builder_images": [K3S_PIN, BUSYBOX_PIN] if args.builder_toolchain else [],
+               "builder_destinations": list(DOCKER_DESTINATIONS) if args.builder_toolchain else [],
                "manual_restore": "sbx policy allow network --protocol tcp '**'",
                "limitations": "Restores TCP allow-all behavior, not the original rule ID/provenance. Sampled egress only."}
     print(f"Logs: {directory}\nSandbox: {sandbox}", flush=True)
@@ -118,9 +129,14 @@ def main(argv=None):
         run("policy-before", ["sbx", "policy", "ls", "--type", "network", "--json"])
         rule_id = global_allow_rule(json.loads((directory / "policy-before.stdout.log").read_text()))
         attempted_create = True
-        run("create", ["sbx", "create", "--name", sandbox, "--cpus", "4" if args.pods else "2",
-                       "--memory", "8g" if args.pods else "2g",
+        run("create", ["sbx", "create", "--name", sandbox,
+                       "--cpus", "8" if args.builder_toolchain else ("4" if args.pods else "2"),
+                       "--memory", "16g" if args.builder_toolchain else ("8g" if args.pods else "2g"),
                        "--skills", "off", "codex"], 300)
+        if args.builder_toolchain:
+            for index, destination in enumerate(DOCKER_DESTINATIONS):
+                run(f"allow-docker-{index:02d}", ["sbx", "policy", "allow", "network",
+                                                   "--sandbox", sandbox, destination])
         request("allowed-baseline", "https://registry.npmjs.org/", 200)
         request("unlisted-baseline", "https://example.com/", 200)
         if args.pods:
@@ -162,6 +178,31 @@ exit 1
             run(label, ["sbx", "policy", "check", "network", "--sandbox", sandbox, "--json", target], required=False)
         request("allowed-during", "https://registry.npmjs.org/", 200)
         request("unlisted-during", "https://example.com/", 403)
+        if args.builder_toolchain:
+            inside("builder-k3s-pull", ["docker", "pull", K3S_PIN], 600)
+            inside("builder-busybox-pull", ["docker", "pull", BUSYBOX_PIN], 300)
+            inside("builder-k3s-start", ["docker", "run", "--detach", "--privileged",
+                                         "--name", "factory-k3s", "--entrypoint", "/bin/sh", K3S_PIN,
+                                         "-ec", 'test -e /dev/kmsg || mknod /dev/kmsg c 1 11; exec /bin/k3s "$@"',
+                                         "factory-k3s", "server", "--disable", "traefik",
+                                         "--disable", "servicelb", "--disable", "metrics-server"], 300)
+            inside("builder-cluster-ready", ["sh", "-c", """
+for attempt in $(seq 1 36); do
+  [ "$(docker inspect --format '{{.State.Running}}' factory-k3s)" = true ] || exit 1
+  if docker exec factory-k3s kubectl wait --for=condition=Ready node --all --timeout=5s; then exit 0; fi
+  sleep 5
+done
+exit 1
+"""], 390)
+            inside("builder-kubectl", ["docker", "exec", "factory-k3s", "kubectl", "version", "--client"])
+            inside("builder-job-create", ["docker", "exec", "factory-k3s", "kubectl", "create", "job",
+                                          "factory-builder-smoke", "--image=" + BUSYBOX_PIN, "--",
+                                          "sh", "-c", "echo factory-builder-toolchain-ok"])
+            inside("builder-job-complete", ["docker", "exec", "factory-k3s", "kubectl", "wait",
+                                            "--for=condition=complete", "job/factory-builder-smoke",
+                                            "--timeout=180s"], 200)
+            inside("builder-job-logs", ["docker", "exec", "factory-k3s", "kubectl", "logs",
+                                        "job/factory-builder-smoke"])
         if args.pods:
             paired("restricted")
         if not (directory / "restoration-needed").exists():
@@ -176,7 +217,7 @@ exit 1
     finally:
         summary["restored"] = restore(directory, "restore-global-allow")
         if attempted_create:
-            if args.pods:
+            if args.pods or args.builder_toolchain:
                 summary["cleanup"].append(collect(directory, "cluster-remove", [
                     "sbx", "exec", sandbox, "docker", "rm", "--force", "--volumes", "factory-k3s",
                 ], 30))

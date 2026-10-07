@@ -30,7 +30,7 @@ class AllowlistScriptTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 MODULE.global_allow_rule(snapshot)
 
-    def exercise(self, fail_label, pods=False):
+    def exercise(self, fail_label, pods=False, builder_toolchain=False):
         calls = []
 
         def collect(directory, label, command, timeout):
@@ -45,7 +45,9 @@ class AllowlistScriptTest(unittest.TestCase):
                  patch.object(MODULE, "collect", side_effect=collect), \
                  patch.object(MODULE.subprocess, "Popen"), \
                  contextlib.redirect_stdout(io.StringIO()):
-                result = MODULE.main(["--allow-temporary-global-policy-change"] + (["--pods"] if pods else []))
+                result = MODULE.main(["--allow-temporary-global-policy-change"]
+                                     + (["--pods"] if pods else [])
+                                     + (["--builder-toolchain"] if builder_toolchain else []))
             summary = json.loads(next(Path(temporary).glob(
                 ".factory-planning/allowlist-preflight-logs/run-*/summary.json")).read_text())
         return result, summary, calls
@@ -86,3 +88,18 @@ class AllowlistScriptTest(unittest.TestCase):
             with patch.object(MODULE, "collect", return_value={"outcome": "ok"}):
                 self.assertTrue(MODULE.restore(directory, "retry"))
             self.assertFalse((directory / "restoration-needed").exists())
+
+    def test_builder_toolchain_runs_pinned_cluster_under_default_deny(self):
+        result, summary, calls = self.exercise(None, builder_toolchain=True)
+        self.assertEqual(result, 0)
+        self.assertEqual(summary["builder_images"], [MODULE.K3S_PIN, MODULE.BUSYBOX_PIN])
+        names = [name for name, _ in calls]
+        self.assertLess(names.index("remove-global-allow"), names.index("builder-k3s-pull"))
+        self.assertLess(names.index("builder-k3s-pull"), names.index("builder-k3s-start"))
+        self.assertLess(names.index("builder-job-complete"), names.index("restore-global-allow"))
+        self.assertLess(names.index("restore-global-allow"), names.index("cluster-remove"))
+        create = dict(calls)["create"]
+        self.assertIn("8", create)
+        self.assertIn("16g", create)
+        for index, destination in enumerate(MODULE.DOCKER_DESTINATIONS):
+            self.assertEqual(dict(calls)[f"allow-docker-{index:02d}"][-1], destination)

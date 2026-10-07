@@ -346,6 +346,33 @@ long-horizon behavior, and the benchmark protocol. A permanent host-wide policy
 change is a separate operational decision. The separate evaluation harness and
 experiment execution remain outside this preflight effort.
 
+#### Calibration builder toolchain check
+
+After a calibration candidate was blocked by a Docker Hub redirect to
+`production.cloudfront.docker.com`, use the builder-specific extension before
+requesting another model run:
+
+```sh
+cd /Users/t.clasen/projects/factory
+uv run --python 3.12 --isolated --locked python scripts/test_host_allowlist.py \
+  --allow-temporary-global-policy-change --builder-toolchain
+```
+
+This is a host-only synthetic preflight with no model call. It requires separate
+authorization for the temporary global-policy change described above. It creates
+one disposable 8-vCPU/16-GiB sandbox, adds exact sandbox allowances for the
+reviewed Docker registry/auth/CDN hosts (including the observed CloudFront
+redirect), removes global TCP allow-all, and then pulls digest-pinned k3s and
+BusyBox images. While default deny is active it starts privileged nested k3s,
+checks its bundled `kubectl`, and completes a pinned synthetic job. Restoration
+runs before cluster and sandbox cleanup, including on failure.
+
+Review the unique `.factory-planning/allowlist-preflight-logs/run-*/summary.json`
+and command logs. Passing establishes only this pinned toolchain and image path;
+it does not approve a new benchmark attempt, application acceptance, broader
+registry destinations, or promotion. If an image redirect changes, retain the
+failed evidence and review the new exact destination before changing policy.
+
 ### Continue Q-003: immutable inputs and external service access
 
 The completed HTTPS checks above are one part of setup validation, not a stopping
