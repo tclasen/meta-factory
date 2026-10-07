@@ -444,11 +444,12 @@ def grade_lanes(attempt, source, inventory, specification, suite, stages, *, por
                        reason='concurrent_grading_sequence_unsettled',
                        observed_verdict=value.get('observed_verdict', value['verdict']))
                        for identifier, value in results.items()}
+        aborted = not protocol_valid or any(item.get('aborted') for item in reports.values())
         report = suite.aggregate(results)
-        report.update(outcome=('graded' if protocol_valid and set(results) == registered
+        report.update(outcome=('graded' if protocol_valid and not aborted and set(results) == registered
                       and all(value['verdict'] in ('pass', 'fail') for value in report['criteria'].values())
                       else 'grading_incomplete'), protocol_valid=protocol_valid,
-                      aborted=not protocol_valid or any(item.get('aborted') for item in reports.values()),
+                      aborted=aborted,
                       case_results=results, lanes=records, grading_seconds=grading_seconds,
                       **elapsed,
                       limits='Independent sequential lanes, one registry/source and one shared absolute budget; any lane, identity or cleanup uncertainty revokes acceptance.')

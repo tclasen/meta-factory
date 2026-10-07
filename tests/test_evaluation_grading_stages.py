@@ -177,6 +177,83 @@ class GradingStagesTest(unittest.TestCase):
             grade_lanes(attempt,self.source,self.inventory,self.specification,
                         self.suite,stages,port=18080)
         self.assertEqual(FakeSandbox.instances,[])
+
+    def test_stages_remain_sequential_inside_one_lane(self):
+        stages = copy.deepcopy(self.stages)
+        for stage in stages:stage.update(lane=3,port=18083)
+        with Attempt(self.root/'one-lane',{}) as attempt:
+            report=grade_lanes(attempt,self.source,self.inventory,self.specification,
+                self.suite,stages,port=18080,deployment=self.simulated_deployment,
+                sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
+                command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0),
+                stop_resource=lambda attempt,name,sbx:dict(remote_termination_verified=True))
+        self.assertTrue(report['project_success'])
+        self.assertEqual([event[0] for event in FakeSandbox.events],
+                         ['create','stop','create','stop'])
+
+    def test_one_unsettled_lane_revokes_other_lane_observations(self):
+        stages = copy.deepcopy(self.stages)
+        for lane, stage in enumerate(stages):stage.update(lane=lane,port=18080+lane)
+        def deploy(*args,**kwargs):
+            result=self.simulated_deployment(*args,**kwargs)
+            if args[0].directory.name=='journey':result['manual_stop']=['sbx','stop','wrong']
+            return result
+        with Attempt(self.root/'lane-failure',{}) as attempt:
+            report=grade_lanes(attempt,self.source,self.inventory,self.specification,
+                self.suite,stages,port=18080,deployment=deploy,
+                sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
+                command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0),
+                stop_resource=lambda attempt,name,sbx:dict(remote_termination_verified=True))
+        self.assertFalse(report['protocol_valid']);self.assertFalse(report['project_success'])
+        self.assertEqual(report['case_results']['sample']['verdict'],'inconclusive')
+        self.assertEqual(report['case_results']['sample']['observed_verdict'],'pass')
+        self.assertTrue(all(box.stopped for box in FakeSandbox.instances))
+
+    def test_shared_lane_deadline_expiry_revokes_all_observations(self):
+        stages = copy.deepcopy(self.stages)
+        for lane, stage in enumerate(stages):stage.update(lane=lane,port=18080+lane)
+        current={'mono':10,'wall':100}; lock=threading.Lock(); barrier=threading.Barrier(2)
+        def deploy(*args,**kwargs):
+            result=self.simulated_deployment(*args,**kwargs)
+            barrier.wait(timeout=2)
+            with lock:current['wall']=106
+            return result
+        with Attempt(self.root/'lane-expiry',{}) as attempt:
+            report=grade_lanes(attempt,self.source,self.inventory,self.specification,
+                self.suite,stages,port=18080,grading_seconds=5,deployment=deploy,
+                monotonic=lambda:current['mono'],wall=lambda:current['wall'],
+                sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
+                command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0),
+                stop_resource=lambda attempt,name,sbx:dict(remote_termination_verified=True))
+        self.assertFalse(report['protocol_valid']);self.assertFalse(report['project_success'])
+        self.assertEqual(set(report['case_results']),{'journey','sample'})
+        self.assertTrue(all(value['verdict']=='inconclusive'
+                            for value in report['case_results'].values()))
+
+    def test_lane_interruption_settles_resources_records_and_propagates(self):
+        stages = copy.deepcopy(self.stages)
+        for lane, stage in enumerate(stages):stage.update(lane=lane,port=18080+lane)
+        def deploy(attempt,source,inventory,specification,project,suite,target,**kwargs):
+            if attempt.directory.name!='journey':
+                return self.simulated_deployment(attempt,source,inventory,specification,
+                                                  project,suite,target,**kwargs)
+            capture_tree(source,project,termination_verified=True)
+            box=kwargs['sandbox_factory'](attempt,project,specification,
+                Path(__file__).resolve().parents[1],port=kwargs['port'],role='grader')
+            box.create()
+            raise KeyboardInterrupt()
+        with Attempt(self.root/'lane-interruption',{}) as attempt:
+            with self.assertRaises(KeyboardInterrupt):
+                grade_lanes(attempt,self.source,self.inventory,self.specification,
+                    self.suite,stages,port=18080,deployment=deploy,
+                    sandbox_factory=FakeSandbox,guard_factory=FakeGuard,
+                    command_runner=lambda *args,**kwargs:dict(outcome='passed',exit_code=0),
+                    stop_resource=lambda attempt,name,sbx:dict(remote_termination_verified=
+                        next(box for box in FakeSandbox.instances if box.name==name).stop()))
+            report=json.loads((attempt.directory/'grading-lanes-result.json').read_text())
+        self.assertFalse(report['protocol_valid']);self.assertFalse(report['project_success'])
+        self.assertEqual(report['case_results']['sample']['observed_verdict'],'pass')
+        self.assertTrue(all(box.stopped for box in FakeSandbox.instances))
     def test_wall_expiry_and_invalid_clock_after_first_stage_revoke_acceptance(self):
         for index,clock in enumerate((120,float('nan'),True,90)):
             current={'wall':100}
