@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""Bounded synthetic native Projects fixture; creates only an assigned test project.
+
+Default is a review plan, without GitHub calls. --execute requires the owner's
+resource assignment. Retain the private project for review; never auto-delete.
+No model, sbx, benchmark, holdout, credential or global-policy changes.
+"""
+import argparse
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from evaluation.evidence import Attempt, atomic_json, collect, utc_now
+
+
+class Fixture:
+    def __init__(self, attempt, seconds):
+        self.attempt = attempt
+        self.deadline = time.monotonic() + seconds
+        self.sequence = 0
+
+    def command(self, label, argv):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('Projects fixture deadline expired')
+        self.sequence += 1
+        name = f'check-{self.sequence:03d}-{label}'
+        result = collect(self.attempt, name, argv, cwd=ROOT,
+                         timeout=min(30, remaining), max_output_bytes=1024 * 1024)
+        if result['outcome'] != 'passed':
+            raise RuntimeError('Native command failed; inspect retained check receipt')
+        return (self.attempt.directory / name / 'stdout.log').read_text()
+
+    def graphql(self, label, query, variables):
+        # Credentials stay in gh's inherited authentication, never request/log data.
+        request = self.attempt.directory / f'request-{self.sequence + 1:03d}.json'
+        atomic_json(request, dict(query=query, variables=variables))
+        data = json.loads(self.command(label, ['gh', 'api', 'graphql', '--input', str(request)]))
+        if data.get('errors') or not isinstance(data.get('data'), dict):
+            raise RuntimeError('GraphQL returned errors or missing data')
+        return data['data']
+
+    def edit(self, project, item, field, *, option=None, text=None):
+        argv = ['gh', 'project', 'item-edit', '--project-id', project,
+                '--id', item, '--field-id', field]
+        argv += ['--single-select-option-id', option] if option else ['--text', text]
+        self.command('native-item-edit', argv)
+
+    def read_items(self, project):
+        query = '''query($project: ID!, $after: String) {
+          node(id: $project) { ... on ProjectV2 {
+            items(first: 1, after: $after) { pageInfo { hasNextPage endCursor }
+              nodes { id content { ... on DraftIssue { title body } }
+                fieldValues(first: 100) { pageInfo { hasNextPage } nodes {
+                  ... on ProjectV2ItemFieldTextValue { text field { ... on ProjectV2Field { name } } }
+                  ... on ProjectV2ItemFieldSingleSelectValue { name optionId field {
+                    ... on ProjectV2SingleSelectField { name } } }
+                } }
+              }
+            }
+          } }
+        }'''
+        result = {}; cursor = None; seen = set()
+        for _ in range(10):
+            data = self.graphql('paginated-read', query, dict(project=project, after=cursor))
+            page = data['node']['items']
+            for item in page['nodes']:
+                if item['id'] in result or item['fieldValues']['pageInfo']['hasNextPage']:
+                    raise ValueError('Duplicate item or incomplete field listing')
+                fields = {}
+                for field in item['fieldValues']['nodes']:
+                    if 'field' in field:
+                        name = field['field']['name']
+                        if name in fields:
+                            raise ValueError('Duplicate native field value')
+                        fields[name] = field.get('text', field.get('name'))
+                result[item['id']] = dict(content=item['content'], fields=fields)
+            if not page['pageInfo']['hasNextPage']:
+                return result
+            cursor = page['pageInfo']['endCursor']
+            if not cursor or cursor in seen:
+                raise ValueError('Missing or repeated pagination cursor')
+            seen.add(cursor)
+        raise ValueError('Fixture pagination bound exceeded')
+
+
+def exercise(fixture, owner, report):
+    report['gh_version'] = fixture.command('gh-version', ['gh', '--version']).strip()
+    viewer = fixture.graphql('viewer', 'query { viewer { id login __typename } }', {})['viewer']
+    if viewer['login'].lower() != owner.lower() or viewer['__typename'] != 'User':
+        raise ValueError('Fixture requires the explicitly assigned authenticated user owner')
+    report['owner'] = viewer['login']
+    report['create_started'] = utc_now()
+    atomic_json(fixture.attempt.directory / 'summary.json', report)
+    project = fixture.graphql('create-owned-project', '''mutation($owner: ID!, $title: String!) {
+      createProjectV2(input: {ownerId: $owner, title: $title}) {
+        projectV2 { id number title public url } }
+    }''', dict(owner=viewer['id'], title=report['project_title']))['createProjectV2']['projectV2']
+    report['project'] = project
+    report['cleanup'] = dict(outcome='retained_for_owner_review',
+        delete_argv=['gh', 'project', 'delete', str(project['number']), '--owner', owner],
+        note='Delete only after evidence review and separate owner authorization.')
+    atomic_json(fixture.attempt.directory / 'summary.json', report)
+    if project['public'] or project['title'] != report['project_title']:
+        raise ValueError('Private uniquely named project required')
+    fields = fixture.graphql('read-fields', '''query($project: ID!) {
+      node(id: $project) { ... on ProjectV2 { fields(first: 100) {
+        pageInfo { hasNextPage } nodes {
+          ... on ProjectV2Field { id name }
+          ... on ProjectV2SingleSelectField { id name options { id name } }
+        } } } }
+    }''', dict(project=project['id']))['node']['fields']
+    if fields['pageInfo']['hasNextPage']:
+        raise ValueError('Unexpected truncated initial field listing')
+    matches = [field for field in fields['nodes'] if field.get('name') == 'Status']
+    if len(matches) != 1 or 'options' not in matches[0]:
+        raise ValueError('Unique native single-select Status required')
+    status = matches[0]
+    updated = fixture.graphql('configure-status', '''mutation($field: ID!,
+      $options: [ProjectV2SingleSelectFieldOptionInput!]) {
+      updateProjectV2Field(input: {fieldId: $field, singleSelectOptions: $options}) {
+        projectV2Field { ... on ProjectV2SingleSelectField { id options { id name } } }
+      }
+    }''', dict(field=status['id'], options=[dict(name=name, color=color, description=name)
+        for name, color in [('Todo', 'GRAY'), ('In progress', 'BLUE'),
+                            ('Blocked', 'RED'), ('Done', 'GREEN')]]))['updateProjectV2Field']['projectV2Field']
+    options = {option['name']: option['id'] for option in updated['options']}
+    if set(options) != {'Todo', 'In progress', 'Blocked', 'Done'}:
+        raise ValueError('Native status options do not match the proposed treatment')
+    identities = {'Status': status['id']}
+    for name in ('Work package', 'Progress', 'Next action'):
+        field = fixture.graphql('create-text-field', '''mutation($project: ID!, $name: String!) {
+          createProjectV2Field(input: {projectId: $project, name: $name, dataType: TEXT}) {
+            projectV2Field { ... on ProjectV2Field { id name } }
+          }
+        }''', dict(project=project['id'], name=name))['createProjectV2Field']['projectV2Field']
+        identities[name] = field['id']
+    report['fields'] = identities; report['status_options'] = options
+    expected = {}; items = []
+    for identifier, title in [('WP-001', 'Synthetic foundation'), ('WP-002', 'Synthetic follow-up')]:
+        content = dict(title=f'{identifier} — {title}', body=f'Synthetic fixture specification v1: {identifier}')
+        item = fixture.graphql('seed-draft-item', '''mutation($project: ID!, $title: String!, $body: String!) {
+          addProjectV2DraftIssue(input: {projectId: $project, title: $title, body: $body}) {
+            projectItem { id }
+          }
+        }''', dict(project=project['id'], **content))['addProjectV2DraftIssue']['projectItem']['id']
+        items.append(item)
+        fixture.edit(project['id'], item, identities['Work package'], text=identifier)
+        fixture.edit(project['id'], item, identities['Status'], option=options['Todo'])
+        expected[item] = dict(content=content, fields={'Work package': identifier, 'Status': 'Todo'})
+    report['items'] = items
+    atomic_json(fixture.attempt.directory / 'summary.json', report)
+    def verify():
+        observed = fixture.read_items(project['id'])
+        if observed != expected:
+            raise ValueError('Native readback differs from immutable identity or expected state')
+        return observed
+    verify()
+    for index, state in enumerate(('In progress', 'Blocked', 'In progress', 'Done', 'In progress'), 1):
+        item = items[0]
+        # Deliberately split fields: verify partial persistence before reconciliation.
+        fixture.edit(project['id'], item, identities['Status'], option=options[state])
+        expected[item]['fields']['Status'] = state
+        verify()
+        for name, value in [('Progress', f'Synthetic public finding {index}'),
+                            ('Next action', f'Synthetic next action {index}')]:
+            fixture.edit(project['id'], item, identities[name], text=value)
+            expected[item]['fields'][name] = value
+        verify()
+    report['final_state'] = verify()
+    report['outcome'] = 'synthetic_native_projects_passed'
+    report['credential_limits'] = 'Observed access only; no claim of per-project credential isolation.'
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--owner', required=True, help='Explicitly assigned authenticated GitHub user')
+    parser.add_argument('--execute', action='store_true', help='Create the assigned disposable private fixture')
+    args = parser.parse_args(argv)
+    if not re.fullmatch('[A-Za-z0-9][A-Za-z0-9-]{0,38}', args.owner):
+        parser.error('Ordinary GitHub user login required')
+    planning = ROOT / '.factory-planning' / 'projects-state-logs'
+    planning.mkdir(parents=True, exist_ok=True)
+    directory = Path(tempfile.mkdtemp(prefix='run-', dir=planning)) / 'attempt'
+    print(f'Evidence directory: {directory}', flush=True)
+    report = dict(started=utc_now(), outcome='planned_not_executed', owner=args.owner,
+        project_title='factory-req007-fixture-' + directory.parent.name,
+        changes='One private synthetic project, fields and two draft items; retained for review.',
+        cleanup=dict(outcome='no_resource_created'),
+        script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        limitations='Synthetic Projects workflow only; no model/sbx/benchmark/compaction/approval/promotion evidence.')
+    status = 0
+    with Attempt(directory, dict(owner=args.owner, execute=args.execute)) as attempt:
+        try:
+            fixture = Fixture(attempt, 600)
+            report['tested_revision'] = fixture.command('revision', ['git', 'rev-parse', 'HEAD']).strip()
+            if fixture.command('worktree', ['git', 'status', '--porcelain']):
+                raise ValueError('Clean committed worktree required')
+            if args.execute:
+                report['outcome'] = 'synthetic_native_projects_incomplete'
+                exercise(fixture, args.owner, report)
+        except BaseException as error:
+            status = 1
+            report.update(outcome='synthetic_native_projects_incomplete', error_type=type(error).__name__)
+            if report.get('create_started') and not report.get('project'):
+                report['cleanup'] = dict(outcome='creation_uncertain_find_by_unique_title',
+                    owner=args.owner, title=report['project_title'])
+        finally:
+            report.update(ended=utc_now(), exit_status=status)
+            atomic_json(directory / 'summary.json', report)
+            print(f'Evidence directory: {directory}\nOutcome: {report["outcome"]}', flush=True)
+    return status
+
+
+if __name__ == '__main__':
+    sys.exit(main())

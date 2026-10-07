@@ -294,3 +294,37 @@ failed staging with retained uncommitted state. It verifies unchanged specificat
 bytes and initial-state history. This is synthetic Git persistence evidence only;
 it does not verify sbx mounts, model compaction, Projects, usage accounting, human
 review, or any comparative outcome.
+
+## WS-11 Native Projects fixture
+
+`scripts/test_projects_state.py` prepares a review plan by default. After explicit
+owner assignment, its execution mode creates one uniquely named private project
+under the authenticated user, configures the proposed fields, and seeds two
+synthetic draft items. It edits state through native `gh project item-edit` and
+reads it back through paginated native GraphQL. GraphQL also configures the
+Status options, which the pinned CLI does not expose. No shared tracker API is
+installed for builders. The fixture verifies partial field persistence before
+finishing each multi-field update and verifies immutable identities throughout.
+
+```sh
+python3 scripts/test_projects_state.py --owner ASSIGNED_LOGIN
+# Only after owner assignment, inspect the script and execute the fixture:
+python3 scripts/test_projects_state.py --owner ASSIGNED_LOGIN --execute
+```
+
+Each attempt prints a unique evidence directory under
+`.factory-planning/projects-state-logs/` at startup and completion. It retains
+bounded command stdout/stderr, exit statuses, UTC times, CLI version, factory
+revision, script hash, exact resource identities, readbacks, and overall outcome.
+Each command is limited to 30 seconds inside a 600-second operation budget.
+Projects are retained for review on success or failure; the summary records an
+exact cleanup command or, if creation was interrupted, the unique title to locate.
+The script never deletes a project, expands token scopes, or changes host policy.
+Run it from a clean committed checkout; do not pass credentials as arguments.
+
+This fixture establishes only synthetic native state persistence, pagination,
+and split-update reconciliation. It does not establish credential isolation,
+sbx endpoint containment, service/quota interruption handling, compaction,
+measured model usage, human approval, or comparative benchmark results. Operation
+timings are transport evidence, not a benchmark overhead estimate. Freeze actual
+CLI/API identities and credentials only after native verification and review.
