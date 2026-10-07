@@ -4,6 +4,7 @@
 import argparse
 import fcntl
 import json
+import os
 from pathlib import Path
 import platform
 import signal
@@ -63,9 +64,16 @@ def restore(directory, label):
         return False
 
 
-def watchdog(directory):
+def watchdog(directory, parent, deadline):
     # Independent process survives an interrupted/killed parent; no credentials needed.
-    time.sleep(240)
+    while time.time() < deadline:
+        if not (directory / "restoration-needed").exists():
+            return 0
+        try:
+            os.kill(parent, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(2)
     return 0 if restore(directory, "watchdog-restore") else 1
 
 
@@ -75,12 +83,13 @@ def main(argv=None):
     parser.add_argument("--pods", action="store_true", help="Include paired sandbox and Kubernetes pod probes")
     parser.add_argument("--builder-toolchain", action="store_true",
                         help="Pull pinned images and run a nested k3s job during default deny")
-    parser.add_argument("--watchdog", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--watchdog", nargs=3, metavar=("DIRECTORY", "PARENT", "DEADLINE"),
+                        help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if platform.system() != "Darwin":
         parser.error("Run on the host Mac")
     if args.watchdog:
-        return watchdog(args.watchdog)
+        return watchdog(Path(args.watchdog[0]), int(args.watchdog[1]), float(args.watchdog[2]))
     if not args.allow_temporary_global_policy_change:
         parser.error("Explicit --allow-temporary-global-policy-change is required; affects all sandboxes")
     base = REPO / ".factory-planning/allowlist-preflight-logs"
@@ -169,7 +178,9 @@ exit 1
         if global_allow_rule(json.loads((directory / "policy-recheck.stdout.log").read_text())) != rule_id:
             raise RuntimeError("Global policy changed during setup")
         with (directory / "watchdog.log").open("wb") as log:
-            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--watchdog", str(directory)],
+            watchdog_deadline = time.time() + (1800 if args.builder_toolchain else 240)
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--watchdog", str(directory),
+                              str(os.getpid()), str(watchdog_deadline)],
                              stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
         (directory / "restoration-needed").write_text(utc_now())
         run("remove-global-allow", ["sbx", "policy", "rm", "network", "--id", rule_id, "--force"])

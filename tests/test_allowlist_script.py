@@ -103,3 +103,12 @@ class AllowlistScriptTest(unittest.TestCase):
         self.assertIn("16g", create)
         for index, destination in enumerate(MODULE.DOCKER_DESTINATIONS):
             self.assertEqual(dict(calls)[f"allow-docker-{index:02d}"][-1], destination)
+
+    def test_watchdog_restores_immediately_after_parent_death(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / "restoration-needed").write_text("test")
+            with patch.object(MODULE.os, "kill", side_effect=ProcessLookupError), \
+                 patch.object(MODULE, "restore", return_value=True) as restore:
+                self.assertEqual(MODULE.watchdog(directory, 1234, MODULE.time.time() + 1800), 0)
+            restore.assert_called_once_with(directory, "watchdog-restore")

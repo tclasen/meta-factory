@@ -261,8 +261,9 @@ removes just that global rule, keeping kit-specific allowances intact, and tests
 registry success plus denial of example.com. It never resets the policy database.
 
 Restoration runs before sandbox cleanup, including on failure. A separate process
-attempts restoration after 240 seconds if the main process is interrupted; this
-cannot protect against host shutdown or a broken sbx daemon. Restoration recreates
+attempts restoration when the main process exits or at the bounded restricted-phase
+deadline (four minutes normally, 30 minutes for the builder-toolchain extension);
+this cannot protect against host shutdown or a broken sbx daemon. Restoration recreates
 equivalent global TCP allow-all behavior with a new rule ID/provenance, unless
 the old allowance is already intact. Rules are logged afterward for verification.
 The stopped sandbox remains available for inspection.
