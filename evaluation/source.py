@@ -102,4 +102,15 @@ def capture_source(attempt, source, destination, specification, *, port,
                              selected_files=selection['selected'])
     inventory['selection'] = selection
     atomic_json(attempt.directory / 'source-capture.json', inventory)
+    retained = attempt.directory / 'captured-source'
+    retained_inventory = capture_tree(destination, retained, termination_verified=True)
+    if (retained_inventory['files'] != inventory['files']
+            or retained_inventory['bytes'] != inventory['bytes']):
+        raise RuntimeError('Retained source differs from captured source')
+    atomic_json(attempt.directory / 'source-retention.json', {
+        'relative_path': retained.name,
+        'files': len(retained_inventory['files']),
+        'bytes': retained_inventory['bytes'],
+        'verified_against_capture': True,
+    })
     return inventory

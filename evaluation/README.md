@@ -126,8 +126,10 @@ calls, host reboot, daemon failure or network policy changes were part of that t
 `source.py` inventories the stopped builder project through a separate shell
 sandbox with a readonly project mount. It selects tracked and nonignored untracked
 files, records tracked deletions and ignored artifacts explicitly, and preserves
-regular Git metadata. Thus ignored virtual environments and dependency directories
-do not block source capture merely because they contain symlinks. Git does not run
+regular Git metadata. It also duplicates and verifies the bounded capture under
+the operator evidence directory, so later inspection does not depend on retention
+of a temporary workspace. Thus ignored virtual environments and dependency
+directories do not block source capture merely because they contain symlinks. Git does not run
 against application repositories on the host. Relative source symlinks that stay
 inside the project are preserved without host traversal, and their identities are
 checked during redeployment. Absolute or escaping links, linked worktrees,

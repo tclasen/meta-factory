@@ -1,5 +1,6 @@
 """Explicit source selection keeps generated symlinks out of redeployment."""
 
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -47,6 +48,14 @@ class SourceTest(unittest.TestCase):
         self.assertEqual(result['selection']['ignored'], ['.venv/python'])
         self.assertEqual(result['selection']['deleted'], ['deleted.py'])
         self.assertFalse((self.root / 'capture/.venv').exists())
+        self.assertEqual((self.root / 'logs/captured-source/app.py').read_text(), 'source\n')
+        retention = json.loads((self.root / 'logs/source-retention.json').read_text())
+        self.assertEqual(retention, {
+            'bytes': result['bytes'],
+            'files': len(result['files']),
+            'relative_path': 'captured-source',
+            'verified_against_capture': True,
+        })
 
     def test_selected_symlink_parent_cannot_escape(self):
         (self.source / 'escape').symlink_to(self.root, target_is_directory=True)
