@@ -2550,3 +2550,34 @@ removed or changed bindings. Plans keep launch disabled and still require native
 cache/export verification. Supplying only one role is invalid. Staged plans
 also preserve the grader binding for every fresh deployment and lane. The
 operator configuration cannot override this inspected binding.
+
+
+### Live default fixture identities
+
+`identity_observer.observe_default_fixture(project, base_url,
+lifetime_check=..., timeout=5)` reads the bounded ordinary
+`ops/fixture-ids.json` and crosschecks every APP-013 default account against the
+live API after bootstrap. It uses cookie-authenticated current-user reads, exact
+administrator membership pages, and empty case lists in both tenants. Each
+session logs out with its session CSRF token. Manifest UUIDs supply declared
+identities; matching live identities and memberships supply independent evidence.
+The manifest alone cannot produce a verified target.
+
+The return pair contains a protected `tenants`/`accounts` target fragment and
+sanitized identity, membership-count and case-count observations. Keep the
+fragment out of builder mounts and logs. The observer uses only the controller's
+exact HTTP loopback origin, ignores environment proxies, refuses redirects,
+bounds response bytes, and checks the caller's deployment/source lifetime before
+and after every request. Transport uncertainty is inconclusive; observed
+identity, role or empty-list mismatches refuse the fixture. The enclosing grading
+owner must abort and stop the disposable deployment on any observer failure.
+
+This collector checks the default fixture before test mutations. It does not
+seed alternate/isolated accounts, inspect users without memberships, establish
+database tenant display names, collect a repeat-bootstrap canary, or supply the
+rest of the foundation observation. It grants no suite approval or acceptance.
+Validate the native HTTP boundary with:
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_identity_observer.py' -v
+```
