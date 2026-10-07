@@ -1,6 +1,7 @@
 """Source refusal closes owned files but does not erase captured leak evidence."""
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -12,6 +13,7 @@ from test_evaluation_cri_follower import frame
 from test_evaluation_cri_runtime_event import runtime_event
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Node-local Linux descriptors required')
 class LiveCollectionTest(unittest.TestCase):
     def setUp(self):
         self.history=pending_history();self.allowed=True;self.file_allowed=True

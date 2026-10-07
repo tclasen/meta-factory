@@ -1,5 +1,6 @@
 """Successor admission cannot drop retired checks or erase prior captured positives."""
 import os
+import sys
 from pathlib import Path
 import tempfile
 import time
@@ -11,6 +12,7 @@ from evaluation.log_retention import PrivateCRIRetention
 from test_evaluation_cri_follower import BINDING,SOURCE,frame
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'Node-local Linux descriptors required')
 class DescriptorRotationTest(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
