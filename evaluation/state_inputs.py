@@ -8,8 +8,8 @@ from pathlib import Path, PurePosixPath
 import re
 import unicodedata
 
-from .git_state import TRACKER_PATH, render_git_seed
-from .preparation import read_regular
+from .git_state import TRACKER_PATH, _unique_pairs, render_git_seed
+from .preparation import read_regular, snapshot
 
 
 ARMS = ('conversation', 'git-file', 'github-projects')
@@ -115,3 +115,45 @@ def prepare_state_inputs(specification, expected_files, controls, *, projects=No
         projects_resource_assigned=descriptor is not None,
         overhead_policy='Retain whole-attempt runtime usage and elapsed time, including native state operations; report setup and final capture separately.',
         limits='Draft inputs only; human boundary review, specification/protocol freeze, native resource verification and separate launch authority remain required.')
+
+
+def prepare_reviewed_state_inputs(workload, controls_path, *, projects_path=None, check=lambda: None):
+    """Inspect approved workload bytes and explicit operator files; publish no state.
+
+    Retain input hashes rather than assuming filenames identify frozen content.
+    A caller owns the overall deadline; regular-file reads are bounded, but
+    filesystem I/O itself is not interruptible by this function.
+    """
+    workload = Path(workload).resolve(strict=True)
+    approval_path = workload / 'review/WORKLOAD-APPROVAL.json'
+    approval_bytes = read_regular(approval_path, 65536, check)
+    approval = json.loads(approval_bytes, object_pairs_hook=_unique_pairs)
+    if (not isinstance(approval, dict) or type(approval.get('schema_version')) is not int
+            or approval['schema_version'] != 1
+            or approval.get('approval_type') != 'workload_and_envelope_review_not_suite_freeze'
+            or not isinstance(approval.get('workload_sha256'), dict)
+            or not approval['workload_sha256']):
+        raise ValueError('Explicit reviewed workload hash record required')
+    expected = {}
+    for name, digest in approval['workload_sha256'].items():
+        if (not isinstance(name, str) or '\\' in name or str(PurePosixPath(name)) != name
+                or PurePosixPath(name).is_absolute() or '..' in PurePosixPath(name).parts
+                or len(PurePosixPath(name).parts) < 2 or PurePosixPath(name).parts[0] != 'builder'
+                or not isinstance(digest, str) or not re.fullmatch('[0-9a-f]{64}', digest)):
+            raise ValueError('Canonical reviewed builder-file identities required')
+        expected[name.removeprefix('builder/')] = digest
+    data, _ = snapshot(workload / 'builder', expected, 64 * 1024 ** 2, 256, check)
+    inputs = {'controls': Path(controls_path)}
+    if projects_path is not None:
+        inputs['projects_resource'] = Path(projects_path)
+    raw = {name: read_regular(path, 65536, check) for name, path in inputs.items()}
+    values = {name: json.loads(content, object_pairs_hook=_unique_pairs) for name, content in raw.items()}
+    report = prepare_state_inputs(data, expected, values['controls'], projects=values.get('projects_resource'))
+    snapshot(workload / 'builder', expected, 64 * 1024 ** 2, 256, check)
+    if (read_regular(approval_path, 65536, check) != approval_bytes
+            or any(read_regular(inputs[name], 65536, check) != content for name, content in raw.items())):
+        raise ValueError('Reviewed state-input sources changed during inspection')
+    check()
+    report['operator_source_sha256'] = dict(workload_approval=_digest(approval_bytes),
+                                          **{name: _digest(content) for name, content in raw.items()})
+    return report

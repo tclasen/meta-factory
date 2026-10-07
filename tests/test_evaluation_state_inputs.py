@@ -9,6 +9,7 @@ from unittest.mock import patch
 from evaluation.git_state import TRACKER_PATH
 from evaluation.plan import controller_identities
 from evaluation.state_inputs import ARMS, CONTROL_DIGESTS, RESOURCE_PATH, prepare_state_inputs
+from evaluation.state_inputs import prepare_reviewed_state_inputs
 
 
 class StateInputsTest(unittest.TestCase):
@@ -124,3 +125,90 @@ class StateInputsTest(unittest.TestCase):
             self.assertIn('evaluation/instructions/state-common.md', first)
             prompt.write_text('changed')
             self.assertNotEqual(first, controller_identities(root))
+
+
+class ReviewedStateInputsTest(unittest.TestCase):
+    def setUp(self):
+        StateInputsTest.setUp(self)
+        self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.workload = self.root / 'workload'
+        (self.workload / 'builder').mkdir(parents=True)
+        (self.workload / 'review').mkdir()
+        for name, content in self.files.items():
+            path = self.workload / 'builder' / name
+            path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(content)
+        self.approval = self.workload / 'review/WORKLOAD-APPROVAL.json'
+        self.approval.write_text(json.dumps(dict(schema_version=1,
+            approval_type='workload_and_envelope_review_not_suite_freeze',
+            workload_sha256={'builder/' + name: digest for name, digest in self.expected.items()})))
+        self.control_path = self.root / 'controls.json'; self.control_path.write_text(json.dumps(self.controls))
+        self.project_path = self.root / 'project.json'; self.project_path.write_text(json.dumps(self.project))
+        (self.workload / 'review/protected-case.py').write_text('raise RuntimeError("never execute")')
+
+    def prepare(self, **kwargs):
+        return prepare_reviewed_state_inputs(self.workload, self.control_path, **kwargs)
+
+    def test_reviewed_directory_excludes_operator_files_and_has_no_side_effects(self):
+        before = {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()}
+        with patch('subprocess.Popen', side_effect=AssertionError('No commands allowed')):
+            report = self.prepare(projects_path=self.project_path)
+        self.assertEqual(report['shared']['specification_files'], self.expected)
+        self.assertEqual(report['operator_source_sha256']['workload_approval'],
+                         hashlib.sha256(self.approval.read_bytes()).hexdigest())
+        self.assertEqual(report['operator_source_sha256']['controls'],
+                         hashlib.sha256(self.control_path.read_bytes()).hexdigest())
+        self.assertNotIn('protected-case', json.dumps(report))
+        self.assertEqual(before, {str(path): path.read_bytes() for path in self.root.rglob('*') if path.is_file()})
+
+    def test_changed_reviewed_bytes_missing_files_and_extra_files_refuse_bundle(self):
+        path = self.workload / 'builder/APPLICATION.md'; original = path.read_bytes()
+        path.write_bytes(b'changed')
+        with self.assertRaises(ValueError): self.prepare()
+        path.unlink()
+        with self.assertRaises(ValueError): self.prepare()
+        path.write_bytes(original)
+        (self.workload / 'builder/unreviewed.md').write_text('extra')
+        with self.assertRaises(ValueError): self.prepare()
+
+    def test_controls_or_approval_changed_during_inspection_are_rejected(self):
+        from evaluation.state_inputs import prepare_state_inputs
+        for path in (self.approval, self.control_path, self.project_path):
+            original = path.read_bytes()
+            def change(*args, **kwargs):
+                value = prepare_state_inputs(*args, **kwargs)
+                path.write_bytes(original + b'\n')
+                return value
+            with self.subTest(path=path), patch('evaluation.state_inputs.prepare_state_inputs', side_effect=change):
+                with self.assertRaises(ValueError): self.prepare(projects_path=self.project_path)
+            path.write_bytes(original)
+
+    def test_duplicate_operator_keys_and_links_are_refused(self):
+        self.control_path.write_text('{"model":"gpt-6-luna","model":"gpt-6-luna"}')
+        with self.assertRaises(ValueError): self.prepare()
+        self.control_path.unlink(); self.control_path.symlink_to(self.project_path)
+        with self.assertRaises(OSError): self.prepare()
+
+    def test_deadline_callback_can_abort_before_reviewed_input_reads(self):
+        def expired(): raise TimeoutError('fixture expired')
+        with self.assertRaises(TimeoutError): self.prepare(check=expired)
+
+    def test_controller_command_records_bundle_and_failed_dirty_attempt(self):
+        import sys
+        from evaluation import __main__ as cli
+        def collect(attempt, label, argv, **kwargs):
+            directory = attempt.directory / label; directory.mkdir()
+            (directory / 'stdout.log').write_text('untracked-file' if dirty and label == 'worktree' else '')
+            return dict(outcome='passed')
+        for dirty in (False, True):
+            with self.subTest(dirty=dirty), \
+                    patch.object(cli, '__file__', str(self.root / 'evaluation/__main__.py')), \
+                    patch.object(cli, 'collect', side_effect=collect), \
+                    patch.object(sys, 'argv', ['evaluation', 'state-inputs', '--workload', str(self.workload),
+                                            '--controls', str(self.control_path)]):
+                self.assertEqual(cli.main(), 2 if dirty else 0)
+        results = [json.loads(path.read_text()) for path in
+                   (self.root / '.factory-planning/state-input-review-logs').glob('run-*/result.json')]
+        self.assertEqual({result['outcome'] for result in results},
+                         {'state_inputs_prepared_for_review', 'inspection_error'})
+        self.assertTrue(all(result['launch_enabled'] is False for result in results))

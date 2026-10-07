@@ -5,11 +5,13 @@ import json
 from pathlib import Path
 import tempfile
 import sys
+import time
 
 from .evidence import Attempt, atomic_json, collect
 from .readiness import audit
 from .plan import build_plan
 from .preparation import read_regular
+from .state_inputs import prepare_reviewed_state_inputs
 
 
 def main():
@@ -29,24 +31,42 @@ def main():
     plan.add_argument('--port', type=int, required=True)
     plan.add_argument('--stage-assignments', type=Path,
                       help='Protected JSON list of id/case_ids assignments; exact full-registry partition')
+    state = commands.add_parser('state-inputs', help='Record reviewed three-arm inputs; never provision or launch')
+    state.add_argument('--workload', type=Path, required=True)
+    state.add_argument('--controls', type=Path, required=True, help='Explicit operator shared-control identities')
+    state.add_argument('--projects-resource', type=Path, help='Assigned immutable native resource IDs, no credentials')
     args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
-    base = repository / '.factory-planning' / ('evaluation-plan-logs' if args.command=='plan' else 'evaluation-readiness-logs')
+    log_names = {'plan': 'evaluation-plan-logs', 'inspect': 'evaluation-readiness-logs',
+                 'state-inputs': 'state-input-review-logs'}
+    base = repository / '.factory-planning' / log_names[args.command]
     base.mkdir(parents=True, exist_ok=True)
     directory = Path(tempfile.mkdtemp(prefix='run-', dir=base))
     directory.rmdir()
     print(f'Logs: {directory}', flush=True)
     print('Read-only audit; no model calls, sandbox creation, or host-policy changes.', flush=True)
-    with Attempt(directory, {'kind': 'resource_plan' if args.command=='plan' else 'readiness_inspection'}) as attempt:
+    kinds = {'plan': 'resource_plan', 'inspect': 'readiness_inspection', 'state-inputs': 'state_input_review'}
+    with Attempt(directory, {'kind': kinds[args.command]}) as attempt:
         attempt.transition('preflight')
         try:
             checks=[('revision', ['git', 'rev-parse', 'HEAD']), ('worktree', ['git', 'status', '--porcelain'])]
-            if args.command=='plan':checks += [('python',[sys.executable,'--version']),('uv',['uv','--version'])]
+            if args.command in ('plan', 'state-inputs'):
+                checks += [('python',[sys.executable,'--version']),('uv',['uv','--version'])]
             for label, command in checks:
                 result = collect(attempt, label, command, cwd=repository, timeout=30)
                 if result['outcome'] != 'passed':
                     raise RuntimeError('Repository inspection failed')
-            if args.command=='plan':
+            if args.command == 'state-inputs':
+                if (directory / 'worktree/stdout.log').read_text():
+                    raise ValueError('Clean committed state-input sources required')
+                deadline = time.monotonic() + 60
+                def check():
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('State-input inspection deadline expired')
+                report = prepare_reviewed_state_inputs(args.workload, args.controls,
+                    projects_path=args.projects_resource, check=check)
+                atomic_json(directory / 'state-inputs.json', report)
+            elif args.command=='plan':
                 assignments = None
                 if args.stage_assignments is not None:
                     assignments = json.loads(read_regular(args.stage_assignments, 65536, lambda: None))
@@ -65,7 +85,7 @@ def main():
         for blocker in report.get('blockers', report.get('readiness', {}).get('blockers', [])):
             print('-', blocker)
         print(f'Logs: {directory}', flush=True)
-    return 0 if report['outcome'] in ('ready','planned_not_ready') else 2
+    return 0 if report['outcome'] in ('ready','planned_not_ready', 'state_inputs_prepared_for_review') else 2
 
 
 if __name__ == '__main__':

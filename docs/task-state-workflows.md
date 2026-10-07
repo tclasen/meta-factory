@@ -395,3 +395,47 @@ evidence. They do not measure live native tracking overhead or establish the
 approved benchmark clock boundaries. Local observation ending is not evidence
 that the remote builder stopped; independent termination and capture remain
 mandatory before grading.
+
+## WS-14 Logged operator preparation
+
+Prepare the review bundle from the unchanged, approved workload using the separate
+evaluation controller:
+
+```sh
+uv run --locked python -m evaluation state-inputs \
+  --workload .factory-planning/first-test \
+  --controls /operator/path/shared-controls.json
+```
+
+Add `--projects-resource /operator/path/projects-resource.json` only after the
+native resource has been assigned and its IDs verified. Its exact fields are
+`owner`, `project_number`, `project_id`, `fields`, and `status_options` as defined
+in WS-04. Omitting it leaves Projects explicitly unassigned; no resource is
+created and no alternate tracker is supplied.
+
+The controls file is a JSON object with these exact keys:
+
+| Keys | Values |
+| --- | --- |
+| `model`, `reasoning_effort`, `runtime_version` | `gpt-6-luna`, `medium`, `0.160.0` |
+| `factory_revision` | Full 40-character Git revision of the proposed factory |
+| `toolchain_sha256`, `limits_sha256`, `context_configuration_sha256`, `network_policy_sha256`, `grading_suite_sha256` | SHA-256 identities of explicit operator control artifacts |
+
+Use real proposed artifact identities, not placeholder digests. Retain those
+artifacts for review; declaring a hash is not verification that runtime setup
+uses it. Do not include credentials or mutable state in either operator file.
+
+The command requires a clean committed checkout. It reads the workload approval
+record and complete builder file set, rejects changed/unreviewed bytes, excludes
+operator review files, and rechecks input identities before publication. Regular
+reads and instruction files have byte bounds, and the source-inspection callback
+has a 60-second deadline; filesystem I/O still needs an outer owner if it hangs.
+Each repository/tool inspection command has its own 30-second limit.
+
+Unique evidence lives under `.factory-planning/state-input-review-logs/` and is
+printed at startup and completion. It includes repository revision/worktree,
+Python/uv versions, command exit statuses and logs, UTC events, exact operator-file
+hashes, `state-inputs.json`, and an overall result. Success exits 0 for review
+preparation only; changed sources, malformed input, or a dirty worktree exit 2
+with retained error evidence. There are no model, network, sandbox, mount, project,
+approval, or host-policy operations. No READY transition is made.
