@@ -374,6 +374,18 @@ it does not approve a new benchmark attempt, application acceptance, broader
 registry destinations, or promotion. If an image redirect changes, retain the
 failed evidence and review the new exact destination before changing policy.
 
+The host run on 2026-10-07 at commit `03157c5` passed in 39.09 seconds
+(`allowlist-preflight-logs/run-vmllvu0h`, local evidence). With global TCP
+allow-all removed, the digest-pinned k3s and BusyBox images pulled through the
+four recorded Docker registry/auth/CDN destinations. The nested node became
+Ready, bundled `kubectl` reported v1.34.1+k3s1, and the pinned job printed
+`factory-builder-toolchain-ok`. The registry control remained reachable while
+the unlisted HTTPS control returned 403. Equivalent global TCP allow-all was
+restored and verified, the nested cluster was removed, and the sandbox stopped.
+This resolves the observed calibration environment blocker only for the pinned
+synthetic path; it is not a benchmark rerun or evidence that an application can
+pull every image it may choose.
+
 ### Continue Q-003: immutable inputs and external service access
 
 The completed HTTPS checks above are one part of setup validation, not a stopping
