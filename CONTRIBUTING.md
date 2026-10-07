@@ -14,6 +14,18 @@ uv run --locked python -m unittest discover -s tests -v
 git diff --check
 ```
 
+On macOS, use a canonical temporary directory before running the checks:
+
+```sh
+export TMPDIR=/private/tmp
+```
+
+The evaluator rejects symlink ancestors when reading protected inputs; macOS
+`/tmp` is a symlink to `/private/tmp`. Canonical temporary paths keep fixtures
+consistent with that boundary. Linux descriptor and inotify fixtures are skipped
+on macOS and must also run inside a Linux sandbox; a Mac-only pass does not
+validate those checks.
+
 There is no application build or development server. `pyproject.toml` and
 `uv.lock` pin template development tools (Copier 9.14.0); they do not define
 a factory application. The separate evaluation controller uses Python and must
