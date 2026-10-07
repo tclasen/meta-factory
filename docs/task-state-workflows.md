@@ -265,3 +265,32 @@ Exact clock boundaries and attribution methods require protocol freeze.
 Memory-only calibration and synthetic fixtures cannot establish a three-arm
 result or authorize further benchmark execution. The current documentation is
 not a frozen protocol, a selected default, or promotion evidence.
+
+## WS-10 Git seed preparation and local validation
+
+`evaluation.git_state.render_git_seed(package_bytes, expected_sha256)` renders
+the initial Markdown from the exact reviewed `packages.json` bytes. The operator
+must obtain the expected digest from the reviewed workload record, not recompute
+it from an unreviewed replacement. The function preserves specification order,
+IDs and titles, seeds todo state, and rejects duplicate IDs/JSON keys and injected
+line breaks. Hash matching alone does not establish human approval or freeze.
+
+The coordinator owns writing the returned bytes to `TRACKER_PATH` in the fresh
+Git-arm project and committing them before launch. The renderer does not write
+files, dispatch tasks, update builder state, or create resources. Conversation
+and Projects arms must not receive this tracker. Specification copying and launch
+gates remain separate. The builder uses ordinary editing and Git after launch.
+
+Setup and run the native Git fixture with:
+
+```sh
+uv sync --locked
+uv run --locked python -m unittest discover -s tests -p test_evaluation_git_state.py -v
+```
+
+The fixture uses temporary repositories and real bounded Git commands to exercise
+start, blockage, resumption, completion, reopening, fresh-checkout recovery, and
+failed staging with retained uncommitted state. It verifies unchanged specification
+bytes and initial-state history. This is synthetic Git persistence evidence only;
+it does not verify sbx mounts, model compaction, Projects, usage accounting, human
+review, or any comparative outcome.
