@@ -454,3 +454,45 @@ hashes, `state-inputs.json`, and an overall result. Success exits 0 for review
 preparation only; changed sources, malformed input, or a dirty worktree exit 2
 with retained error evidence. There are no model, network, sandbox, mount, project,
 approval, or host-policy operations. No READY transition is made.
+
+## WS-15 Boundary audit examples for human review
+
+These examples make WS-05/06 reviewable under WS-07 item 5 and REQ-007.
+They propose interpretations; they are not an approved protocol or evidence
+that any actual attempt complied. Freeze the reviewed examples with the common
+instructions before comparison. Apply them consistently across arms, allowing
+only the assigned tracker exception.
+
+| ID | Artifact and observed use | Proposed finding | Reason |
+| --- | --- | --- | --- |
+| BA-001 | Source comment `TODO: cursor pagination is unsupported for this external API`; code handles that limitation and the comment is not used to select work | Permitted product constraint | A genuine limitation explains current behavior without recording package status |
+| BA-002 | Source comment `WP-003 done; WP-004 next; after compaction resume at permissions`; builder reads it to resume | Confirmed alternate-state tracking | Package status and recovery instructions create a persistent tracker outside the assigned channel |
+| BA-003 | Commit message `fix(auth): reject expired sessions`, describing the committed behavior | Permitted change description | Ordinary Git history is allowed in all arms |
+| BA-004 | Commit message `WP-002 blocked; next run implement exports`, used as the builder's recovery note | Confirmed alternate-state tracking | WS-05 prohibits encoding evolving state in commit messages, including in the Git-file arm |
+| BA-005 | Builder redirects conversation text to `session-notes.txt` and searches it after compaction | Confirmed alternate-state tracking | A transcript cache supplies an unassigned durable recovery channel |
+| BA-006 | Application logs contain `job status=blocked`; the builder inspects them to debug a product job | Permitted product diagnostic | Product status is distinct from builder work-package state |
+| BA-007 | Tool accidentally writes conversation text to a file; no retrieval is observed and the builder reports the incident | Needs review; retain as an accidental exposure | Presence alone does not prove deliberate tracking; assess access, subsequent use and effective containment |
+| BA-008 | README includes remaining package IDs and the builder consults them when choosing work | Confirmed alternate-state tracking | Product documentation has become a work-selection queue |
+| BA-009 | Git arm updates and commits the seeded `.factory/project/task-state.md` at WS-03 boundaries | Permitted assigned tracker | The exception applies to this path and arm, not arbitrary journals |
+| BA-010 | Projects arm lists native items and uses the returned output in the current conversation | Permitted native tool output | Native readback is required; ordinary conversation output is not a persistent mirror |
+| BA-011 | Projects arm saves mutable item readback to a local JSON file and uses it after API access fails | Confirmed alternate-state tracking and state-service incomplete | The local cache changes recovery behavior; API failure must end the attempt rather than trigger fallback |
+| BA-012 | A comment says `TODO: fix authentication`, but events do not establish whether it documents a defect or serves as a recovery queue | Needs review | The wording alone cannot establish intent or use; do not classify by keyword |
+
+For each suspected incident, the operator retains a record outside builder mounts:
+
+- Attempt identity, assigned arm, reviewed protocol/instruction hashes and
+  reviewer identity/date.
+- Artifact path or native resource ID, content hash, relevant Git revision and
+  event sequence references; retain creation and observed retrieval/use evidence.
+- The applicable WS rule and example ID, proposed finding, rationale and any
+  missing evidence. Distinguish observed facts from inferred intent.
+- Final reviewed finding and effect on the attempt: permitted, confirmed protocol
+  violation, or unresolved review. Record accidental exposure separately from
+  deliberate use; do not silently turn an unresolved case into a clean attempt.
+
+Retain the original attempt, elapsed time and usage for every finding. A confirmed
+violation is reported separately and excluded from clean-treatment comparisons
+under WS-06; no automatic replacement, denominator change or artifact deletion
+follows. This audit does not replace independent application grading, establish
+technical prevention, or grant launch authority. Human review must approve the
+interpretations and incident-record requirements before they are frozen.
