@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluation.evidence import Attempt
-from evaluation.sandbox import Sandbox, capture_tree, disjoint, listing_rows, stopped_from_listing
+from evaluation.sandbox import Sandbox, capture_tree, disjoint, listing_rows, stopped_from_listing, verify_local_template_cache
 
 
 class SandboxTest(unittest.TestCase):
@@ -170,6 +170,36 @@ assert changed
             box.stopped = True
             with self.assertRaises(ValueError):
                 box.exec_argv(["true"])
+
+    def test_snapshot_binding_preserves_mounts_and_refuses_wrong_role_or_unbound_tags(self):
+        spec=self.root/'spec';spec.mkdir();control=self.root/'control';control.mkdir()
+        binding=dict(reference='factory-req007-builder:0123456789abcdef',
+                     manifest_digest='sha256:'+'a'*64, archive_sha256='b'*64)
+        with Attempt(control/'logs',{}) as attempt:
+            box=Sandbox(attempt,self.project,spec,control,port=18080,template=binding)
+            binding['reference']='changed:latest'
+            argv=box.create_argv()
+            self.assertEqual(argv[argv.index('--pull')+1],'never')
+            self.assertEqual(argv[argv.index('--template')+1],'factory-req007-builder:0123456789abcdef')
+            self.assertEqual(argv[-2:],[str(self.project),str(spec)+':ro'])
+            for value in ({'reference':'ordinary:latest'},
+                          dict(box.template,reference='factory-req007-grader:0123456789abcdef'),
+                          dict(box.template,manifest_digest='a'*64),
+                          dict(box.template,archive_sha256=''),
+                          dict(box.template,unexpected=True)):
+                with self.subTest(value=value), self.assertRaises(ValueError):
+                    Sandbox(attempt,self.project,spec,control,port=18080,template=value)
+
+    def test_native_cache_binding_refuses_changed_missing_or_duplicate_snapshots(self):
+        binding=dict(reference='factory-req007-builder:0123456789abcdef',
+                     manifest_digest='sha256:'+'a'*64,archive_sha256='b'*64)
+        entry=dict(repository='docker.io/library/factory-req007-builder',
+                   tag='0123456789abcdef',id='a'*12,flavor='codex-docker')
+        self.assertEqual(verify_local_template_cache({'images':[entry]},binding,'builder'),binding)
+        for entries in ([],[entry,entry],[dict(entry,id='c'*12)],
+                        [dict(entry,flavor='shell-docker')],[dict(entry,tag='latest')]):
+            with self.subTest(entries=entries), self.assertRaises(ValueError):
+                verify_local_template_cache({'images':entries},binding,'builder')
 
     def test_inspected_name_must_match_role_and_owned_format(self):
         spec=self.root/'spec';spec.mkdir();control=self.root/'control';control.mkdir()

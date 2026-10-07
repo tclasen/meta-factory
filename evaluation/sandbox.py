@@ -58,13 +58,51 @@ def stopped_from_listing(text, name):
     return len(matches) == 1 and matches[0][2] == "stopped"
 
 
+def local_template_binding(value, role):
+    """Validate operator-owned snapshot provenance; this does not inspect a cache."""
+    if value is None:
+        return None
+    if (role not in ('builder', 'grader') or not isinstance(value, dict)
+            or set(value) != {'reference', 'manifest_digest', 'archive_sha256'}
+            or not isinstance(value['reference'], str)
+            or not re.fullmatch('factory-req007-' + role + r':[0-9a-f]{16}', value['reference'])
+            or not isinstance(value['manifest_digest'], str)
+            or not re.fullmatch(r'sha256:[0-9a-f]{64}', value['manifest_digest'])
+            or not isinstance(value['archive_sha256'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', value['archive_sha256'])):
+        raise ValueError('Verified role-specific local template binding required')
+    return dict(value)
+
+
+def verify_local_template_cache(snapshot, binding, role):
+    """Crosscheck native short cache IDs against independently verified OCI exports.
+
+    sbx 0.47 lists twelve digest characters and starts saved templates by tag.
+    This sanity check does not replace full exported archive/blob verification.
+    It grants no readiness or launch authority.
+    """
+    binding = local_template_binding(binding, role)
+    if binding is None or not isinstance(snapshot, dict) or not isinstance(snapshot.get('images'), list):
+        raise ValueError('Native local template cache snapshot required')
+    repository, tag = binding['reference'].split(':')
+    matches = [entry for entry in snapshot['images'] if isinstance(entry, dict)
+               and entry.get('repository') == 'docker.io/library/' + repository
+               and entry.get('tag') == tag]
+    expected_flavor = 'codex-docker' if role == 'builder' else 'shell-docker'
+    if (len(matches) != 1 or matches[0].get('id') != binding['manifest_digest'][7:19]
+            or matches[0].get('flavor') != expected_flavor):
+        raise ValueError('Local template cache identity missing, changed or ambiguous')
+    return binding
+
+
 def sandbox_create_argv(project, specification, *, name, port, role,
-                        project_readonly=False, primary_workspace=None):
+                        project_readonly=False, primary_workspace=None, template=None):
     """Pure command rendering shared by dry-run planning and live creation."""
     if (role not in ('builder', 'grader') or type(port) is not int or not 1024 <= port <= 65535
             or not isinstance(name, str) or not re.fullmatch('factory-eval-'+role+'-[0-9a-f]{16}', name)
             or type(project_readonly) is not bool):
         raise ValueError('Invalid planned sandbox identity, role or port')
+    template = local_template_binding(template, role)
     project, specification = disjoint(project, specification)
     primary = Path(primary_workspace).resolve() if primary_workspace is not None else None
     if project_readonly != (primary is not None):
@@ -75,15 +113,17 @@ def sandbox_create_argv(project, specification, *, name, port, role,
     mounts = ([str(primary)] if primary is not None else [])
     mounts += [str(project)+(':ro' if project_readonly else ''), str(specification)+':ro']
     return ['sbx', 'create', '--name', name, '--cpus', '8', '--memory', '16g',
-            '--skills', 'off', '--publish', f'127.0.0.1:{port}:8080',
+            '--skills', 'off', *(['--pull', 'never', '--template', template['reference']] if template else []),
+            '--publish', f'127.0.0.1:{port}:8080',
             'codex' if role=='builder' else 'shell', *mounts]
 
 
 class Sandbox:
     def __init__(self, attempt, project, specification, controller, *, port, role="builder",
-                 project_readonly=False, primary_workspace=None, planned_name=None):
+                 project_readonly=False, primary_workspace=None, planned_name=None, template=None):
         if role not in ("builder", "grader") or isinstance(port, bool) or not isinstance(port, int) or not 1024 <= port <= 65535:
             raise ValueError("Invalid sandbox role/port")
+        self.template = local_template_binding(template, role)
         self.project_readonly = bool(project_readonly)
         self.project, self.specification = disjoint(project, specification)
         self.primary_workspace = Path(primary_workspace).resolve() if primary_workspace else None
@@ -113,7 +153,7 @@ class Sandbox:
     def create_argv(self):
         return sandbox_create_argv(self.project, self.specification, name=self.name,
             port=self.port, role=self.role, project_readonly=self.project_readonly,
-            primary_workspace=self.primary_workspace)
+            primary_workspace=self.primary_workspace, template=self.template)
 
     def create(self):
         if self.creation_attempted or self.creation_checked:

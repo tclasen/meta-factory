@@ -2522,3 +2522,22 @@ UV_PYTHON_DOWNLOADS=automatic uv run --isolated --managed-python --python 3.13 -
 This invocation prepares a plan. Add `--execute` only under the assigned native
 fixture authorization. Manifest binding is not full protocol freeze or launch
 authority; the immutable body identifies the manifest and fixture purpose.
+
+
+`Sandbox(..., template=binding)` can use an operator-owned local snapshot. The
+binding has exactly `reference` (`factory-req007-builder:<16 hex>` or the grader
+equivalent), `manifest_digest` (full SHA-256 OCI manifest identity), and
+`archive_sha256` (full export identity). It renders `--pull never --template`
+with the role-specific local tag, preserving existing resource and mount rules.
+Absent bindings preserve the original kit behavior. This option does not approve
+an export or establish readiness.
+
+Before creation, callers must independently verify the export and all OCI blob
+digests, then crosscheck `sbx template ls --json` using
+`verify_local_template_cache(snapshot, binding, role)`. The pinned sbx 0.47 local
+interface returns only twelve digest characters and starts saved snapshots by
+tag; direct full-digest startup attempted to pull an unpublished image. Cache
+crosschecking is a sanity check alongside full export verification, not a claim
+that the CLI supplies a complete cryptographic runtime attestation. Missing,
+changed, wrong-role or duplicate cache identities refuse the crosscheck. Keep
+exports and verification evidence outside builder mounts.
