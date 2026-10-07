@@ -319,6 +319,14 @@ checks. The selected interface is recorded; there is no automatic interface
 switch or token-scope expansion. Retain the original failed fixture and freeze
 the verified native interface before any comparison.
 
+Readback accounts for observed GitHub visibility delay: each check polls the
+complete native listing for at most 15 seconds, with 250-ms waits between
+mismatches and command deadlines bounded by the remaining budget. Every read and
+match/mismatch observation is retained. Transport/authentication failures stop
+immediately; mutations and attempts are never retried by this polling. The native
+Title field is verified alongside immutable draft content. Freeze this visibility
+policy before a comparison and include its requests and waits in arm overhead.
+
 Each attempt prints a unique evidence directory under
 `.factory-planning/projects-state-logs/` at startup and completion. It retains
 bounded command stdout/stderr, exit statuses, UTC times, CLI version, factory

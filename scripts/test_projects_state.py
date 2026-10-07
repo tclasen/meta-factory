@@ -28,8 +28,8 @@ class Fixture:
         self.deadline = time.monotonic() + seconds
         self.sequence = 0
 
-    def command(self, label, argv):
-        remaining = self.deadline - time.monotonic()
+    def command(self, label, argv, *, deadline=None):
+        remaining = min(self.deadline, self.deadline if deadline is None else deadline) - time.monotonic()
         if remaining <= 0:
             raise TimeoutError('Projects fixture deadline expired')
         self.sequence += 1
@@ -40,11 +40,11 @@ class Fixture:
             raise RuntimeError('Native command failed; inspect retained check receipt')
         return (self.attempt.directory / name / 'stdout.log').read_text()
 
-    def graphql(self, label, query, variables):
+    def graphql(self, label, query, variables, *, deadline=None):
         # Credentials stay in gh's inherited authentication, never request/log data.
         request = self.attempt.directory / f'request-{self.sequence + 1:03d}.json'
         atomic_json(request, dict(query=query, variables=variables))
-        data = json.loads(self.command(label, ['gh', 'api', 'graphql', '--input', str(request)]))
+        data = json.loads(self.command(label, ['gh', 'api', 'graphql', '--input', str(request)], deadline=deadline))
         if data.get('errors') or not isinstance(data.get('data'), dict):
             raise RuntimeError('GraphQL returned errors or missing data')
         return data['data']
@@ -65,7 +65,7 @@ class Fixture:
         argv += ['--single-select-option-id', option] if option else ['--text', text]
         self.command('native-item-edit', argv)
 
-    def read_items(self, project):
+    def read_items(self, project, *, deadline=None):
         query = '''query($project: ID!, $after: String) {
           node(id: $project) { ... on ProjectV2 {
             items(first: 1, after: $after) { pageInfo { hasNextPage endCursor }
@@ -81,7 +81,7 @@ class Fixture:
         }'''
         result = {}; cursor = None; seen = set()
         for _ in range(10):
-            data = self.graphql('paginated-read', query, dict(project=project, after=cursor))
+            data = self.graphql('paginated-read', query, dict(project=project, after=cursor), deadline=deadline)
             page = data['node']['items']
             for item in page['nodes']:
                 if item['id'] in result or item['fieldValues']['pageInfo']['hasNextPage']:
@@ -101,6 +101,21 @@ class Fixture:
                 raise ValueError('Missing or repeated pagination cursor')
             seen.add(cursor)
         raise ValueError('Fixture pagination bound exceeded')
+
+    def verify_items(self, project, expected):
+        # Read retries reconcile service visibility; they never retry a mutation
+        # or a failed command, switch an arm, or launch a replacement attempt.
+        deadline = min(self.deadline, time.monotonic() + 15)
+        while True:
+            observed = self.read_items(project, deadline=deadline)
+            matches = observed == expected
+            self.attempt.emit('controller', 'projects.readback', dict(matches=matches))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Native readback did not settle within 15 seconds')
+            if matches:
+                return observed
+            time.sleep(min(0.25, remaining))
 
 
 def exercise(fixture, owner, report):
@@ -166,14 +181,11 @@ def exercise(fixture, owner, report):
         items.append(item)
         fixture.edit(project['id'], item, identities['Work package'], text=identifier)
         fixture.edit(project['id'], item, identities['Status'], option=options['Todo'])
-        expected[item] = dict(content=content, fields={'Work package': identifier, 'Status': 'Todo'})
+        expected[item] = dict(content=content, fields={'Title': content['title'], 'Work package': identifier, 'Status': 'Todo'})
     report['items'] = items
     atomic_json(fixture.attempt.directory / 'summary.json', report)
     def verify():
-        observed = fixture.read_items(project['id'])
-        if observed != expected:
-            raise ValueError('Native readback differs from immutable identity or expected state')
-        return observed
+        return fixture.verify_items(project['id'], expected)
     verify()
     for index, state in enumerate(('In progress', 'Blocked', 'In progress', 'Done', 'In progress'), 1):
         item = items[0]

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -17,6 +18,35 @@ def page(identifier, *, more=False, cursor=None, fields_more=False):
 
 
 class ProjectsScriptTest(unittest.TestCase):
+    def test_visibility_delay_is_polled_without_mutation_and_is_accounted(self):
+        attempt = SimpleNamespace(emit=lambda *args: events.append(args))
+        events = []; clock = [0]
+        fixture = script.Fixture(attempt, 100)
+        expected = {'item': {'fields': {'Title': 'Frozen title', 'Status': 'Todo'}}}
+        with patch.object(fixture, 'read_items', side_effect=[{}, expected]) as reads, \
+                patch.object(fixture, 'edit', side_effect=AssertionError('No mutation retry')), \
+                patch.object(script.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(script.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            self.assertEqual(fixture.verify_items('project', expected), expected)
+        self.assertEqual(reads.call_count, 2)
+        self.assertEqual(clock[0], 0.25)
+        self.assertEqual([event[2]['matches'] for event in events], [False, True])
+
+    def test_wrong_state_is_retained_as_failure_after_bounded_polling(self):
+        clock = [0]; fixture = script.Fixture(SimpleNamespace(emit=lambda *args: None), 100)
+        fixture.deadline = 0.5
+        with patch.object(fixture, 'read_items', return_value={}), \
+                patch.object(script.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(script.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)):
+            with self.assertRaises(TimeoutError): fixture.verify_items('project', {'expected': 'state'})
+        self.assertEqual(clock[0], 0.5)
+
+    def test_readback_transport_failure_is_not_retried(self):
+        fixture = script.Fixture(SimpleNamespace(emit=lambda *args: None), 100)
+        with patch.object(fixture, 'read_items', side_effect=RuntimeError('State service failed')) as reads:
+            with self.assertRaises(RuntimeError): fixture.verify_items('project', {'expected': 'state'})
+        self.assertEqual(reads.call_count, 1)
+
     def test_explicit_graphql_edit_uses_native_values_without_cli_scope_expansion(self):
         fixture = script.Fixture(None, 10, state_interface='graphql')
         reply = {'updateProjectV2ItemFieldValue': {'projectV2Item': {'id': 'owned-item'}}}
