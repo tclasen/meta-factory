@@ -3789,6 +3789,41 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_source_b
 ```
 
 
+### Native scale sample observations
+
+A native development fixture now prepares the full disclosed APP-014 sample
+through the application's documented JSON seed command and public API. Fifty
+independently specified accounts are checked through authenticated identity reads
+and administrator membership pages. Identity-only rechecks bracket data loading;
+they retain the expected roster and roles without assuming empty tenants.
+
+The protected loader independently creates 1,000 cases per tenant, 100 comments
+on one case in each tenant, and twenty 1 MiB evidence objects. It reads back case,
+comment and evidence resources, ordering and counts, and downloads every object
+to compare its bytes and headers. The completed native receipt records 2,000
+cases, 200 comments, twenty uploads/downloads and fifty authenticated users.
+No application source repair or historical candidate rescore is performed; the
+only captured-source change is the separately disclosed diagnostic PostgreSQL
+data directory. This does not establish complete runtime source attestation.
+
+A new partial registry adds the existing case-scale read oracle. Its fourteen
+model controls and twelve actual protected-child/HTTP controls pass, including
+wrong rows, resources, counts, pagination, ordering, tenant leakage and filter
+semantics. Registry checks preserve all prior source bytes, cases and seven
+implementation-complete flags; an absent independent scale fixture remains
+inconclusive before application access. The registry has 77 groups mapped to all
+36 disclosed criteria and remains unapproved, with 29 criteria incomplete.
+
+The native case-scale read group passed against the independently loaded sample.
+Its VM bridge completed 7,017 connections without errors or active connections
+at cleanup. Owned cluster and volume absence, sandbox stop, bridge teardown,
+private-workspace removal and unchanged global policy were verified. Earlier
+preparation and registry-validator failures remain retained. These observations
+establish the sample and the particular read/filter checks, not the entire
+AC-031 support envelope, concurrent comment enforcement, approved resource
+allocation, healthy/warm-service conditions, latency or export timing. Acceptance
+remains unset; full coverage review and suite freeze are separate work.
+
 ### Operator-selected cases within one protected registry
 
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
