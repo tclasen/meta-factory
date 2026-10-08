@@ -21,6 +21,7 @@ from .job_broker import export_identity
 
 COMMAND_ALLOWANCE = 150  # 135-second command ceiling plus scheduling allowance.
 FAULT_ALLOWANCE = 630    # Four commands, 60-second body, plus scheduling allowance.
+RESTORATION_OBSERVER_ALLOWANCE = 60
 
 
 class FaultRuntime:
@@ -28,7 +29,8 @@ class FaultRuntime:
                  monotonic_deadline, wall_deadline, operation=workload_operation,
                  monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation,
                  audit_binding=None, database_peer=None, database_peer_check=None,
-                 storage_worker_restart=False, worker_restart_context=None):
+                 storage_worker_restart=False, worker_restart_context=None,
+                 restoration_observers=None):
         positive(monotonic_deadline, 'fault monotonic deadline')
         positive(wall_deadline, 'fault wall deadline')
         audit_enabled = audit_binding is not None
@@ -54,6 +56,11 @@ class FaultRuntime:
         service_probes = {} if service_probes is None else service_probes
         if not isinstance(service_probes, dict) or not set(service_probes) <= set(workloads):
             raise ValueError('Service probes must belong to reviewed fault roles')
+        restoration_observers = {} if restoration_observers is None else restoration_observers
+        if (not isinstance(restoration_observers, dict)
+                or not set(restoration_observers) <= set(service_probes)
+                or any(not callable(observer) for observer in restoration_observers.values())):
+            raise ValueError('Restoration observers require trusted callbacks and independent service probes')
         if type(storage_worker_restart) is not bool:
             raise ValueError('Compound restart selection must be a boolean')
         if worker_restart_context is not None and (
@@ -70,8 +77,11 @@ class FaultRuntime:
         self.held_workloads = {}
         self.mutation_lock = threading.RLock()
         self.service_probes = copy.deepcopy(service_probes)
+        self.restoration_observers = dict(restoration_observers)
         self.service_runner = service_runner
         self.fault_allowance = (FAULT_ALLOWANCE + (120 if service_probes else 0)) if workloads else FAULT_RESERVE
+        if restoration_observers:
+            self.fault_allowance += RESTORATION_OBSERVER_ALLOWANCE
         self.workload_fault_allowance = self.fault_allowance
         if storage_worker_restart:
             self.fault_allowance = 2 * self.workload_fault_allowance + 6 * COMMAND_ALLOWANCE
@@ -92,6 +102,7 @@ class FaultRuntime:
                                                    'kubectl_prefix': kubectl_prefix,
                                                    'wall_deadline': wall_deadline, 'service_probes': service_probes,
                                                    'audit_enabled': audit_enabled,
+                                                   'restoration_observer_roles': sorted(restoration_observers),
                                                    'storage_worker_restart': storage_worker_restart})
         self.check(self.fault_allowance)
         actions = {('storage', 'worker'): self._restart_worker_under_storage} if storage_worker_restart else {}
@@ -170,6 +181,22 @@ class FaultRuntime:
                         self.held_workloads.pop(role, None)
                 if role in self.service_probes:
                     verify_service('recovery', 'available')
+                observer = self.restoration_observers.get(role)
+                if observer is not None:
+                    self.check(RESTORATION_OBSERVER_ALLOWANCE)
+                    receipt = {'role': role, 'resource': copy.deepcopy(resource),
+                               'workload_restored_verified': True,
+                               'service_recovered_verified': True}
+                    atomic_json(attempt.directory / 'restoration-observer-input.json', receipt)
+                    started, wall_started = self.monotonic(), self.wall()
+                    verified = observer(resource=copy.deepcopy(resource), evidence_directory=attempt.directory)
+                    elapsed, wall_elapsed = self.monotonic() - started, self.wall() - wall_started
+                    self.check(0)
+                    if (verified is not True or not 0 <= elapsed < RESTORATION_OBSERVER_ALLOWANCE
+                            or not 0 <= wall_elapsed < RESTORATION_OBSERVER_ALLOWANCE):
+                        raise FaultRestoreError('Restored peer observation incomplete or late')
+                    atomic_json(attempt.directory / 'restoration-observer-result.json',
+                                {'outcome': 'restored_peer_verified', 'elapsed_seconds': elapsed})
                 result['outcome'] = 'fault_restored'
             except BaseException as error:
                 result['error_type'] = type(error).__name__

@@ -2025,6 +2025,23 @@ neither a claim observation nor a successful interruption receipt by itself;
 the existing workload and paused-job verification remains required. It does not
 change the restart timing bounds or permit restarting after the running clock.
 
+`FaultRuntime(restoration_observers={role: callback})` optionally binds trusted
+replacement-reader observers to roles with independent Service probes. After
+workload restoration and verified Service recovery, the parent writes a private
+`restoration-observer-input.json` receipt and calls the observer with a copied
+resource identity and its fault evidence directory. Only an exact `True` result
+within sixty seconds on both parent clocks permits restoration acknowledgment.
+The observer must bound its own operations, independently bind the new peer and
+commit its reader state before returning; this hook cannot terminate a hung
+callback. Failure, lifetime revocation or late completion aborts the capability
+and leaves the fault result incomplete even when the workload was restored.
+Observer selection adds sixty seconds to each workload-fault admission reserve
+and is recorded in the private scope. Standard staging with a paused reader then
+requires 5395 seconds when observers are configured, within the existing outer
+grading allowance; it does not extend the grading deadline. No observer is called
+after a failed recovery or an exceptional fault body, and no failed read triggers
+automatic peer rediscovery.
+
 The reclaim oracle must use this paused snapshot's lease fingerprint and confirm
 an active processed lease. A job that finished or expired before suspension does
 not establish an interrupted-lease precondition, even if an earlier poll saw it

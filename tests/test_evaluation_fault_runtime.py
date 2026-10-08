@@ -123,6 +123,84 @@ class FaultRuntimeTest(unittest.TestCase):
         self.assertEqual(self.state['replicas'], 1)
         self.assertTrue(runtime.broker.aborted)
 
+    def test_restored_peer_observer_runs_after_service_recovery_before_acknowledgment(self):
+        phases=[]
+        def service(attempt, transport, *, label, configuration, mode):
+            phases.append(label)
+            return {'outcome':'service_'+mode+'_verified'}
+        def observer(*, resource, evidence_directory):
+            self.assertEqual(phases[-1],'service-recovery')
+            self.assertEqual(self.state['replicas'],1)
+            self.assertEqual(resource,self.resource)
+            proof=json.loads((evidence_directory/'restoration-observer-input.json').read_text())
+            self.assertIs(proof['workload_restored_verified'],True)
+            self.assertIs(proof['service_recovered_verified'],True)
+            self.assertFalse((evidence_directory/'result.json').exists())
+            resource['uid']='mutated-copy'
+            phases.append('observer')
+            return True
+        runtime=self.runtime(service_probes={'storage':{}},service_runner=service,
+                             restoration_observers={'storage':observer})
+        with remote_fault(runtime.broker.configuration,'storage'):pass
+        self.assertTrue(runtime.broker.wait_idle(2))
+        self.assertEqual(phases,['service-baseline','service-outage','service-recovery','observer'])
+        self.assertEqual(runtime.workloads['storage']['uid'],'storage-uid')
+        evidence=next(runtime.directory.glob('fault-*/restoration-observer-result.json'))
+        self.assertEqual(json.loads(evidence.read_text())['outcome'],'restored_peer_verified')
+
+    def test_unverified_service_recovery_never_invokes_peer_observer(self):
+        def service(attempt, transport, *, label, configuration, mode):
+            return {'outcome':'incomplete' if label=='service-recovery' else 'service_'+mode+'_verified'}
+        runtime=self.runtime(service_probes={'storage':{}},service_runner=service,
+            restoration_observers={'storage':lambda **_:self.fail('Unverified restoration exposed')})
+        with self.assertRaises(FaultRestoreError):
+            with remote_fault(runtime.broker.configuration,'storage'):pass
+        self.assertEqual(self.state['replicas'],1)
+
+    def test_exceptional_fault_body_restores_without_refreshing_peer(self):
+        runtime=self.runtime(service_probes={'storage':{}},
+            service_runner=lambda *a,**k:{'outcome':'service_'+k['mode']+'_verified'},
+            restoration_observers={'storage':lambda **_:self.fail('Exceptional body exposed')})
+        with self.assertRaisesRegex(RuntimeError,'body failed'):
+            with runtime._fault('storage'):raise RuntimeError('body failed')
+        self.assertEqual(self.state['replicas'],1)
+        self.assertFalse(list(runtime.directory.glob('fault-*/restoration-observer-input.json')))
+
+    def test_failed_or_late_peer_observer_suppresses_successful_restoration_receipt(self):
+        for variant in ('false','truthy','exception','monotonic-late','wall-late','revoked'):
+            with self.subTest(variant=variant):
+                self.root=Path(self.temp.name)/variant;self.root.mkdir()
+                self.clock=0;self.wall=0
+                def observer(**_):
+                    if variant=='exception':raise RuntimeError('Private adapter unavailable')
+                    if variant=='monotonic-late':self.clock=60
+                    if variant=='wall-late':self.wall=60
+                    if variant=='revoked':runtime.revoked.set()
+                    return False if variant=='false' else 1 if variant=='truthy' else True
+                runtime=self.runtime(service_probes={'storage':{}},
+                    service_runner=lambda *a,**k:{'outcome':'service_'+k['mode']+'_verified'},
+                    restoration_observers={'storage':observer})
+                with self.assertRaises(FaultRestoreError):
+                    with remote_fault(runtime.broker.configuration,'storage'):pass
+                self.assertTrue(runtime.broker.wait_idle(2))
+                self.assertTrue(runtime.broker.aborted)
+                self.assertEqual(self.state['replicas'],1)
+                result=next(runtime.directory.glob('fault-*/result.json'))
+                self.assertEqual(json.loads(result.read_text())['outcome'],'fault_incomplete')
+                self.assertFalse(list(runtime.directory.glob('fault-*/restoration-observer-result.json')))
+
+    def test_restoration_observer_requires_independent_probe_and_adds_admission_reserve(self):
+        for value in ({'unknown':lambda **_:True},{'storage':True}):
+            with self.assertRaises(ValueError):self.runtime(restoration_observers=value)
+        runtime=self.runtime(service_probes={'storage':{}},
+            service_runner=lambda *a,**k:{'outcome':'service_'+k['mode']+'_verified'},
+            restoration_observers={'storage':lambda **_:True})
+        self.assertEqual(runtime.workload_fault_allowance,810)
+        self.clock=191
+        with self.assertRaises(FaultSetupError):
+            with runtime._fault('storage'):pass
+        self.assertEqual(self.called,[])
+
     def audit_options(self):
         self.audit_calls = []; self.audit_gate = None; self.peer_ok = True
         self.peer_checks = []
