@@ -505,6 +505,20 @@ missing extra package failed. Private metadata stayed outside logs; containers,
 sandbox and workspace were cleaned up and global policy stayed unchanged.
 These observations do not grade the captured candidate or complete AC-001.
 
+A separate fresh captured-source development check installed the candidate's
+32 pinned Python distributions into an owned temporary target using its pinned
+Python 3.12.9 image and pip 24.3.1. Wheels were required for this check; this
+profile does not establish source-build compatibility. Registry access was
+limited to PyPI and its file host on the owned sandbox, then disconnected before
+inspection. Two private `pip inspect --path` reports and complete installed-tree
+snapshots matched; the declared closure, including extras, passed with no missing,
+unlocked, mismatched or unmapped distributions. The target contained 2,866 files.
+Input/source, interpreter, peer and lifetime checks bracketed observations,
+and resource cleanup/global policy checks passed. No candidate application
+packages were imported by the controller or observer. This binds an isolated
+installation observation; original builder/application installation, source/build
+consumption, production image identity and acceptance remain unverified.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_python_dependencies.py' -v
 ```
