@@ -1899,6 +1899,37 @@ connections, zero errors and zero active connections. The failed protected
 journey did not reach its final ZIP/persistence checks or establish the recovery
 deadline; the separate prior artifact diagnostic retains its narrower evidence.
 
+The native persistent-outage retry journey next exposed a grading-order conflict.
+The original retry draft read the public failed-export endpoint while storage was
+still suspended, receiving HTTP 502 and a retained `fail` verdict after 145.403
+seconds. APP-012 requires storage-dependent API readiness and appropriate
+Kubernetes readiness probes, so this public read cannot be required for the
+APP-009 durable exhaustion clock. That HTTP result does not independently establish
+a retry-limit violation. The original source, registry and attempt remain intact.
+
+A separately versioned, partial/unapproved protected retry-v2 draft measures
+durable exhaustion during the hold and checks the public safe failure code after
+verified restoration. It retains the three-attempt and 120-running-second limits,
+artifact/event checks and source-data persistence checks. Its 22 retry controls
+and 22 HTTP/private-socket integration controls passed, including unavailable
+public routing during the hold and unsafe failure-code rejection after restoration.
+Neither suite coverage nor human review/freeze status was upgraded.
+
+The fresh native retry-v2 journey passed in 171.594 seconds. Independent durable
+observations progressed from queued/zero attempts to running/two attempts and
+failed/three attempts with zero completion events. Five parent-clock samples link
+to ten distinct verified API/worker observations; the final running-time bounds
+were 67.003–86.785 seconds. This supplies exhaustion evidence within the existing
+container-continuity operator envelope, excluding external pauses; it is not a
+CPU scheduling or useful-work measurement. After restoration, the public
+`storage_unavailable` code, retained case/evidence bytes, zero physical published
+objects and zero completion events verified. Storage Service recovery verified
+in 21.842 seconds. All restoration/cluster/volume/sandbox/workspace/global-policy
+checks passed; the bridge recorded 45 completed connections, zero errors and zero
+active connections. The original attempt's cleanup also verified. Disclosed
+PGDATA and write-control fixture interventions remain, with no original comparison
+rescoring, full acceptance, retained object-history proof or authoritative freeze.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
 ```
