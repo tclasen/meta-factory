@@ -611,6 +611,18 @@ uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_tra
 
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
+The current source capture preserves bytes and executable status, while storing
+files/directories with private `0600`/`0700` modes. Those storage modes must not
+be mistaken for original build-input permissions. Fresh native diagnostics found
+that carrying them into Docker `COPY` prevented nonroot application processes
+from reading source and nginx configuration. A development control matched all
+160 captured files to the retained builder bytes and restored the retained Unix
+modes on a private deployment copy: web and worker became ready, while a separate
+PostgreSQL data-directory startup failure still blocked the API. Original capture
+mode metadata and explicit deployment materialization remain required before
+source-fidelity acceptance. Retained-tree reconstruction is supplemental
+development evidence and does not revise frozen pilot results.
+
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
 restart the sandbox). Source capture reads regular files without executing Git,
 hooks or build scripts on the host; nonblocking source opens reject special-file
