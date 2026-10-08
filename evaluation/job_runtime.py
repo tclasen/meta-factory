@@ -65,8 +65,17 @@ class JobRuntime:
     def checked_peers(self, allowance):
         self.check(allowance)
         for callback in (self.database_peer_check, self.storage_peer_check):
-            callback(timeout=1)
+            self.invoke(callback, timeout=1)
             self.check(allowance)
+
+    def invoke(self, callback, *arguments, timeout):
+        """Suppress late results; readers still must bound their own operations."""
+        monotonic_started, wall_started = self.monotonic(), self.wall()
+        value = callback(*arguments, timeout=timeout)
+        if max(self.monotonic() - monotonic_started,
+               self.wall() - wall_started) > timeout:
+            raise JobObservationError('Job observation callback exceeded its timeout')
+        return value
 
     def _read(self, export_id):
         export_identity(export_id)
@@ -76,7 +85,7 @@ class JobRuntime:
             attempt.transition('preflight')
             result = {'outcome': 'job_observation_incomplete'}
             try:
-                value = self.database_read(export_id, timeout=READ_TIMEOUT)
+                value = self.invoke(self.database_read, export_id, timeout=READ_TIMEOUT)
                 self.checked_peers(READ_TIMEOUT + 5)
                 if not isinstance(value, dict) or not DATABASE_FIELDS <= value.keys():
                     raise JobObservationError('Durable job observation incomplete')
@@ -84,11 +93,12 @@ class JobRuntime:
                 durable = {key: value[key] for key in DATABASE_FIELDS}
                 project_lease(durable, export_id)
                 if self.artifact_history is not None:
-                    history = project_artifact_history(self.artifact_history(export_id, timeout=READ_TIMEOUT))
+                    history = project_artifact_history(self.invoke(
+                        self.artifact_history, export_id, timeout=READ_TIMEOUT))
                     count = history['current_objects']
                 else:
                     history = None
-                    count = self.artifact_count(export_id, timeout=READ_TIMEOUT)
+                    count = self.invoke(self.artifact_count, export_id, timeout=READ_TIMEOUT)
                 self.checked_peers(1)
                 physical = dict(durable, published_artifacts=count)
                 if history is not None:
@@ -108,7 +118,7 @@ class JobRuntime:
         export_identity(export_id)
         def database(allowance):
             self.check(allowance)
-            self.database_peer_check(timeout=1)
+            self.invoke(self.database_peer_check, timeout=1)
             self.check(allowance)
         database(LEASE_READ_RESERVE)
         with Attempt(self.directory / ('lease-' + uuid.uuid4().hex),
@@ -116,7 +126,7 @@ class JobRuntime:
             attempt.transition('preflight')
             result = {'outcome': 'lease_observation_incomplete'}
             try:
-                value = self.database_read(export_id, timeout=READ_TIMEOUT)
+                value = self.invoke(self.database_read, export_id, timeout=READ_TIMEOUT)
                 database(5)
                 observation = project_lease(value, export_id)
                 result['outcome'] = 'lease_observed'

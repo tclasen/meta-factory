@@ -216,6 +216,35 @@ class JobRuntimeTest(unittest.TestCase):
         with self.assertRaises(JobObservationError):read_lease(runtime.broker.configuration,self.export_id)
         self.assertNotIn('storage-peer',[call[0] for call in self.calls])
 
+    def test_late_callbacks_suppress_results_and_subsequent_reads_on_either_clock(self):
+        for clock in range(2):
+            for name, allowance in [('database-peer', 1), ('storage-peer', 1),
+                                    ('database', 15), ('objects', 15)]:
+                with self.subTest(clock=clock, callback=name):
+                    self.calls.clear(); self.actions.clear(); self.now[:] = [100, 100]
+                    runtime = self.runtime()
+                    def late(clock=clock, allowance=allowance):
+                        self.now[clock] += allowance + .01
+                    self.actions[name] = late
+                    with self.assertRaises(JobObservationError): self.read(runtime)
+                    self.assertEqual(self.calls[-1][0], name)
+                    runtime.close()
+
+    def test_late_history_and_durable_reads_are_inconclusive(self):
+        from evaluation.job_broker import read_lease
+        history = dict(versions=1, delete_markers=0, keys=1, current_objects=1,
+                       current_delete_markers=0, history_complete=False)
+        for durable in (False, True):
+            with self.subTest(durable=durable):
+                self.calls.clear(); self.actions.clear(); self.now[:] = [100, 100]
+                runtime = self.runtime() if durable else self.history_runtime(history)
+                name = 'database' if durable else 'history'
+                self.actions[name] = lambda: self.now.__setitem__(0, self.now[0] + 15.01)
+                with self.assertRaises(JobObservationError):
+                    (read_lease if durable else read_job)(runtime.broker.configuration, self.export_id)
+                self.assertEqual(self.calls[-1][0], name)
+                runtime.close()
+
     def test_durable_reserve_and_database_failure_are_independent_of_storage(self):
         from evaluation.job_broker import read_lease
         runtime=self.runtime();self.now[1]=174

@@ -1585,6 +1585,12 @@ and the outer guard bind the resulting `JobRuntime`; only its broker is passed t
 `run_suite`. Readers and peer configuration stay parent-side. The capability
 closes before the outer guard is released, including later resolver failures.
 A close failure prevents acceptance while sandbox cleanup still proceeds.
+The runtime also rejects callback results that exceed the supplied timeout on
+either its monotonic or wall clock: one second for peer checks and fifteen
+seconds for durable or physical reads. Late results cannot reach the grader or
+start a subsequent read. Callbacks must still bound their own subprocesses and
+network operations; checking elapsed time after return cannot terminate a
+hanging callback.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_deployment.py -v
