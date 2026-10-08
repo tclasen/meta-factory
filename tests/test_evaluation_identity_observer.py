@@ -13,7 +13,7 @@ from evaluation.identity_observer import USERS, observe_default_fixture
 from evaluation.verdicts import Inconclusive
 
 
-class IdentityObserverTest(unittest.TestCase):
+class LoopbackFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -26,6 +26,8 @@ class IdentityObserverTest(unittest.TestCase):
         self.fault = None
         self.requests = []
         self.sessions = {}
+        self.roles = copy.deepcopy(USERS)
+        self.case = None
         fixture = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
@@ -70,7 +72,7 @@ class IdentityObserverTest(unittest.TestCase):
                     self.answer(401,{})
                     return
                 if self.path == '/api/v1/auth/me':
-                    roles = USERS[username]
+                    roles = fixture.roles[username]
                     memberships = [dict(tenant_id=fixture.manifest['tenants'][name],roles=values)
                                    for name,values in roles.items()]
                     value = dict(id=fixture.manifest['users'][username],username=username,
@@ -88,7 +90,7 @@ class IdentityObserverTest(unittest.TestCase):
                             if '/'+identity+'/' in self.path)
                 if '/memberships?' in self.path:
                     items = [dict(user_id=fixture.manifest['users'][user],username=user,roles=values[name])
-                             for user,values in USERS.items() if name in values]
+                             for user,values in fixture.roles.items() if name in values]
                     value = dict(items=items,total=len(items),limit=100,offset=0)
                     if fixture.fault == 'extra-member':
                         value['items'].append(dict(user_id=str(uuid.uuid4()),username='unexpected',roles=['analyst']))
@@ -101,6 +103,9 @@ class IdentityObserverTest(unittest.TestCase):
                     if fixture.fault == 'nonempty':value.update(items=[{'id':str(uuid.uuid4())}],total=1)
                     elif fixture.fault == 'boolean-total':value['total']=False
                     self.answer(200,value)
+                elif '/cases/' in self.path:
+                    if fixture.fault == 'case-forbidden': self.answer(403, {'private':'must-not-be-logged'})
+                    else: self.answer(200 if fixture.case is not None else 404, fixture.case)
         self.server = ThreadingHTTPServer(('127.0.0.1',0),Handler)
         self.url = 'http://127.0.0.1:'+str(self.server.server_port)
         self.thread = threading.Thread(target=self.server.serve_forever,daemon=True)
@@ -109,6 +114,7 @@ class IdentityObserverTest(unittest.TestCase):
         self.addCleanup(self.thread.join,2)
         self.addCleanup(self.server.shutdown)
 
+class IdentityObserverTest(LoopbackFixture):
     def observe(self, **options):
         return observe_default_fixture(self.project,self.url,
             lifetime_check=options.pop('lifetime_check',lambda reserve:True), **options)

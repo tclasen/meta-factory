@@ -75,7 +75,9 @@ class Session:
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
             NoRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
-    def request(self, method, path, status, body=None):
+    def request(self, method, path, status, body=None, *, missing_ok=False):
+        if missing_ok and (method != 'GET' or status != 200):
+            raise ValueError('Missing-resource observation requires a GET')
         self.check(self.timeout)
         headers = {'Accept': 'application/json'}
         data = None
@@ -90,6 +92,13 @@ class Session:
             with self.opener.open(request, timeout=self.timeout) as response:
                 actual = response.status
                 content = response.read(65537)
+        except urllib.error.HTTPError as error:
+            missing = missing_ok and error.code == 404
+            error.close()
+            self.check(0)
+            if missing:
+                return None
+            raise Inconclusive('Fixture API transport unavailable') from None
         except (OSError, urllib.error.URLError):
             raise Inconclusive('Fixture API transport unavailable') from None
         self.check(0)

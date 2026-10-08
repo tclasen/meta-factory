@@ -2639,3 +2639,36 @@ is granted by this collector. Validate its projections and subprocess boundary:
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_topology.py' -v
 ```
+
+### Live repeat-bootstrap snapshots
+
+`bootstrap_observer.observe_repeat_fixture(base_url, identities, case_id,
+lifetime_check=..., timeout=5)` collects live identities and the complete canary
+case for `bootstrap.repeat_bootstrap` or an `OpsRuntime` observer callback. Bind
+`identities` from the independently verified fresh default fixture, and `case_id`
+from an operator-created case. Create and persist the canary and any membership
+change before establishing the protected verifier's before-state. Honor the
+callback's absolute deadlines with the existing `FixtureLifetime` checks; keep
+snapshots and expected canary outside application mounts.
+
+Every fixture account logs in and reads its current identity. Live administrator
+membership pages must agree with all those reads. Changed or removed memberships
+are observed as they exist rather than overwritten with the default roles. The
+alpha analyst reads the case; an actual 404 becomes `case: null`, which allows
+the independent preservation verifier to detect deletion. Other HTTP errors,
+inconsistent reads, unavailable administrator access and lost lifetime checks
+remain inconclusive. Sessions log out; credentials and session values are not
+returned. Requests use the fixed loopback origin with bounded response sizes,
+no environment proxy and no redirect following.
+
+This collector binds tenant aliases/IDs from the initial fixture. It does not
+independently query tenant display names or count database users without a tenant
+membership. It neither creates a case nor changes roles, supplies alternate seed
+input, freezes a suite, or establishes complete AC-002 coverage. The caller must
+run the protected semantic verifier on both snapshots and preserve abort/cleanup
+outcomes from the operations controller. Validate actual HTTP reads and the
+repeat command's before/after composition:
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_*observer.py' -v
+```
