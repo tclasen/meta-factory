@@ -1518,8 +1518,16 @@ Forty-nine browser tests passed with the mapping. A native synthetic content
 journey also passed when its server required the mapped origin: five Origin-
 bearing mutations matched, three expected writes persisted, and both relay hops
 completed 25 requests with verified cleanup and a clean private secret scan.
-Native wrong-origin controls remain inconclusive because their transport did
-not finish cleanly; they do not establish rejection behavior for this mapping.
+Earlier native wrong-origin controls remained inconclusive because their transport
+did not finish cleanly. Fixed relay diagnostics identified a missing shared lease
+read during monitoring. The relay now waits at most 100 ms for a current receipt
+after a missing-file error; it never reuses a cached lease and still validates
+identity, expiry and the grading deadline before forwarding. Fifty-one browser
+tests passed, including missing, expired and wrong-identity lease controls.
+A fresh focused native wrong-origin request then received the expected 403:
+one denial, zero writes, two completed relay requests and verified cleanup.
+This protocol control is separate from the protected application journey;
+earlier failed attempts remain retained.
 
 A nonce-owned Mac loopback service was reached from a separately guarded Docker
 Desktop bridge container using its fixed host gateway. The service thread and
