@@ -1736,6 +1736,39 @@ candidate and protected suite were unchanged, and no acceptance was recorded.
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
 ```
 
+### Abrupt process termination prerequisite
+
+`process_termination.terminate_process` provides a Linux-only SIGKILL primitive
+for an independently authorized process. Its private binding includes start
+ticks, effective credentials, executable identity, PID and mount namespaces,
+and a hash of the full cgroup observation. It opens a process file descriptor,
+checks the binding and operator authority again, signals only that descriptor,
+and waits for descriptor readability as exit evidence. There is no numeric-PID
+signal fallback. Changed identities, exited processes, expired deadlines,
+revoked authority and post-signal verification failures cannot return success.
+Init and the controller's own process are refused.
+
+The operator callback must independently bind the original sandbox, runtime,
+mapped container and controller, bound its own work, and stay valid after the
+expected target exit. The default five-second operation budget is capped at
+ten seconds and constrained by both outer deadlines. No raw process command,
+environment or cgroup text enters the result. The caller still owns restoration
+and its outer watchdog. This primitive does not prove replacement-worker
+absence, identify a Kubernetes worker, establish complete process history or
+demonstrate lease reclamation.
+
+Ten controls passed in a fresh owned Linux grader, including actual child exit
+with SIGKILL and a same-UID child's survival after a mismatched binding refusal.
+The Mac run passed eight mocked boundary controls and skipped the two Linux
+controls; it supplies no native Linux termination evidence. Sandbox stop,
+scratch removal and unchanged global policy were verified. Connecting the
+primitive to independently observed Kubernetes/CRI worker ownership remains
+necessary before the interrupted-lease fixture can use it.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
+```
+
 ### Independent physical artifact enumeration
 
 `job_storage.S3ListTransport` invokes a trusted AWS CLI prefix bound by the
