@@ -777,6 +777,28 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(len(observations),1)
         self.assertTrue(result['cleanup']['remote_termination_verified'])
 
+    def test_fixture_loader_accepts_boolean_isolated_membership_declaration(self):
+        for index,flag in enumerate((True,False)):
+            def runner(attempt,suite,target,**kwargs):
+                self.assertIs(target['isolated_membership_fixture'],flag)
+                return {'criteria':{},'accepted_packages':[],'project_success':False,'case_results':{}}
+            with Attempt(self.root/('membership-flag-'+str(index)),{}) as attempt:
+                report=self.run_grade(attempt,fixture_loader=lambda *args,**kwargs:
+                    {'isolated_membership_fixture':flag},runner=runner)
+            self.assertNotEqual(report.get('reason'),'grading_unavailable')
+            self.assertTrue(report['cleanup']['remote_termination_verified'])
+            shutil.rmtree(self.root/'project')
+
+    def test_fixture_loader_refuses_malformed_isolated_membership_declaration(self):
+        def forbidden(*args,**kwargs):raise AssertionError('Malformed declaration must not grade')
+        for index,flag in enumerate((1,'true',None,{},[])):
+            with Attempt(self.root/('invalid-membership-flag-'+str(index)),{}) as attempt:
+                report=self.run_grade(attempt,fixture_loader=lambda *args,**kwargs:
+                    {'isolated_membership_fixture':flag},runner=forbidden)
+            self.assertEqual(report['reason'],'grading_unavailable')
+            self.assertTrue(report['cleanup']['remote_termination_verified'])
+            shutil.rmtree(self.root/'project')
+
     def test_fixture_loader_not_called_after_failed_bootstrap(self):
         def loader(*args,**kwargs):self.fail('Fixture loader ran after failed bootstrap')
         with Attempt(self.root/'fixtures-no-bootstrap',{}) as attempt:

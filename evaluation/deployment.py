@@ -185,9 +185,11 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                        'twenty_export_fixture', 'integrated_fixture', 'network_fixture',
                        'foundation_fixture', 'documentation_fixture',
                        'attestation_fixture', 'disposal_fixture'}
+            flags = {'isolated_membership_fixture'}
             if (not isinstance(fixture, dict) or not fixture
-                    or not set(fixture) <= allowed
-                    or not all(isinstance(value, dict) for value in fixture.values())):
+                    or not set(fixture) <= allowed | flags
+                    or any(type(value) is not bool if name in flags else not isinstance(value, dict)
+                           for name, value in fixture.items())):
                 raise ValueError('Incomplete post-bootstrap fixture configuration')
             target = dict(target, **copy.deepcopy(fixture))
             remaining = grading_seconds - (time.monotonic() - grading_started)

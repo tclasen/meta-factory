@@ -2600,6 +2600,11 @@ The callback may return only dictionary-valued `tenants`, `accounts`,
 `network_fixture`, `foundation_fixture`, and `documentation_fixture` target fields.
 The callback may also return dictionary-valued `attestation_fixture` and
 `disposal_fixture`.
+It may return the boolean `isolated_membership_fixture` declaration for the
+last-administrator race. Nonboolean values refuse before grading. The declaration
+does not prove isolation: the operator must verify the fresh tenant's membership
+baseline, and the protected case independently requires exactly its two selected
+administrators before removing either membership.
 `integrated_fixture` carries the independently normalized seed
 identities and actor selection for a distinct protected two-tenant API journey;
 its presence does not establish fresh bootstrap, native seeding or suite acceptance.
