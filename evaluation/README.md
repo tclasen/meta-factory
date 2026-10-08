@@ -1628,6 +1628,25 @@ corrected validator verified the unchanged prior registry and focused source
 changes. These partial, unapproved drafts leave AC-025–027 incomplete and do not
 establish accepted packages, a suite freeze or a frozen comparison rescore.
 
+A separate rejection draft uses the same inline, preset-reason, status-text and
+keyboard-reselection bindings. It waits for the rejection control within the
+existing timeout and retains exact decision identity/reason/status and case
+version checks. Rejected exports must expose no enabled download control and
+return HTTP 409 with `export_not_ready` when content is requested.
+
+Thirty default Chromium workflow controls and eleven inline rejection controls
+passed, along with 25 binding checks. The inline controls reject altered actors,
+reasons and versions, wrongly closed cases or published exports, enabled download
+controls, exposed export bytes and incorrect readiness errors. A first native
+attempt failed because the operator binding copied the approval reason instead
+of the application's independently inspected rejection reason. That attempt and
+its clean transport/cleanup evidence remain retained. A fresh attempt with the
+corrected binding passed both rejection branches, forbidden-download checks and
+logout invalidation. Both browser hops and the closed Desktop proxy completed
+106 requests without disconnects or errors; all owned cleanup and unchanged
+global policy were verified. These results leave AC-025–027 incomplete, the suite
+unapproved and acceptance unset; no historical comparison outcome was changed.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
