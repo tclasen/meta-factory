@@ -90,6 +90,22 @@ class BrowserRuntimeTest(unittest.TestCase):
                 self.assertEqual(serve(config,lease,out),1)
                 factory.assert_not_called()
             self.assertFalse(json.loads((out/'result.json').read_text())['closed'])
+            result=json.loads((out/'result.json').read_text())
+            self.assertEqual(result['failure_phase'],'initial_lease')
+            self.assertEqual(result['failure_kind'],'exception')
+
+    def test_relay_lease_diagnostics_do_not_expose_invalid_contents(self):
+        lease=self.root/'lease';lease.mkdir();out=self.root/'out';out.mkdir()
+        config=dict(nonce='expected',wall_deadline=time.time()+5,upstream={},authority='127.0.0.1:18080')
+        for value,kind in [('secret invalid json','invalid_json'), ('{"nonce":"expected"}','invalid_field')]:
+            (lease/'lease.json').write_text(value)
+            with patch('evaluation.browser_relay.RelayServer') as factory:
+                self.assertEqual(serve(config,lease,out),1)
+                factory.assert_not_called()
+            result=json.loads((out/'result.json').read_text())
+            self.assertEqual(result['failure_phase'],'initial_lease')
+            self.assertEqual(result['failure_kind'],kind)
+            self.assertNotIn('secret',json.dumps(result))
 
     def test_relay_stop_identity_and_cleanup_failure_remain_inconclusive(self):
         lease=self.root/'lease';lease.mkdir();out=self.root/'out';out.mkdir()

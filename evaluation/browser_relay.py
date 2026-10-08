@@ -14,6 +14,7 @@ def serve(config, lease_directory, output):
     lease_directory, output = Path(lease_directory), Path(output)
     server = thread = None
     result = {'closed': False, 'transport': {}}
+    phase = 'initial_lease'
     def check():
         lease = json.loads((lease_directory / 'lease.json').read_text())
         now = time.time()
@@ -22,21 +23,31 @@ def serve(config, lease_directory, output):
             raise RuntimeError('Browser peer lease unavailable')
     try:
         check()
+        phase = 'transport_setup'
         server = RelayServer('/channel/app.sock', config['upstream'], config['authority'], check=check,
                              request_seconds=min(30, max(.01, config['wall_deadline'] - time.time())))
         thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': .05}, daemon=True)
         thread.start()
         atomic_json(output / 'ready.json', {'nonce': config['nonce']})
+        phase = 'lease_monitor'
         while True:
             check()
+            phase = 'stop_identity'
             stop = lease_directory / 'stop.json'
             if stop.exists():
                 if json.loads(stop.read_text()).get('nonce') != config['nonce']:
                     raise RuntimeError('Invalid relay stop identity')
                 break
+            phase = 'lease_monitor'
             time.sleep(.05)
-    except Exception:
+    except Exception as error:
         result['reason'] = 'relay_incomplete'
+        result['failure_phase'] = phase
+        result['failure_kind'] = ('permission' if isinstance(error, PermissionError) else
+                                  'missing_file' if isinstance(error, FileNotFoundError) else
+                                  'invalid_json' if isinstance(error, json.JSONDecodeError) else
+                                  'invalid_field' if isinstance(error, (KeyError, TypeError, ValueError)) else
+                                  'exception')
     finally:
         if server is not None:
             try:
