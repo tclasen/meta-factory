@@ -1879,6 +1879,26 @@ The full protected reclaim journey, recovery deadline and running-clock checks
 remain unverified; the explicit replacement-reader boundary still needs controller
 integration beyond this sequential native prototype.
 
+The subsequent fresh native fixture used the controller's restoration observer
+in the complete unchanged protected `export-lease-reclaim` journey. It selected
+the requested export through the parent restart context, verified the actual
+process interruption and held restart, and retained the protected verdict
+`fail`: `More than three durable processing attempts`. The journey took 189.617
+seconds. This independently confirms the attempt-limit contradiction through
+the complete protected execution path; it is not an authoritative suite freeze
+or a repair/rescore of the original comparison candidate.
+
+Cleanup of the failed case still exercised the new restoration handoff:
+independent storage Service recovery verified in 21.190 seconds, then the
+operator observer verified the replacement reader in 2.200 seconds before
+restoration acknowledgment. It preserved the original API process and persistent
+volume identities, with hash-bound parent receipt inputs. All workload/held
+restart receipts, owned cluster/volume absence, sandbox stop, scratch removal
+and unchanged global network policy verified. The bridge recorded 43 completed
+connections, zero errors and zero active connections. The failed protected
+journey did not reach its final ZIP/persistence checks or establish the recovery
+deadline; the separate prior artifact diagnostic retains its narrower evidence.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
 ```
