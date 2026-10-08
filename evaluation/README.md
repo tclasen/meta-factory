@@ -1830,6 +1830,20 @@ restoration; independently authorizing the new storage generation is still
 required. Candidate and protected suite remained unchanged, and the explicit
 write-control fixture precondition remains part of this development evidence.
 
+A further fresh native fixture exercised the parent-owned
+`worker_restart_context` handoff through the actual staging broker, using a
+thread-local export selection instead of a manually assigned shared export ID.
+The handler entered for the requested canonical export and exited after worker
+restoration. The independent paused and resumed reads retained the same active
+attempt-two fingerprint with zero completion events; the job subsequently
+reached ready on attempt three with exactly one completion event and no lease.
+The unchanged protected worker/API restart group passed in 23.455 seconds.
+Bridge cleanup recorded 67 completed connections, no errors and no active
+connections; owned cluster/volume absence, sandbox stop, workspace removal and
+unchanged global network policy were verified. The retired storage binding was
+still refused. This verifies the scoped handoff, with the same development
+fixture preconditions and outstanding artifact/timing limits described above.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
 ```
