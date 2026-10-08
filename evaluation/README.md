@@ -639,6 +639,21 @@ private `0600` file remained unreadable in both cases. Images, containers and
 the sandbox were cleaned up, with global network policy unchanged. These are
 synthetic permission controls, not application acceptance evidence.
 
+A fresh supplemental development bootstrap used the materializer with matched
+retained-tree mode metadata and again reached ready web, worker and object
+storage, while PostgreSQL blocked the API (bootstrap exit 1). Read-only checks
+bound the PostgreSQL Pod, PVC and local PV identities before and after inspecting
+the volume directory. Its owner was UID 0, group 999, mode `2777`; the pod was
+configured for UID/GID 999, `fsGroup: 999`, all capabilities dropped, and the
+volume root mounted at the default data path. A separate network-isolated Linux
+fixture reproduced `EPERM` when UID 999 tried to chmod that root-owned directory,
+while creating and chmodding an owned child succeeded. This supports a candidate
+data-path/ownership diagnosis, not a host checkout permission repair. Actual
+PostgreSQL process credentials and a repaired database startup remain unverified.
+The candidate, frozen captures and earlier pilot grades were unchanged; all
+owned test resources were cleaned up. Supplemental metadata does not supply
+missing original attestation for legacy captures.
+
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_source*.py' -v
 ```
