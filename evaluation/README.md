@@ -1742,6 +1742,25 @@ policy verified. Setup completed in 64 seconds under the original 180-second
 allowance. This is partial APP-011 evidence; the suite remains unapproved and
 acceptance unset, and earlier suites and comparison outcomes are unchanged.
 
+A separate tenant-list draft removes two undisclosed UI assumptions: pagination
+need not replace the visible page or offer a Previous button, and reload need
+not preserve tenant/search/filter selections. The reviewed binding selects
+replacement or append pagination; append checks the cumulative independently
+seeded rows. Reload observations reapply selections by keyboard. All three
+severity/status/assignee filters, literal search, tenant exclusion, ordering,
+exact API resources and pagination checks remain required. Excluded rows await
+removal within the existing timeout before the original absence assertion.
+
+Twenty-two Chromium controls passed across replacement, append and reset-on-reload
+profiles, including rejection of ignored tenant/search/pages/filters, foreign rows
+and dropped earlier append rows. Fifty-five binding/provenance checks passed;
+owned containers and helper servers were verified removed or stopped. A hash-bound
+source inventory confirms that the captured candidate offers tenant/search and
+100-row append pagination, but has no corresponding list filter controls. This
+is a source coverage gap, not a native missing-label failure or a full native
+list pass. The separate draft remains partial and unapproved; original suites,
+candidate source, comparison outcomes and acceptance remain unchanged.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
