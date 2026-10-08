@@ -1584,6 +1584,28 @@ completed 26 requests without errors; proxy closure and all owned cleanup were
 verified, with unchanged global policy. This single-group result leaves
 AC-025–027 incomplete and the suite unapproved. Earlier failures remain retained.
 
+The next protected drafts support keyboard selection of an operator-bound case
+in an inline detail view and assignment through a labeled user-ID textbox.
+Textbox assignment waits for the reviewed save confirmation, verifies the
+displayed value before and after refresh, and retains independent assignee and
+version checks. The original combobox/display-text path remains available.
+An explicit filename-text binding permits adjacent byte-count text while still
+requiring the complete literal filename to be visible. Exact API filename,
+actor, size, media type, hash and download-byte checks remain unchanged.
+
+A fresh native content journey passed assignment, inert comments, native file
+chooser transfer, evidence download, refresh and logout invalidation. Each
+browser hop and the Desktop proxy completed 64 requests without errors; proxy
+closure and all owned cleanup were verified, with unchanged global policy.
+Two sets of 21 Chromium content controls passed for the exact and adjacent-text
+filename paths, including unsafe filenames and altered metadata/bytes. Fifteen
+malformed-binding checks and five textbox assignment controls passed. The latter
+rejected wrong assignees/versions, missing save confirmation and lost displayed
+assignment after refresh. Earlier exact-text timeout attempts remain
+retained. This is partial APP-011 fixture evidence: reviewer, administrator,
+auditor and broader accessibility coverage remain incomplete; no suite freeze,
+accepted package or frozen comparison rescore is established.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
