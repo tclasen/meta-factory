@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from evaluation.evidence import Attempt, kill_group
-from evaluation.runtime import Session, _runtime_timing, run_session, validate
+from evaluation.runtime import Session, _runtime_frames, _runtime_timing, run_session, validate
 
 
 class RuntimeTest(unittest.TestCase):
@@ -102,6 +102,42 @@ class RuntimeTest(unittest.TestCase):
         for code in ["print('not json')", "print('x'*10000)"]:
             result = self.transport(code, max_stream_bytes=1000)
             self.assertEqual(result["outcome"], "infrastructure_incomplete")
+
+    def test_runtime_framing_is_independent_of_chunk_boundaries(self):
+        first = b'{"method":"fixture"}' + b' ' * 80
+        second = b'{"method":"fixture2"}'
+        stream = first + b'\n' + second + b'\n'
+        # The combined read exceeds the per-line limit; each line remains valid.
+        for chunk_size in (1, 7, 64, len(stream)):
+            with self.subTest(chunk_size=chunk_size):
+                pending, frames = b'', []
+                for offset in range(0, len(stream), chunk_size):
+                    ready, pending = _runtime_frames(pending + stream[offset:offset + chunk_size],
+                                                     line_limit=len(first))
+                    frames.extend(ready)
+                self.assertEqual(frames, [first, second])
+                self.assertEqual(pending, b'')
+        for suffix in (b'', b'\n', b'\n{}\n'):
+            with self.subTest(suffix=suffix):
+                with self.assertRaises(ValueError):
+                    _runtime_frames(first + b' ' + suffix, line_limit=len(first))
+
+    def test_maximum_payload_frame_and_following_terminal_event_are_accepted(self):
+        code = '''import sys,json
+for line in sys.stdin:
+ m=json.loads(line)
+ if m.get('method')=='initialize':print(json.dumps({'id':m['id'],'result':{}}),flush=True)
+ if m.get('method')=='thread/start':print(json.dumps({'id':m['id'],'result':{'thread':{'id':'t'}}}),flush=True)
+ if m.get('method')=='turn/start':
+  print(json.dumps({'id':m['id'],'result':{'turn':{'id':'u'}}}),flush=True)
+  notice=json.dumps({'method':'fixture/notice','params':{}})
+  terminal=json.dumps({'method':'turn/completed','params':{'threadId':'t','turn':{'id':'u','items':[],'status':'completed'}}})
+  sys.stdout.write(notice+' '*(1024*1024-len(notice))+'\\n'+terminal+'\\n')
+  sys.stdout.flush()
+'''
+        result = self.transport(code, builder_seconds=3)
+        self.assertEqual(result['outcome'], 'completed')
+        self.assertIsNone(result['runtime_failure'])
 
     def test_transport_failures_have_safe_distinct_diagnostics(self):
         cases = [

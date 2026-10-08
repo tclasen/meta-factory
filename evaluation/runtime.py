@@ -214,6 +214,19 @@ def _runtime_timing(started, requested, observed_end, cleaned_end, interrupted=N
         semantics='Builder interval begins when turn/start is queued for writing and ends when local observation stops. It includes native state work, service delays and interruption grace. Local cleanup is separate; remote stop is not established.')
 
 
+def _runtime_frames(buffer, line_limit=1024 * 1024):
+    """Bound each JSON payload, independently of OS read/chunk boundaries."""
+    lines = []
+    while b"\n" in buffer:
+        line, buffer = buffer.split(b"\n", 1)
+        if len(line) > line_limit:
+            raise ValueError("Runtime line limit exceeded")
+        lines.append(line)
+    if len(buffer) > line_limit:
+        raise ValueError("Runtime line limit exceeded")
+    return lines, buffer
+
+
 def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=60, grace_seconds=60,
                 max_stream_bytes=64 * 1024 * 1024):
     """Transport execution requires separately authorized sandbox/launch setup.
@@ -303,11 +316,9 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                             err.write(data)
                         else:
                             buffer += data
-                            if len(buffer) > 1024 * 1024:
-                                failure_location = "line_size_limit"
-                                raise ValueError("Runtime line limit exceeded")
-                            while b"\n" in buffer:
-                                line, buffer = buffer.split(b"\n", 1)
+                            failure_location = "line_size_limit"
+                            lines, buffer = _runtime_frames(buffer)
+                            for line in lines:
                                 failure_location = "message_decoding"
                                 message = json.loads(line)
                                 failure_location = "message_recording"
