@@ -3375,6 +3375,21 @@ with bridge, cluster, volume, sandbox and workspace cleanup and unchanged global
 policy. This tests the controlled two-administrator scenario, not all database
 schedules or the complete acceptance suite.
 
+A fresh native fixture also passed `content-api-restart` through the actual
+guarded fault broker. Independent Kubernetes observations bound the selected API
+Deployment UID before suspension. Strict topology initially refused a replica
+population left by bootstrap rollout; the fourth bounded observation was stable.
+Earlier observations and two stopped pre-grading attempts remain retained. No
+Pods were excluded to manufacture readiness, and stabilization consumed the
+existing grading budget.
+
+The fault suspended and restored the owned API workload. Existing sessions,
+case fields, comment/evidence metadata, safe download headers and exact evidence
+bytes survived the restart. All 60 bridge connections completed without errors;
+bridge, cluster, volume, sandbox and workspace cleanup passed, with global policy
+unchanged. This verifies the controlled restart scenario, while storage outages,
+worker lease/retry faults and full runtime acceptance remain separate checks.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
