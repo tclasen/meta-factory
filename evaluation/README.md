@@ -1382,6 +1382,16 @@ its private result. These distinguish isolation, source loading, transport and
 browser startup failures without serializing exception messages or target data.
 They do not change grading verdicts or containment requirements.
 
+The worker checks its Linux network namespace using two matching bounded
+interface/address/route snapshots. It permits dormant devices only when down,
+unaddressed and unrouted; it rejects active nonloopback links, assigned addresses,
+nonloopback routes, missing or malformed observations and changed configuration.
+This replaces counting sysfs entries, which also exposed `bonding_masters` and
+inactive tunnel devices in the native Docker Desktop `none` namespace. UID,
+effective capability and no-new-privileges checks remain, alongside the parent's
+independent Docker network/isolation verification. These are startup snapshots,
+not continuous network-history proof.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_worker.py -v
 ```

@@ -15,6 +15,7 @@ import time
 from urllib.parse import urlsplit
 
 from .browser import BROWSER_MODES
+from .browser_network import verify_loopback_network
 from .evidence import atomic_json, positive
 from .grading import contained_file, sha256
 from .http_relay import RelayServer
@@ -93,8 +94,9 @@ def invoke(case, module, browser, request_factory, target):
 
 
 def isolation_check():
-    if os.geteuid() == 0 or sorted(path.name for path in Path("/sys/class/net").iterdir()) != ["lo"]:
+    if os.geteuid() == 0:
         raise RuntimeError("Browser requires unprivileged loopback-only containment")
+    verify_loopback_network()
     status = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
     if int(status["CapEff"].strip(), 16) != 0 or status["NoNewPrivs"].strip() != "1":
         raise RuntimeError("Browser process privileges unavailable")
