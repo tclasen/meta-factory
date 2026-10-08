@@ -541,6 +541,47 @@ results do not grade captured candidates or complete AC-001.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_versions.py' -v
 ```
 
+`npm_transport.NpmTransport` collects native npm 10.9.2 consistency on a
+disposable operator-owned install peer. Its trusted prefix selects an exact peer
+ID and working directory. Before and after collection, independent callbacks
+must bind the complete captured manifest/lock, baseline configuration, tool/image
+identity and active owner guard. The current profile excludes workspaces,
+injected executables/configuration, `NODE_OPTIONS`, dry-run/global modes and
+unsupported tree settings. It checks the native version twice and runs `npm ci`
+with lifecycle scripts, audit and funding requests disabled; cached offline mode
+is the default. It never runs installers in the host checkout or application peer.
+
+Only successful completion or npm 10.9.2's specific `EUSAGE` lock-sync diagnostic
+produces an observed consistency verdict. Other errors, unavailable metadata,
+timeouts, excessive output, changed bindings or unknown versions remain
+inconclusive. This distinction uses the
+[selected npm implementation](https://github.com/npm/cli/blob/v10.9.2/lib/commands/ci.js),
+rather than classifying every install error as a broken lock. Complete stdout and
+stderr stay private in bounded memory; evidence contains byte counts, statuses,
+known error codes, hashes and timestamps. Remote cleanup must confirm no install
+processes remain, followed by a final input/tool/lifetime recheck. Client process
+groups are terminated locally; failed cleanup or final guards invalidate the
+verdict. Interruption receipts are retained before propagating the interruption.
+Callbacks and remote lifetime require an outer owner watchdog.
+
+Collection is bounded at 120 seconds and 4 MiB of combined output per command
+(defaults: 60 seconds and 1 MiB). Application installation, artifact provenance
+and source/build/runtime consumption remain separate; their flags stay false.
+This collector does not create or discover an application peer, seed its cache,
+authorize its registry network access or authenticate builder-written receipts.
+
+Seven local subprocess controls and five native controls passed. The native
+fixture used a pinned, network-isolated Node container with a loopback registry
+and operator-seeded metadata/cache. Valid installation passed; stale manifest
+and missing transitive entries produced observed false. Empty cache remained
+unavailable, and changed inputs invalidated an otherwise successful command.
+Baseline configuration, peer identity, source hashes, process absence and final
+cleanup were checked. These synthetic controls do not grade captured candidates.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_transport.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
