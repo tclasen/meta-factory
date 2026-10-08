@@ -1649,6 +1649,44 @@ Earlier refused connection and OID-discovery attempts are retained with verified
 cleanup. Raw metadata, SQL output, connection diagnostics and claim tokens were
 not logged. No acceptance or original-candidate rescoring was performed.
 
+Native storage diagnostics subsequently bound the API and storage Pod/container
+identities, Service UID/IP and ready EndpointSlice ownership around authenticated
+S3 requests. Credentials remained in the selected container; proxies and
+redirects were disabled for the standard-library reader. Signed bucket HEAD
+requests returned 200 from both the API and restored worker, through the numeric
+Service address and the configured `objectstore` hostname. The hostname resolved
+to the bound Service IP; invalid-signature controls returned 403. Repeated scoped
+listings initially found no objects while durable attempts advanced to three,
+then the job failed with `storage_unavailable` and no completion event. This
+establishes current-object observations, not retained-version history or the
+APP-009 running-service deadline.
+
+A separate reconstructed SDK client, with network sending blocked, showed
+60-second connect/read timeouts, no effective HTTP/HTTPS proxy, CRC32 request
+checksums, content length and `Expect: 100-continue`. It did not verify the
+primary application's client instance. Four database samples found no matching
+`incident_runtime` sessions; other roles and later waits were not established.
+These diagnostics did not identify the cause of the unsuccessful writes.
+
+A fresh fixture added explicitly owned write/count controls before the job
+journey. Standard-library writes under a synthetic export prefix produced exact
+reads and counts zero, one and two; deletion returned the listing to zero.
+Bounded SDK PUT controls to the numeric Service address succeeded with both
+`when_supported` and `when_required` checksum settings, with exact bytes and
+verified canary cleanup. After these controls the application job reached ready
+after one durable attempt, with no lease, one completion event and one physical
+object. The protected `export-worker-restart` group then passed in 76.13 seconds.
+The write controls changed storage state before the journey, so this result
+cannot establish cold-deployment reliability or a checksum-based explanation.
+
+Bridge, owned cluster/volume, sandbox and workspace cleanup and unchanged global
+policy were verified in all retained attempts. The successful fixture completed
+all 68 bridge connections without errors. The candidate and protected suite
+remained unchanged; these are development fixtures without acceptance or
+original-candidate rescoring. Connecting these observations to the private job
+capability, staging/lease faults and an independent running-service clock remains
+necessary before authoritative job grading.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
 ```
