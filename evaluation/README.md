@@ -1599,17 +1599,30 @@ observed relation OIDs, database name and both operator role identities. Reads
 lock both relations, verify their OIDs and use a read-only transaction with a
 five-second statement timeout and two-second lock timeout. Missing, duplicate
 or mismatched job observations stay inconclusive. Opaque owner/token material is
-hashed inside PostgreSQL and never returned; lease activity requires an owner,
-token and future timestamp. Successful `export.ready` audit events are counted
+hashed inside PostgreSQL and never returned; lease activity requires a token and
+future timestamp, plus an owner when mapped. An operator may explicitly map
+`lease_owner` to `null` for a reviewed claim-token-only layout; all other fields
+still require physical mappings. Successful `export.ready` audit events are counted
 from the independently mapped audit relation in the same statement snapshot.
 
 The operator must verify that the mapped attempt counter counts all processing
-attempts durably and that owner/token/expiry fields represent actual claiming.
+attempts durably and that token/expiry and any mapped owner represent actual claiming.
+An absent owner mapping does not prove the source uses unique claim tokens;
+the operator must establish that independently.
 This adapter supports that lease-expiration representation; other queue/storage
 layouts require reviewed adapters. It does not impose table or column names on
 the application, discover relations, enumerate S3 objects or establish abandoned
 lease recovery. Supply an independently guarded `DatabaseTransport` as its client.
 The physical object count still comes from the separate storage callback.
+
+Native PostgreSQL controls verified both owner/token and explicitly token-only
+layouts: active leases, expired claims retaining their fingerprint, empty tokens,
+missing required owners, and renewed tokens with distinct fingerprints. Replacing
+the job relation was refused despite retaining its name and rows. The controls
+also excluded unsuccessful and unrelated completion audit events. All nine
+controls and owned-resource cleanup passed. These synthetic SQL checks validate
+the adapter; they do not establish the application's actual lease reclaim or
+connect its physical storage observations.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v

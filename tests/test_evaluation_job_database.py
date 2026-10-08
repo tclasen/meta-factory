@@ -48,6 +48,30 @@ class JobDatabaseTest(unittest.TestCase):
         self.row['lease_fingerprint'] = None
         self.assertIsNone(self.reader(IDENTITY, timeout=15)['lease_fingerprint'])
 
+    def test_explicit_token_only_lease_keeps_private_claim_projection(self):
+        selected = binding()
+        selected['jobs']['fields']['lease_owner'] = None
+        reader = JobDatabaseReader(self.transport, selected)
+        self.assertTrue(reader(IDENTITY, timeout=15)['active_lease'])
+        query = self.transport.call_args.args[1]
+        self.assertIn('NULL::text AS "lease_owner"', query)
+        self.assertNotIn("NULLIF(lease_owner,'') IS NOT NULL", query)
+        self.assertIn("NULLIF(lease_token,'') IS NOT NULL", query)
+        self.assertIn('lease_expires_at::timestamptz > CURRENT_TIMESTAMP', query)
+        self.assertIn('pg_catalog.sha256', query)
+        self.assertIn('100::oid', query)
+        self.assertIn('101::oid', query)
+
+    def test_only_explicit_owner_absence_is_supported(self):
+        for relation in ('jobs', 'audit'):
+            for field in binding()[relation]['fields']:
+                if field == 'lease_owner':
+                    continue
+                selected = binding()
+                selected[relation]['fields'][field] = None
+                with self.subTest(relation=relation, field=field), self.assertRaises(ValueError):
+                    JobDatabaseReader(self.transport, selected)
+
     def test_both_relations_database_and_roles_must_match(self):
         for field in ('database_name', 'current_user', 'session_user', 'job_relation_oid', 'audit_relation_oid'):
             previous = self.value[field]

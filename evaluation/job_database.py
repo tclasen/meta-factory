@@ -22,6 +22,11 @@ def relation_mapping(value, expected, alias):
     relation = identifier(value['schema']) + '.' + identifier(value['table'])
     expressions = {}
     for field, mapping in value['fields'].items():
+        # A unique claim token can identify a lease without a separate owner
+        # column. Its absence must be selected explicitly by the operator.
+        if field == 'lease_owner' and mapping is None:
+            expressions[field] = 'NULL::text'
+            continue
         if (not isinstance(mapping, dict) or set(mapping) != {'column', 'path'}
                 or not isinstance(mapping['path'], list) or len(mapping['path']) > 8
                 or any(not isinstance(key, str) or not key or '\x00' in key
@@ -51,7 +56,9 @@ def job_read_sql(binding, export_id):
     # The opaque lease material is hashed in PostgreSQL and never returned.
     # Timestamp casts fail closed if the independently mapped representation is
     # unsupported. This is a lease-expiration representation adapter, not discovery.
-    lease_material = "(NULLIF(lease_owner,'') IS NOT NULL AND NULLIF(lease_token,'') IS NOT NULL)"
+    lease_material = "(NULLIF(lease_token,'') IS NOT NULL)"
+    if binding['jobs']['fields']['lease_owner'] is not None:
+        lease_material = "(NULLIF(lease_owner,'') IS NOT NULL AND NULLIF(lease_token,'') IS NOT NULL)"
     lease = "(" + lease_material + " AND lease_expires_at::timestamptz > CURRENT_TIMESTAMP)"
     return """BEGIN READ ONLY;
 SET LOCAL statement_timeout = '5s';
@@ -85,7 +92,7 @@ COMMIT;
 class JobDatabaseReader:
     """transport must be an independently guarded DatabaseTransport-compatible client.
 
-    Field semantics (durable total attempt counter, owner/token, lease expiry and
+    Field semantics (durable total attempt counter, claim token, optional owner, lease expiry and
     canonical status) must be reviewed against the captured application source.
     SQL mapping cannot by itself prove those semantics or physical artifact count.
     """

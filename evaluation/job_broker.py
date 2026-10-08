@@ -1,8 +1,9 @@
 """Private normalized job observations; database/schema/storage access stays parent-side.
 
 Readers must independently map durable attempts/leases, completion audit events
-and physical published objects. The fingerprint represents retained owner/token
-material even after expiry; None means no complete owner/token pair. Public API
+and physical published objects. The fingerprint represents retained claim
+material even after expiry; None means no complete claim under the reviewed
+token-only or owner/token mapping. Public API
 status alone is not lease evidence.
 This module supplies a boundary, not the database/object-store reader or scheduler.
 """
