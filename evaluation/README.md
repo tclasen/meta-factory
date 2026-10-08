@@ -251,6 +251,47 @@ initial fixture assumption of stable ACL responses is retained. Final source
 hashes, credential-free evidence, scoped cleanup and unchanged global policy
 were verified. These results establish scan behavior, not application acceptance.
 
+The [exact MinIO release ACL handlers](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/cmd/acl-handlers.go)
+implement compatibility responses rather than stored per-object ACLs; object ACL
+reads check the current object rather than selecting its retained version. The
+[release authorization handler](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/cmd/auth-handler.go)
+checks anonymous access through bucket policy. These source semantics explain
+the fixture observations. They cannot identify an arbitrary S3-compatible peer
+or establish effective privacy without separately binding the actual provider,
+configuration, endpoint and policy evidence.
+
+`listener_identity.capture_listener_identity` provides a Linux process/listener
+component for that binding. Supply an operator-selected PID/start tick, expected
+executable SHA-256, internal IP/port, trusted peer prefix and `lifetime_check`.
+It checks the selected process, boot/network namespace, listening socket inode,
+exclusive FD-owner snapshots and executable file digest/metadata before/after
+observation. It emits safe identities without environments, command lines,
+executable paths or unrelated FD targets. Shared/unknown owners, inaccessible
+proc data, changed identities and bounds remain inconclusive. Wildcard listeners
+require a matching observer network namespace and assigned address (or loopback);
+ambiguous IPv6-wildcard/IPv4 routing is refused. Exact-address IPv4/IPv6 listeners
+are supported. Unknown deployment routes must be bound independently.
+
+The probe bounds executable reads at 256 MiB, proc TCP tables at 2 MiB each,
+process/FD census at 4,096 processes/4,096 descriptors per process/32,768 total,
+listener rows at 16 and elapsed time at 35 seconds. Transport allows 40 seconds;
+the caller reserves 45 seconds and rechecks lifecycle/source binding afterward.
+Some peers require sandbox-local root to inspect other users' proc FDs. This
+requires no host sudo. The executable file observation does not attest runtime
+memory, libraries, provider source provenance, response routing, effective
+authorization or private storage. All three corresponding verification flags
+remain false; provider-specific composition remains separate work.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_listener_identity.py' -v
+```
+
+Native MinIO fixture controls passed with scoped guest-root reads: correct
+executable/listener binding was observed; wrong executable digest, start tick
+and port remained incomplete. The earlier unprivileged permission failure is
+retained. Exact sources, credential-free evidence, scoped cleanup and unchanged
+global host policy were checked, with no model calls or host permission changes.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
