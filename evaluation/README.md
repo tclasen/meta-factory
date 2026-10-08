@@ -3305,6 +3305,11 @@ DaemonSet and ReplicaSet ownership, and also supports a directly selected Pod.
 The worker remains a separate Deployment; APP-001 permits the API to serve web
 assets. Ready Pod identities and addresses must agree with owned ready Service
 EndpointSlices; internal Services must cover exactly the mapped Pod population.
+The collector preserves ordinary ClusterIP, NodePort and LoadBalancer Service
+types while checking their private ClusterIP routes. It does not impose ClusterIP
+on web/API or classify a database/storage exposure as missing topology. The
+protected foundation oracle enforces APP-012's ClusterIP requirement for database
+and object storage. Exposure and single-loopback-publication checks remain separate.
 The callback reserves 70 seconds from the existing grading/source lifetime and
 checks it again after transport; four subprocess queries share a 60-second bound.
 
@@ -3322,7 +3327,15 @@ implement the required technologies, that routing targets the intended container
 port, or that the whole rollout/source matches its locks. Compose those checks
 with independent origin, migration, storage, source and image observations
 before producing a complete foundation fixture. No suite approval or acceptance
-is granted by this collector. Validate its projections and subprocess boundary:
+is granted by this collector.
+
+Nine local tests and 26 protected foundation controls cover the corrected Service
+contract. A native controlled fixture changed only PostgreSQL's `PGDATA` to a new
+child beneath its disposable volume. Its unchanged bootstrap then succeeded;
+the live collector observed all five ready roles and preserved web's NodePort
+alongside the other three ClusterIP Services. Process/storage startup observations
+and cleanup passed. This fixture does not regrade the frozen candidate, establish
+storage privacy or complete AC-001. Validate the projections and subprocess boundary:
 
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_topology.py' -v

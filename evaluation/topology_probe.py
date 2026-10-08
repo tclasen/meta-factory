@@ -173,8 +173,10 @@ def project(objects, selected, namespace='incident-app'):
     services = {}
     for role, name in selected['services'].items():
         service = by_key['Service', name]; spec = service['spec']
-        if service['metadata'].get('deletionTimestamp') or spec.get('type', 'ClusterIP') != 'ClusterIP':
-            raise ValueError('Required Service is not internal ClusterIP')
+        service_type = spec.get('type', 'ClusterIP')
+        if (service['metadata'].get('deletionTimestamp')
+                or service_type not in ('ClusterIP', 'NodePort', 'LoadBalancer')):
+            raise ValueError('Ordinary live Service with a ClusterIP required')
         cluster_ip = ipaddress.ip_address(spec['clusterIP'])
         if not cluster_ip.is_private or cluster_ip.is_loopback or cluster_ip.is_unspecified:
             raise ValueError('Private nonloopback ClusterIP required')
@@ -201,7 +203,7 @@ def project(objects, selected, namespace='incident-app'):
                 endpoints.add(ref['uid'])
         if endpoints != set(pod_ids[role]):
             raise ValueError('Service does not cover the mapped ready Pods')
-        services[role] = dict(name=name, uid=service['metadata']['uid'], type='ClusterIP',
+        services[role] = dict(name=name, uid=service['metadata']['uid'], type=service_type,
                               cluster_ip=str(cluster_ip), ports=sorted(p['port'] for p in ports),
                               target_pod_uids=sorted(endpoints))
     return dict(components=components, services=services)

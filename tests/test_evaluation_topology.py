@@ -86,6 +86,18 @@ class TopologyTest(unittest.TestCase):
         self.assertEqual(result['components']['database']['kind'],'StatefulSet')
         self.assertEqual(result['components']['storage']['kind'],'ReplicaSet')
 
+    def test_service_types_are_observed_without_imposing_web_api_clusterip(self):
+        for role in ('web', 'api', 'database', 'storage'):
+            for service_type in ('NodePort', 'LoadBalancer'):
+                objects = copy.deepcopy(self.objects)
+                service = next(v for v in objects['items']
+                               if v['kind'] == 'Service' and v['metadata']['name'] == role)
+                service['spec']['type'] = service_type
+                with self.subTest(role=role, service_type=service_type):
+                    result = project(objects, self.selected)
+                    self.assertEqual(result['services'][role]['type'], service_type)
+                    self.assertTrue(result['services'][role]['target_pod_uids'])
+
     def test_api_may_serve_web_while_worker_stays_a_separate_deployment(self):
         self.selected['components']['web']=dict(self.selected['components']['api'])
         api_pod=next(v for v in self.objects['items'] if v['kind']=='Pod' and v['metadata']['name']=='api-pod')
@@ -98,7 +110,7 @@ class TopologyTest(unittest.TestCase):
     def test_incomplete_ownership_readiness_endpoints_and_image_ids_refuse(self):
         for mode in ('duplicate','foreign-namespace','terminating','missing-rs','stale-generation',
                      'pending','unready-container','missing-image','bad-image','no-endpoints',
-                     'foreign-endpoint','wrong-address','wrong-service-owner','node-port','public-ip'):
+                     'foreign-endpoint','wrong-address','wrong-service-owner','external-name','public-ip'):
             objects=copy.deepcopy(self.objects)
             pod=next(v for v in objects['items'] if v['kind']=='Pod' and v['metadata']['name']=='api-pod')
             controller=next(v for v in objects['items'] if v['kind']=='Deployment' and v['metadata']['name']=='api')
@@ -117,7 +129,7 @@ class TopologyTest(unittest.TestCase):
             elif mode=='foreign-endpoint':endpoint['endpoints'][0]['targetRef']['uid']=str(uuid.uuid4())
             elif mode=='wrong-address':endpoint['endpoints'][0]['addresses']=['10.42.0.100']
             elif mode=='wrong-service-owner':endpoint['metadata']['ownerReferences'][0]['uid']=str(uuid.uuid4())
-            elif mode=='node-port':service['spec']['type']='NodePort'
+            elif mode=='external-name':service['spec']['type']='ExternalName'
             else:service['spec']['clusterIP']='8.8.8.8'
             with self.subTest(mode=mode),self.assertRaises(ValueError):project(objects,self.selected)
 
