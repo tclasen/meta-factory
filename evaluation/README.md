@@ -4045,6 +4045,21 @@ pending alongside the other criteria.
 
 ### Operator-selected cases within one protected registry
 
+The trusted post-bootstrap loader may supply `scale_sample_fixture` alongside
+`scale_cases`. It is a dictionary of independently expected sample resources,
+identities and operator observations for protected prerequisite checks. The
+deployment controller copies it before passing it to grading, preserving the
+loader's original data when a worker changes its target. This transport does not
+validate sample contents, collect population counts or grant complete coverage;
+the protected prerequisite and trusted owner must establish those separately.
+Missing or malformed fixture input must remain inconclusive for a prerequisite
+that needs it. The deployment fixture tests verify this field's transport and
+copy isolation alongside the other trusted capabilities:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_deployment.py' -v
+```
+
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
 unique subset of the hashed case registry for a separately prepared deployment.
 Unknown IDs or malformed selections refuse before target/worker creation. Cases

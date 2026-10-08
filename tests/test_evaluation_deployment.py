@@ -723,6 +723,7 @@ class DeploymentTest(unittest.TestCase):
         observations=[]
         fixture={'accounts':{'analyst':{'username':'independent','password':'synthetic'}},
                  'twenty_export_fixture':{'case':{'title':'independently seeded'},'patterns':{'synthetic-id':'synthetic bytes'}},
+                 'scale_sample_fixture':{'identities':{'users':['independent operator mapping']}},
                  'integrated_fixture':{'identities':{'users':[{'username':'independent journey actor'}]},
                                        'actors':{'alpha':{'analyst':'independent actor identity'}}},
                  'network_fixture':{'cluster':{'uid':'independently observed cluster'},
@@ -748,6 +749,9 @@ class DeploymentTest(unittest.TestCase):
             self.assertEqual(target['accounts'],fixture['accounts'])
             self.assertIsNot(target['accounts'],fixture['accounts'])
             self.assertEqual(target['twenty_export_fixture'],fixture['twenty_export_fixture'])
+            self.assertEqual(target['scale_sample_fixture'],fixture['scale_sample_fixture'])
+            target['scale_sample_fixture']['identities']['users'].append('worker-side change')
+            self.assertEqual(fixture['scale_sample_fixture']['identities']['users'],['independent operator mapping'])
             target['twenty_export_fixture']['case']['title']='worker-side change'
             self.assertEqual(fixture['twenty_export_fixture']['case']['title'],'independently seeded')
             self.assertEqual(target['integrated_fixture'],fixture['integrated_fixture'])
