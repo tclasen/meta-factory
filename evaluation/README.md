@@ -1762,8 +1762,39 @@ with SIGKILL and a same-UID child's survival after a mismatched binding refusal.
 The Mac run passed eight mocked boundary controls and skipped the two Linux
 controls; it supplies no native Linux termination evidence. Sandbox stop,
 scratch removal and unchanged global policy were verified. Connecting the
-primitive to independently observed Kubernetes/CRI worker ownership remains
-necessary before the interrupted-lease fixture can use it.
+primitive to independently observed Kubernetes/CRI worker ownership is a
+separate operator integration.
+
+A native prototype exercised that integration against the real owned worker.
+It conditionally scaled the original Deployment to zero, mapped the selected
+Pod through its ReplicaSet/Deployment, image and CRI container metadata, and
+matched the CRI PID to a VM process using nested PID identities and full cgroup
+membership. It bound the original node process, Namespace/Node UIDs, runtime
+socket identity and its held connection's peer process. Guarded pidfd SIGKILL
+then verified both process exit and CRI exit code 137 before zero-Pod convergence.
+The worker's application code, lease and grace settings were unchanged. Root
+access was scoped to the disposable Linux grader; this required no Mac sudo.
+
+Initial CRI lookups failed before signaling; using the explicit K3s runtime
+endpoint corrected the command. Successful suspensions took 3.82 seconds, and
+the subsequent staged restart suspension took 2.61 seconds. The native client
+reported `crictl v1.34.0-k3s2`. These are scoped process-exit controls, without
+complete runtime-history or loaded-code attribution claims.
+
+The interrupted-claim prerequisite still did not hold: an active lease was
+observed during the verified storage outage, but the paused read found queued
+status with no retained claim. The wrapper failed that assertion and ran no
+subsequent protected case. Its earlier assumption that the first observed active
+claim must be attempt one was also corrected to the protected oracle's existing
+one-to-three attempt range; the protected oracle remained unchanged. A parent
+operation that binds the process before watching for an active claim is needed
+to reduce the delay between observation and interruption. Do not infer lease
+reclamation from successful process exit alone.
+
+All four prototype attempts retained source hashes and inputs, verified fault
+restoration and bridge/cluster/volume/sandbox/workspace cleanup, and left global
+policy unchanged. No frozen candidate was repaired or rescored, and no
+acceptance was recorded.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
