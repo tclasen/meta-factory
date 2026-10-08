@@ -1846,6 +1846,39 @@ unchanged global network policy were verified. The retired storage binding was
 still refused. This verifies the scoped handoff, with the same development
 fixture preconditions and outstanding artifact/timing limits described above.
 
+The next native artifact prototype authorized a replacement storage reader only
+after checking the parent's completed storage fault, verified workload restoration
+and independent Service recovery receipts. Its fresh binding preserved the
+original node, API process, namespace, storage Deployment/image, Service and
+PVC/PV identities, and bracketed the replacement Pod and EndpointSlice observations.
+The retired binding continued to refuse reads. Batching namespaced metadata kept
+the added identity checks within the existing one-second peer-check budget.
+
+One retained attempt failed before a completed storage callback receipt; another
+restored the workload but exhausted 64 Service recovery attempts after 20.368
+seconds. The polling interval was corrected to use the existing thirty-second
+allowance without increasing the attempt cap. In the subsequent completed fixture,
+independent storage Service recovery verified in 21.937 seconds. The recovered
+job had exactly one current physical object and one completion event; its ZIP
+contained the exact expected manifest for the case with no evidence or comments,
+and attachment/nosniff headers verified. Retained object history was not measured.
+The separate protected worker/API restart group passed in 23.708 seconds.
+Bridge cleanup recorded 71 completed connections, no errors and no active
+connections; cluster/volume absence, sandbox stop, workspace removal and unchanged
+global network policy were verified. The two preceding failed attempts also retain
+verified cleanup evidence.
+
+The completed artifact diagnostic exposed an APP-009 contract violation: its
+paused lease was active on attempt three, and recovery reached ready on attempt
+four. Offline application of the unchanged protected terminal-observation oracle
+to that retained independent observation rejected the three-attempt ceiling.
+Artifact-reader success and the separate restart-group pass do not establish
+candidate compliance. This is development evidence under the disclosed PGDATA
+and write-control interventions, with no original-candidate rescoring or acceptance.
+The full protected reclaim journey, recovery deadline and running-clock checks
+remain unverified; the explicit replacement-reader boundary still needs controller
+integration beyond this sequential native prototype.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
 ```
