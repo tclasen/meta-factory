@@ -110,6 +110,7 @@ class RuntimeTest(unittest.TestCase):
              "message_processing"),
             ("import os,time; os.close(1); os.close(2); time.sleep(60)",
              "premature_stream_close"),
+            ("pass", "premature_stream_close"),
             ("import os; os.write(2, b'private-runtime-payload' * 100)",
              "stream_size_limit"),
         ]

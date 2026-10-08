@@ -8,9 +8,9 @@ import subprocess
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from evaluation.evidence import Attempt, atomic_json, collect
+from evaluation.evidence import Attempt, atomic_json, collect, kill_group
 
 
 class EvidenceTest(unittest.TestCase):
@@ -49,6 +49,40 @@ class EvidenceTest(unittest.TestCase):
         self.assertEqual((self.attempt.directory / "fixture/stderr.log").read_text(), "err\n")
         with self.assertRaises(FileExistsError):
             self.command("pass")
+
+    def test_exited_leader_cleanup_reaps_and_still_signals_descendants(self):
+        child = Mock(pid=123, poll=Mock(return_value=0))
+        for retry in (None, ProcessLookupError()):
+            with self.subTest(retry=type(retry).__name__):
+                child.reset_mock()
+                with patch('evaluation.evidence.os.killpg',
+                           side_effect=[PermissionError(), retry]) as signal_group:
+                    kill_group(child)
+                self.assertEqual(signal_group.call_count, 2)
+                child.poll.assert_called_once_with()
+                child.wait.assert_called_once_with(timeout=5)
+
+    def test_live_or_persistent_cleanup_denial_is_not_suppressed(self):
+        for status, failures, count in ((None, [PermissionError()], 1),
+                                        (0, [PermissionError(), PermissionError()], 2)):
+            with self.subTest(status=status):
+                child = Mock(pid=123, poll=Mock(return_value=status))
+                with patch('evaluation.evidence.os.killpg', side_effect=failures) as signal_group:
+                    with self.assertRaises(PermissionError):
+                        kill_group(child)
+                self.assertEqual(signal_group.call_count, count)
+                child.wait.assert_not_called()
+
+    def test_real_exited_local_child_is_reaped(self):
+        child = subprocess.Popen([sys.executable, '-c', 'pass'], start_new_session=True)
+        try:
+            time.sleep(0.05)
+            kill_group(child)
+            self.assertIsNotNone(child.returncode)
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
 
     def test_timeout_also_bounds_descendant_held_pipes(self):
         start = time.monotonic()

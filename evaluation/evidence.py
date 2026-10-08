@@ -124,6 +124,16 @@ def kill_group(process):
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    except PermissionError:
+        # On the Mac an exited, unreaped group leader can yield EPERM. Reap our
+        # child, then signal again so surviving descendants are still handled.
+        # A live leader or a second denial remains a genuine cleanup failure.
+        if process.poll() is None:
+            raise
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     process.wait(timeout=5)
 
 
