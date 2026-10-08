@@ -578,6 +578,19 @@ unavailable, and changed inputs invalidated an otherwise successful command.
 Baseline configuration, peer identity, source hashes, process absence and final
 cleanup were checked. These synthetic controls do not grade captured candidates.
 
+An install peer needs a writable dependency directory. If its temporary directory
+also holds executable package shims or native build tools, configure that owned
+mount with execution enabled, for example
+`--tmpfs /tmp:rw,nosuid,exec,size=268435456`; retain a read-only container root.
+A default `noexec` mount can allow npm installation while preventing a subsequent
+build from starting. A fresh captured-frontend development check reproduced
+exit 126 on `noexec`, then built three artifacts after enabling execution on
+that disposable mount. Registry-backed and cached offline consistency checks
+both passed for its 68 recorded package entries. External networking was
+disconnected before the successful build. These observations leave application
+installation, production build/image binding and acceptance unverified; they do
+not revise previous pilot grades.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_transport.py' -v
 ```
