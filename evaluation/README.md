@@ -2666,6 +2666,15 @@ process configuration, complete runtime history or source/image attribution.
 The new draft retains incomplete AC-004 and unapproved status; previous suites
 and frozen comparison evidence remain unchanged.
 
+A separate native fixture ran the unchanged original session-expiry case for
+3601 seconds. The original session authenticated just before the one-hour limit
+and returned 401/unauthenticated after it. No simulated clock, shortened wait
+or session database edit was used. The bridge completed 34 requests without
+errors; cluster, volume, sandbox and private workspace cleanup were verified,
+and global policy remained unchanged. The disclosed diagnostic-copy PGDATA
+adjustment still applies. This single-case fixture does not complete AC-004,
+approve the suite or rescore the frozen comparison.
+
 `security_runtime.SecurityRuntime` wraps a fixed nonempty subset of the security
 operations with actual callback-duration checks on both parent clocks. Peer
 checks exceeding one second and inspections exceeding thirty seconds suppress
