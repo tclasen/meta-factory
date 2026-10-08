@@ -1703,6 +1703,21 @@ errors, with all owned cleanup and unchanged global policy verified. This is
 partial AC-027 evidence; broader validation coverage, suite review and acceptance
 remain incomplete.
 
+The unchanged protected list-state journey passed against a fresh native
+application fixture. It observed loading while the browser's authenticated
+case-list request was held, error feedback for a controlled 503, recovery after
+refresh, an independently verified empty search, and restoration of the known
+case when the search changed. Routes were restored before returning. Fourteen
+Chromium controls passed, including missing, hidden and stale states, retained
+rows and failed recovery; each control independently verified a real server
+response after route restoration.
+
+Both native browser hops and the closed Desktop proxy completed 26 requests
+without disconnects or errors, with all owned cleanup and unchanged global
+policy verified. Setup completed in 61 seconds under the original 180-second
+allowance. These are browser-local response controls, not backend-outage evidence.
+The protected registry remains unchanged and partial; acceptance remains unset.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
