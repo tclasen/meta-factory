@@ -3466,6 +3466,19 @@ stopped, then removed by exact name with absence independently verified; its log
 remain retained. The corrected fixture passed with full cleanup. Neither run
 granted acceptance or rescored the original candidate.
 
+The native `export-publication-revocation` group also passed in a fresh fixture.
+For each of the independent requester and approver, it queued reviewed work
+while the independently bound worker was stopped, removed the actor's required
+membership role, then restored the worker. Each job failed with
+`authorization_revoked`, exposed no downloadable artifact and emitted one
+failure audit with an observed originating request correlation. Restoring the
+membership did not revive the failed export. Both workload faults were restored,
+all 64 bridge connections completed without errors, and cluster/volume absence,
+sandbox stop, workspace removal and unchanged global policy were verified.
+These API and audit observations do not independently enumerate retained physical
+objects or establish interrupted-lease and retry behavior. The protected suite
+was unchanged, with no acceptance, freeze or original-candidate rescoring.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
