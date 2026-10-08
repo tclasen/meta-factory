@@ -1761,6 +1761,27 @@ is a source coverage gap, not a native missing-label failure or a full native
 list pass. The separate draft remains partial and unapproved; original suites,
 candidate source, comparison outcomes and acceptance remain unchanged.
 
+The native 100-row list fixture exposed the keyboard helper's fixed 100-Tab
+limit. An independent Chromium reproduction rejected both reachable Tenant and
+Load more controls among 104 focusable elements. A separate draft now observes
+actual Tab focus transitions, requires departure before recognizing a completed
+cycle, and reports a ten-second observation exhaustion as fixture unavailable.
+It performs no focus or DOM writes. The first cycle draft incorrectly rejected
+an unchanged initial focus after native select interaction; its failed journey
+controls and native diagnostics remain retained.
+
+The corrected draft passed 49 Chromium controls across large-page reachability,
+unreachable controls, tenant/filter/pagination, creation, stale-edit and form
+validation, plus 55 binding/provenance checks. All owned cleanup was verified.
+Fresh native diagnostics independently created and read back 104 cases, but still
+failed inside tenant keyboard selection before reaching the missing-filter
+boundary. A sanitized diagnostic classified the assertion as unreachable and
+recorded trusted source frames only. Both browser hops and the closed proxy
+completed 14 requests without transport errors; sandbox, cluster, volume, network
+and private-workspace cleanup and unchanged global policy were verified. This
+remaining native failure needs further investigation; the full tenant-list group
+has no passing result, and the existing filter coverage gap remains open.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
