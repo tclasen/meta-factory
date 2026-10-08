@@ -1051,7 +1051,9 @@ Available-service checks now poll recognized connection failures within the same
 30-second probe deadline, with at most 64 attempts. Each attempt requires a
 reachable control before and after the target. Unknown failures or lost controls
 refuse immediately; late responses cannot establish availability. All sanitized
-observations remain recorded. This handles a restored Pod whose listener starts
+observations remain recorded. Failed attempts wait up to half a second, bounded
+by the remaining deadline, so fast refusals do not exhaust the attempt cap before
+the thirty-second recovery allowance. This handles a restored Pod whose listener starts
 after Kubernetes reports readiness, without substituting readiness for an HTTP
 connectivity observation. The unavailable-service proof is unchanged.
 Probe-command exceptions retain earlier observations and a sanitized exception

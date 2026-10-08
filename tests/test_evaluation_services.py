@@ -75,7 +75,25 @@ class ServicesTest(unittest.TestCase):
             sleep=lambda seconds:clock.__setitem__(0,clock[0]+seconds))
         self.assertEqual(result['outcome'],'service_probe_incomplete')
         self.assertEqual(clock[0],.5)
-        self.assertEqual(len(result['checks']),6)
+        self.assertEqual(len(result['checks']),3)
+
+    def test_fast_refusals_do_not_exhaust_recovery_before_thirty_seconds(self):
+        clock=[0.0]
+        def check(url):
+            reachable=url=='control' or clock[0]>=25
+            return {'connectivity':'reachable' if reachable else 'unreachable','exit_code':0 if reachable else 1}
+        result=observe(check,'target','control','available',deadline=30,
+            monotonic=lambda:clock[0],sleep=lambda seconds:clock.__setitem__(0,clock[0]+seconds))
+        self.assertEqual(result['outcome'],'service_available_verified')
+        self.assertGreaterEqual(clock[0],25)
+        self.assertLess(clock[0],30)
+        self.assertLessEqual(len(result['checks']),64*3)
+
+    def test_recovery_attempt_cap_remains_bounded_if_clock_does_not_advance(self):
+        result=observe(lambda url:{'connectivity':'unreachable' if url=='target' else 'reachable','exit_code':1},
+            'target','control','available',deadline=30,monotonic=lambda:0,sleep=lambda seconds:None)
+        self.assertEqual(result['outcome'],'service_probe_incomplete')
+        self.assertEqual(len(result['checks']),64*3)
 
     def test_late_control_response_prevents_new_probe_commands(self):
         clock=[0.0];calls=[]

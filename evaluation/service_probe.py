@@ -75,7 +75,9 @@ def observe(check, target, control, mode, *, deadline=None,
         if observed=='reachable':
             return {'outcome':'service_available_verified','checks':records}
         if deadline is None or not live():return incomplete()
-        sleep(min(.25,max(0,deadline-monotonic())))
+        # Sixty-four instantaneous failures must not exhaust polling before the
+        # native thirty-second recovery allowance has elapsed.
+        sleep(min(.5,max(0,deadline-monotonic())))
     return incomplete()
 
 
