@@ -4004,6 +4004,45 @@ groups and seven implementation-complete criteria, with human content review and
 suite freeze still pending. No resource-allocation, performance or complete runtime
 attestation claim follows from these reference results.
 
+### Scaled cross-tenant authorization controls
+
+A new protected source version adds eight nonmember requests to the scale-read
+group: each tenant's analyst requests the other tenant's default list, an empty
+offset page, a search for a known foreign title, and an empty combined filter.
+Every response must be 404 with the exact error envelope and `not_found` code,
+even when the corresponding authorized query would return no rows. Existing
+authorized pagination, totals, resource identity, ordering, search and combined
+filter observations remain in place.
+
+All 27 model controls and 25 protected-child HTTP controls passed their expected
+verdicts; all HTTP listeners stopped. Seven new faults cover disclosure on all
+cross-tenant reads, empty pages, positive searches or empty combined filters,
+as well as an incorrect status, error code or envelope. An explicit predecessor
+comparison showed that the previous oracle accepted all seven faults and the
+new oracle rejects each. That comparison preserves the earlier source/results;
+only the registered scale-read source changed. The registry still has 77 groups,
+seven implementation-complete criteria and unapproved coverage.
+
+A fresh native reference then passed both `case-scale-reads` and
+`comment-count-race` with this protected version. It loaded and independently
+read back the full 2,000-case, 200-comment, twenty-object sample and verified all
+50 identities. Read-only database counts before and after loading each showed
+exactly 50 users, two tenants and no unassigned users, using the independently
+bound captured migration mapping. All 72 lifecycle/severity/assignee profiles
+were verified. This closes the observed scaled nonmember-request gap in the
+reference; it does not change an earlier candidate's score or approve the suite.
+
+Preparation recorded 13,338 full selected-source checks across 159 files before
+the final population observation; source checks also bracketed that observation
+and protected grading. All 7,608 bridge connections completed without relay
+errors or active connections at cleanup. Owned cluster/volume absence, sandbox
+stop, bridge/private-workspace removal and unchanged global policy were verified.
+The two disclosed reference configuration changes remain PostgreSQL's child
+data directory and single-copy storage growth. The comment race left 300 comments,
+so this deployment provides no performance-sample result. Acceptance remains
+unset; complete coverage review, human content review and suite freeze remain
+pending alongside the other criteria.
+
 ### Operator-selected cases within one protected registry
 
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
