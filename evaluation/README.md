@@ -292,6 +292,53 @@ and port remained incomplete. The earlier unprivileged permission failure is
 retained. Exact sources, credential-free evidence, scoped cleanup and unchanged
 global host policy were checked, with no model calls or host permission changes.
 
+`minio_storage.capture_minio_storage` composes a narrowly supported provider
+observation. Its explicit `minio-fixture-2025-04-22-arm64-cgo0-v1` profile binds
+the operator-built arm64, `CGO_ENABLED=0` fixture binary SHA-256
+`c6898f3c2ca26957848ddf33e314c7111928b1ae0c91f02281e981293fddd8cc`
+to release source archive SHA-256
+`1a63209927b9d1fb239b2a776b7b01d1902eff19379a108f4bc7005edcc0968c`.
+This profile does not accept other builds by version string. Preserve and verify
+the independent build provenance before invoking it; this is neither an
+upstream signature attestation nor a promoted provider release.
+
+The release's [policy system](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/cmd/bucket-policy.go)
+uses the same policy getter for anonymous authorization that the
+[GET policy handler](https://raw.githubusercontent.com/minio/minio/RELEASE.2025-04-22T22-12-26Z/cmd/bucket-policy-handlers.go)
+reads. An absent policy permits only the owner. Combined with the release's
+compatibility ACL semantics above, this supports anonymous-policy interpretation
+for this exact fixture, without treating unsupported generic ACLs as private.
+
+Supply a private credential binding, independently selected PID/start tick,
+trusted peer prefix and `lifetime_check`. Repeated executable/listener identities
+and complete supported policy reads surround the owned canary. Each direct,
+numeric-origin signed bucket HEAD holds its connection open while a Linux
+accepted-socket/FD census attributes that connection exclusively to the selected
+provider process in the same network namespace. Inaccessible, shared, changed
+or ambiguous observations remain inconclusive. This route check requires scoped
+guest-root access where other users' descriptors are unreadable.
+
+`private_anonymous_verified` refers to anonymous bucket-policy access at these
+observations. A public prefix makes it false even when a canary elsewhere passes.
+Conditional/unknown policies and unsupported providers remain null. Cleanup
+must succeed before a supported result; safe owned canary identifiers remain
+available for recovery after later observation failures. Historical reported
+cleanup never authorizes an incomplete capture. The transport bounds the whole
+operation at 180 seconds, reserves 185 seconds and rechecks lifetime afterward;
+each HTTP request is bounded at five seconds. Socket-table/census bounds match
+the listener component. The caller independently binds sources and deployment.
+
+This does not prove application bucket identity, absence of leaked credentials
+or signed links, future changes, runtime memory integrity or an atomic snapshot.
+It does not complete AC-001 or authorize suite execution by itself. Native
+private/public-prefix/conditional/unknown-provider controls passed, with exact
+source hashes, credential-free logs, owned resource cleanup and unchanged global
+policy. No model calls or additional host permission changes were needed.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_minio_storage.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
