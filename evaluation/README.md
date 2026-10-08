@@ -2592,6 +2592,23 @@ local HTTP exception; application response flags are insufficient. Protected
 cases validate their own field schema. This transport grants no automatic mode
 discovery, cookie compliance or complete AC-004 coverage.
 
+A separately versioned protected draft adds an APP-002 Secure-cookie check.
+It identifies credentials by replay, so a secure ancillary cookie cannot hide an
+insecure credential. Secure credentials need no local exception; insecure ones
+require an independently established documented local HTTP mode. Missing mode
+evidence is inconclusive, and malformed bindings are refused. The case logs out
+its session and treats uncertain cleanup as a restoration failure.
+
+Thirteen real HTTP controls passed, including production/local/unknown modes,
+ancillary cookies, attribute defects and cleanup failure. A separate native
+fixture passed after binding the API Pod/container and PID1 startup mode/origin
+to the captured local HTTP documentation. Its bridge and owned resources were
+cleaned up and global policy stayed unchanged. This supplies local-mode fixture
+evidence, without proving production HTTPS or browser behavior, current mutable
+process configuration, complete runtime history or source/image attribution.
+The new draft retains incomplete AC-004 and unapproved status; previous suites
+and frozen comparison evidence remain unchanged.
+
 `security_runtime.SecurityRuntime` wraps a fixed nonempty subset of the security
 operations with actual callback-duration checks on both parent clocks. Peer
 checks exceeding one second and inspections exceeding thirty seconds suppress
