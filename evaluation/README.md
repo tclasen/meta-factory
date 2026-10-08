@@ -1782,6 +1782,31 @@ and private-workspace cleanup and unchanged global policy were verified. This
 remaining native failure needs further investigation; the full tenant-list group
 has no passing result, and the existing filter coverage gap remains open.
 
+A fixed-property native focus trace explains that remaining selection failure:
+after reload, Tab continued from the preceding Search position and passed through
+browser chrome before reaching Tenant. The old helper treated the unfocused body
+at that boundary as a completed document cycle. The next separate draft anchors
+a real document tab stop and recognizes a cycle only after focus departs and
+returns to that stop. It still uses actual Tab, rejects a genuinely unreachable
+control, and preserves the ten-second inconclusive observation bound.
+
+An independent Search-blur reproduction demonstrates the old false rejection
+and the corrected reachability, without any focus or DOM writes by the oracle.
+The corrected draft passed 49 retained Chromium controls and three new boundary
+controls; three predecessor reproduction controls and 55 binding/provenance
+checks also passed. Owned cleanup and helper-server termination were verified.
+Only the keyboard helper changed; the tenant-list journey predicates are intact.
+
+A fresh native run without focus tracing then verified two-tenant switching,
+literal search, reload observations and 100-row append pagination against 104
+independently created/read-back cases. Its fixed exception receipt confirms
+that all those observations completed before the unavailable three-filter binding.
+The full group therefore remains inconclusive, rather than passing a reduced
+scope. Both browser hops and the closed Desktop proxy completed 39 requests
+without errors or disconnects; the VM bridge completed 281. All owned cleanup
+and unchanged global policy were verified. This is partial native evidence,
+with earlier failures retained, the suite unapproved and acceptance unset.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
