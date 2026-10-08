@@ -2207,6 +2207,25 @@ reader does not verify passwords, discover a schema, enforce hashing policy or
 establish salt uniqueness outside the supplied account scope. It is not wired to
 an acceptance case or deployment resolver.
 
+A separate operator-local native prototype connected this reader to guarded
+parent security inspection and the protected `password-storage` case. It bound
+the actual PostgreSQL relation and physical peer, selected nine independently
+authenticated fixture UUIDs, and verified their Argon2id encodings using an
+independently pinned cryptographic library and its default cost profile. The
+case passed; raw encodings stayed in the parent, and a log audit found none of
+the 27 inspected encoded-hash, salt or digest representations. Owned resources
+and scratch were removed and global network policy was unchanged.
+
+Negative controls first exposed a prototype ordering error: parsing before
+classification made plaintext storage inconclusive. A separate corrected
+prototype passed thirteen controls, including plaintext, forbidden algorithms,
+weak parameters, reused salts, password mismatch and private reader/verifier
+failures, then passed a fresh native run. Both versions and the failed control
+remain retained locally. These results cover the selected accounts only; they
+do not establish whole-table salt uniqueness, full AC-004 coverage, suite review
+or acceptance. The native copy used the disclosed PostgreSQL `PGDATA` fixture
+adjustment, without changing or rescoring the frozen comparison candidate.
+
 Run its focused fixture checks with:
 
 ```sh
