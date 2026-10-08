@@ -107,6 +107,30 @@ class BrowserRuntimeTest(unittest.TestCase):
             self.assertEqual(result['failure_kind'],kind)
             self.assertNotIn('secret',json.dumps(result))
 
+    def test_relay_missing_shared_lease_waits_only_for_current_valid_receipt(self):
+        lease=self.root/'lease';lease.mkdir();out=self.root/'out';out.mkdir()
+        config=dict(nonce='expected',wall_deadline=time.time()+5,upstream={},authority='127.0.0.1:18080')
+        receipt=json.dumps({'nonce':'expected','expires_at':time.time()+2})
+        stop=json.dumps({'nonce':'expected'})
+        shared_json(lease/'stop.json',{'nonce':'expected'})
+        with patch('pathlib.Path.read_text',side_effect=[FileNotFoundError(),receipt,receipt,stop]), \
+                patch('evaluation.browser_relay.RelayServer') as factory:
+            factory.return_value.observation.return_value={}
+            self.assertEqual(serve(config,lease,out),0)
+        for replacement in (json.dumps({'nonce':'expected','expires_at':time.time()-1}),
+                            json.dumps({'nonce':'wrong','expires_at':time.time()+2})):
+            with patch('pathlib.Path.read_text',side_effect=[FileNotFoundError(),replacement]), \
+                    patch('evaluation.browser_relay.RelayServer') as factory:
+                self.assertEqual(serve(config,lease,out),1)
+                factory.assert_not_called()
+        with patch('pathlib.Path.read_text',side_effect=FileNotFoundError()), \
+                patch('evaluation.browser_relay.time.monotonic',side_effect=[0,.2]), \
+                patch('evaluation.browser_relay.RelayServer') as factory:
+            self.assertEqual(serve(config,lease,out),1)
+            factory.assert_not_called()
+        result=json.loads((out/'result.json').read_text())
+        self.assertEqual(result['failure_kind'],'missing_file')
+
     def test_relay_stop_identity_and_cleanup_failure_remain_inconclusive(self):
         lease=self.root/'lease';lease.mkdir();out=self.root/'out';out.mkdir()
         config=dict(nonce='expected',wall_deadline=time.time()+5,upstream={},authority='127.0.0.1:18080')

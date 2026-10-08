@@ -16,7 +16,17 @@ def serve(config, lease_directory, output):
     result = {'closed': False, 'transport': {}}
     phase = 'initial_lease'
     def check():
-        lease = json.loads((lease_directory / 'lease.json').read_text())
+        # Host-shared filesystems can briefly hide an atomically replaced file.
+        # Wait for a current receipt; never forward using a cached lease.
+        read_deadline = time.monotonic() + .1
+        while True:
+            try:
+                lease = json.loads((lease_directory / 'lease.json').read_text())
+                break
+            except FileNotFoundError:
+                if time.monotonic() >= read_deadline:
+                    raise
+                time.sleep(min(.01, max(0, read_deadline - time.monotonic())))
         now = time.time()
         if (lease.get('nonce') != config['nonce'] or not now < lease['expires_at'] <= now + 5
                 or now >= config['wall_deadline']):
