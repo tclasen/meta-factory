@@ -1647,6 +1647,25 @@ logout invalidation. Both browser hops and the closed Desktop proxy completed
 global policy were verified. These results leave AC-025–027 incomplete, the suite
 unapproved and acceptance unset; no historical comparison outcome was changed.
 
+A further draft supports an inline membership form with a labeled role textbox.
+The form is selected by its exact bound username and must be unique; selectors
+remain fixed in protected code. Keyboard entry and submission are scoped to that
+form, with a reviewed save confirmation and exact role value before and after
+refresh. The existing checkbox/combobox edit path remains available. Independent
+API role checks, audit event checks, wrong-role UI/server denials and verified
+restoration of the original membership remain mandatory.
+
+A fresh native administrator/auditor journey passed these checks, including
+membership restoration and logout invalidation. Both browser hops and the closed
+Desktop proxy completed 53 requests without disconnects or errors; all owned
+cleanup and unchanged global policy were verified. Nineteen existing role
+controls, 20 inline-form controls and 34 binding checks passed. The inline
+controls reject ambiguous subject forms, missing labels or confirmation, lost
+role values after refresh, altered roles, missing/duplicated audit displays and
+authorization bypasses. Both control sets preserve failed restoration as
+inconclusive. This is partial APP-011 evidence; AC-025–027 remain incomplete,
+the suite unapproved and acceptance unset.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
