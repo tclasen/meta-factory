@@ -1553,6 +1553,26 @@ This is an operator-local diagnostic prototype and smoke-case result,
 not complete APP-011 coverage or accepted comparison evidence. The disclosed
 diagnostic-copy PGDATA adjustment still applies.
 
+Separate protected browser drafts now allow operator-reviewed inline creation
+forms and semantic case lists. APP-011 does not require separate navigation
+buttons or a table layout. The draft still performs keyboard creation/search,
+refresh and inert-text checks, then independently verifies persisted API data.
+List bindings require a unique visible list and matching list item; visible
+tables still require programmatic headers. An optional keyboard selection of
+the newly created case restores its detail view after refresh. Default separate
+button/table bindings remain available.
+
+Combobox bindings use their exact accessible role and name. A Chromium markup
+reproducer confirmed that a wrapped select matches the accessible name
+`Severity`, while exact label-text lookup includes its option text. Twenty-four
+existing table controls, five list controls and six malformed-binding controls
+passed after this correction. The earlier native attempt's selector failure is
+retained. The subsequent application journey progressed further but remained
+inconclusive: its worker reported an assertion and a browser disconnect, so the
+strict transport boundary refused an authoritative failure or pass. These drafts
+remain partial and unapproved; previous suites, specifications and frozen pilot
+results are unchanged.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
