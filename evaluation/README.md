@@ -2672,3 +2672,35 @@ repeat command's before/after composition:
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_*observer.py' -v
 ```
+
+### Alternate seed identity observations
+
+`identity_observer.observe_seed_fixture(project, base_url, expected_roles,
+passwords, lifetime_check=..., timeout=5)` verifies independently selected
+synthetic usernames, passwords, tenant aliases and role sets. `expected_roles`
+maps each username to `{tenant_alias: [roles...]}`; `passwords` maps those same
+usernames to synthetic passwords. Choose that configuration before executing
+the application's documented seed mechanism in a separate fresh deployment.
+Interpret its actual documented JSON input; this helper does not impose a seed
+argument, environment variable, SQL schema or requirement for caller-assigned
+UUIDs. It does not invoke the seed command itself.
+
+The ordinary `ops/fixture-ids.json` supplies the resulting identity lookup, then
+every configured user's authenticated live identity must match it. Exact live
+administrator membership pages crosscheck the independently expected roles,
+and a case reader verifies every selected tenant is empty. Expected unassigned
+users are checked through their own login; unexpected unassigned database users
+remain outside these API observations. Tenant aliases do not independently prove
+database display names. Returns declared IDs and sanitized observations, with no
+passwords or sessions; keep those records outside application mounts.
+
+Configuration is bounded to 100 users and 16 tenants. Each selected tenant needs
+an administrator and analyst/reviewer for the operator's API observation scope;
+unobservable configuration is rejected before login. Those are collector
+capability bounds, not new application acceptance requirements. The existing
+`observe_default_fixture` uses this collector with APP-013's default roster and
+preserves its protected tenants/accounts return shape. Alternate seed execution,
+source/deployment binding, protected verifier composition and complete AC-002
+coverage remain separate work. The observer fixture command above includes
+alternate names/passwords, removed/default-name assumptions, extra members,
+role mismatches, manifest drift and lifetime loss.

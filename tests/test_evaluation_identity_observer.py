@@ -27,6 +27,7 @@ class LoopbackFixture(unittest.TestCase):
         self.requests = []
         self.sessions = {}
         self.roles = copy.deepcopy(USERS)
+        self.passwords = {username:'Fixture-only-2026!' for username in USERS}
         self.case = None
         fixture = self
         class Handler(BaseHTTPRequestHandler):
@@ -52,7 +53,7 @@ class LoopbackFixture(unittest.TestCase):
                         self.end_headers()
                         return
                     fixture.assertEqual(set(data),{'username','password'})
-                    fixture.assertEqual(data['password'],'Fixture-only-2026!')
+                    fixture.assertEqual(data['password'],fixture.passwords[data['username']])
                     token = uuid.uuid4().hex
                     fixture.sessions[token] = data['username']
                     self.cookie = 'fixture='+token+'; Path=/; HttpOnly; SameSite=Strict'
