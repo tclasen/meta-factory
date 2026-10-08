@@ -1688,6 +1688,21 @@ retained; a separate read-only inspection verified current absence of its owned
 resources. These are partial, unapproved APP-011 fixtures, with acceptance unset;
 the longer setup diagnostic does not replace the earlier timeout outcomes.
 
+A further form-validation draft supports an inline creation form without a
+separate navigation button. It retains programmatic-label checks, keyboard
+submission, an empty-title precondition, native invalid-field feedback/focus or
+an associated/announced error, and preservation of the invalid input. Twenty-four
+existing journey controls, seven inline validation controls and 45 binding checks
+passed. The inline controls accept native, associated and summary feedback and
+reject hidden, silent, unassociated errors or unlabeled visible controls.
+
+A fresh native application fixture passed these checks with the original
+180-second bootstrap allowance; setup completed in 63 seconds. Both browser hops
+and the closed Desktop proxy completed seven requests without disconnects or
+errors, with all owned cleanup and unchanged global policy verified. This is
+partial AC-027 evidence; broader validation coverage, suite review and acceptance
+remain incomplete.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
