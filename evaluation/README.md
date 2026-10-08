@@ -3966,6 +3966,44 @@ sandbox stop, bridge/private-workspace teardown and unchanged global policy were
 verified. Protected full-sample/profile/filter/comment-ceiling integration remains
 separate work; the suite retains its existing coverage flags and unapproved status.
 
+### Full source-bound scale reference
+
+The subsequent fresh reference completed the full sample with the same disclosed
+PostgreSQL and storage-growth settings. Fifty independently configured users
+authenticated; a separate read-only database observation, mapped from the captured
+migration, counted exactly 50 users, two tenants and no unassigned users. That SQL
+mapping applies to this fixture and imposes no table names on future builders.
+Identity-only observations bracketed loading. The loader created and read back
+2,000 cases, 200 comments and twenty 1 MiB evidence objects, and verified all twenty
+downloads against expected bytes and headers.
+
+The preparation then established 72 case profiles. An independent receipt check
+confirmed all 36 severity/state/assignee combinations per tenant, distinct case
+identities and the expected lifecycle versions. Both registered protected groups,
+`case-scale-reads` and `comment-count-race`, passed. The latter exercised the
+99-comment baseline, two concurrent additions with exactly one winner, rejection
+of comment 101 and persisted state on an existing case. It added 100 comments;
+the resulting 300-comment deployment is not the specified performance sample.
+
+The loader/profile preparation recorded 13,336 selected-source checks across 159
+files, with additional checks before and after protected grading. Bootstrap took
+70.387 seconds. All 7,600 VM bridge connections completed without relay errors or
+active connections at cleanup. Owned cluster/volume absence, sandbox stop,
+bridge/private-workspace removal and unchanged global policy were verified.
+The original candidate, protected source version and earlier outcomes remain
+unchanged; acceptance is unset.
+
+The AC-031 clause review still identifies a scaled authorization gap. The current
+scale oracle verifies that each authorized tenant's lists contain exactly its own
+expected rows; it does not yet send unauthorized cross-tenant list requests at
+scale, including filters or offsets yielding empty pages. APP-003 requires
+nonmembers to receive 404 `not_found`, distinct from a member's insufficient-role
+403 `forbidden`. Add and validate these observations in a new protected version
+before claiming complete AC-031 coverage. The current registry remains at 77
+groups and seven implementation-complete criteria, with human content review and
+suite freeze still pending. No resource-allocation, performance or complete runtime
+attestation claim follows from these reference results.
+
 ### Operator-selected cases within one protected registry
 
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
