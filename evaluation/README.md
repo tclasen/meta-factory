@@ -3036,6 +3036,13 @@ its deployment/grading evidence; raw observations and the final
 identity, clock or cleanup uncertainty invalidates collected observations and
 withholds acceptance. Unapproved development suites never confer acceptance.
 
+Stage `options` may explicitly select `loopback_bridge: true` for the bounded
+operator transport described below. This boolean reaches `grade_capture` through
+the planned stage configuration; malformed values refuse before resource intent
+or creation. Declare the same transport policy across comparison arms. Omitting
+the option preserves direct publication. Bridge factory injection remains a
+deployment test facility, outside the allowed staged protocol options.
+
 Both clocks share one budget across source checks, bootstrap, fixture loading,
 cases and stage settlement. Clock rollback/nonfinite observations refuse, and
 first-test grading cannot exceed the proposed 5,400 seconds. Cleanup still runs

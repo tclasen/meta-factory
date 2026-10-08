@@ -82,6 +82,25 @@ class GradingStagesTest(unittest.TestCase):
         values={case['id']:dict(case_id=case['id'],verdict='pass')}
         return dict(suite.aggregate(values),case_results=values,selected_case_ids=[case['id']],aborted=False,
                     outcome='grading_incomplete',cleanup={'remote_termination_verified':True},manual_stop=['sbx','stop',box.name])
+    def test_stage_bridge_selection_reaches_deployment(self):
+        observed=[]
+        for stage in self.stages:stage['options']={'loopback_bridge':True}
+        def deployment(*args,**kwargs):
+            observed.append(kwargs['loopback_bridge'])
+            return self.simulated_deployment(*args,**kwargs)
+        with Attempt(self.root/'bridge-options',{}) as attempt:
+            report=self.run_stages(attempt,deployment=deployment)
+        self.assertEqual(observed,[True,True])
+        self.assertTrue(report['protocol_valid'])
+
+    def test_malformed_stage_bridge_selection_refuses_before_creation(self):
+        for index,value in enumerate((1,'true',None,{})):
+            self.stages[0]['options']={'loopback_bridge':value}
+            with Attempt(self.root/('bridge-invalid-'+str(index)),{}) as attempt:
+                with self.assertRaises(ValueError):self.run_stages(attempt)
+                self.assertFalse((attempt.directory/'grading-stages-intent.json').exists())
+            self.assertEqual(FakeSandbox.instances,[])
+
     def test_actual_child_stages_are_fresh_and_previous_cleanup_precedes_next_create(self):
         def loader(box,**context):
             self.assertIs(context['lifetime_check'](),True)

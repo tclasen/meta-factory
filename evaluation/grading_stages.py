@@ -26,6 +26,7 @@ STAGE_OPTIONS = {
     'fault_storage_worker_restart', 'job_observer', 'job_runtime_factory',
     'job_staging', 'staging_runtime_factory', 'security_observer',
     'security_runtime_factory', 'ops_resolver', 'ops_runtime_factory',
+    'loopback_bridge',
 }
 
 
@@ -120,6 +121,8 @@ def grade_stages(attempt, source, inventory, specification, suite, stages, *, po
         options = dict(stage.get('options', {}))
         if not set(options) <= STAGE_OPTIONS or not isinstance(stage['target'], dict):
             raise ValueError('Trusted bounded stage options and target required')
+        if 'loopback_bridge' in options and type(options['loopback_bridge']) is not bool:
+            raise ValueError('Explicit boolean stage bridge selection required')
         if 'bootstrap_seconds' in options:
             positive(options['bootstrap_seconds'], 'stage bootstrap bound')
             if options['bootstrap_seconds'] > 1800:
