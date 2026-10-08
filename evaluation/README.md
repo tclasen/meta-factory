@@ -465,6 +465,50 @@ with no model calls or changes to frozen pilot grades.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_schema_comparison.py' -v
 ```
 
+`python_dependencies.inspect_python_dependencies` checks a plain Python version
+lock against declared requirements and a private, independently obtained
+[`pip inspect` v1 report](https://pip.pypa.io/en/stable/reference/inspect-report/).
+It uses the controller's explicitly pinned `packaging==26.3` dependency for
+PEP 508 requirements, version constraints and environment markers. Set up the
+controller with `uv sync --locked`; candidate packages are never imported or
+installed by this verifier.
+
+All active locked rows and declared roots seed the dependency graph. Metadata
+dependencies propagate extras, including extras activated after an earlier
+visit. Platform/Python markers use the report's complete environment, with a
+consistent full/minor Python version. Exact pins may include additional
+constraints; ranges and wildcard-only pins do not fix a version. Every required
+distribution must be installed at its pinned version and satisfy all active
+constraints, requested extras and `Requires-Python`. Unmapped installed
+distributions are counted separately; they are never silently classified as
+baseline tools or application dependencies.
+
+Supported input includes ordinary requirements, comments, continuations and
+optional SHA-256/384/512 annotations. Includes, installer directives, direct
+requirements URLs, arbitrary `===` lock versions, nonpositive extra predicates
+and unknown/malformed reports remain inconclusive. Known missing pins, missing
+distributions, wrong versions or conflicting constraints produce observed false.
+The distinction follows the disclosed locked-dependency requirement, rather
+than imposing hashes: [pip documents version pinning and hash checking separately](https://pip.pypa.io/en/stable/topics/repeatable-installs/).
+Hash annotations are recognized without claiming installed artifact verification.
+
+Results contain counts and digests, never raw metadata, requirement URLs or error
+messages. Source/build/runtime attribution, actual application imports, artifact
+bytes/origin and complete dependency delivery remain separate; their flags stay
+false. Requirements files are bounded at 256 KiB/1,024 entries, inspect reports
+at 4 MiB/1,024 distributions, metadata dependencies at 256 per distribution,
+extras at 64 and graph work at 8,192 dependency visits. Eleven local controls and
+four native controls passed. Native controls installed synthetic local wheels
+without indexes into two sequential network-isolated pinned Python containers:
+complete closure passed, while a missing transitive pin, wrong version and
+missing extra package failed. Private metadata stayed outside logs; containers,
+sandbox and workspace were cleaned up and global policy stayed unchanged.
+These observations do not grade the captured candidate or complete AC-001.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_python_dependencies.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
