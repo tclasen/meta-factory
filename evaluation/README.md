@@ -2207,6 +2207,15 @@ reader does not verify passwords, discover a schema, enforce hashing policy or
 establish salt uniqueness outside the supplied account scope. It is not wired to
 an acceptance case or deployment resolver.
 
+Set `require_complete_scope=True` on the reader call to require that the supplied
+identities exhaust the mapped relation at the read snapshot. That mode reads
+without an identity filter, retaining the same one-extra-row bound, and refuses
+row security, extra accounts, missing identities or duplicates. Its result still
+stays private. The operator must establish that this relation represents all
+relevant accounts; this option does not discover other account stores or prove
+coverage over time. Focused boundary tests cover the new mode; native SQL
+integration remains to be verified.
+
 A separate operator-local native prototype connected this reader to guarded
 parent security inspection and the protected `password-storage` case. It bound
 the actual PostgreSQL relation and physical peer, selected nine independently

@@ -61,6 +61,21 @@ class PasswordDatabaseTest(unittest.TestCase):
             with self.assertRaises(ValueError):self.reader(scope)
         self.transport.assert_not_called()
 
+    def test_complete_scope_reads_unfiltered_relation_and_refuses_extra_account(self):
+        self.assertEqual(self.reader(['a','b'],require_complete_scope=True),{'a':'private-a','b':'private-b'})
+        query=self.transport.call_args.args[1]
+        self.assertIn('WHERE TRUE LIMIT 3',query)
+        self.assertNotIn('= ANY(ARRAY[',query)
+        self.assertIn('relrowsecurity',query)
+        self.value['accounts'].append(dict(identity='unselected',encoded_hash='private-extra'))
+        self.value['truncated']=True
+        with self.assertRaises(ValueError):self.reader(['a','b'],require_complete_scope=True)
+
+    def test_complete_scope_requires_explicit_boolean_before_transport(self):
+        for flag in (None,0,1,'true',[]):
+            with self.assertRaises(ValueError):self.reader(['a','b'],require_complete_scope=flag)
+        self.transport.assert_not_called()
+
     def test_complete_mapping_required_before_any_transport(self):
         for change in (lambda b:b['accounts'].update(table_oid=True),lambda b:b['accounts'].update(table_oid=0),
                        lambda b:b['accounts']['fields'].pop('encoded_hash'),

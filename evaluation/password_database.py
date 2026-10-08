@@ -12,7 +12,9 @@ from .database_probe import identifier, sql_literal
 FIELDS = {'identity', 'encoded_hash'}
 
 
-def password_read_sql(binding, identities):
+def password_read_sql(binding, identities, *, require_complete_scope=False):
+    if type(require_complete_scope) is not bool:
+        raise ValueError('Explicit boolean password scope required')
     if (not isinstance(binding, dict) or set(binding) != {
             'accounts', 'database_name', 'operator_user', 'operator_session_user'}
             or any(not isinstance(binding[key], str) or not binding[key]
@@ -40,12 +42,21 @@ def password_read_sql(binding, identities):
         column = 't.' + identifier(selected['column'])
         expressions[field] = column + '::text' if not selected['path'] else (
             '(' + column + '::jsonb #>> ARRAY[' + ','.join(sql_literal(key) for key in selected['path']) + ']::text[])')
+    complete_check = ''
+    if require_complete_scope:
+        complete_check = """IF EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid=%s::oid AND relrowsecurity) THEN
+    RAISE EXCEPTION 'Complete account scope unavailable with row security';
+END IF;
+""" % mapping['table_oid']
     identity_check = """BEGIN
 IF pg_catalog.to_regclass(%s)::oid IS DISTINCT FROM %s::oid
    OR NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE oid=%s::oid AND relkind IN ('r','p')) THEN
     RAISE EXCEPTION 'Operator account relation changed or unsupported';
 END IF;
-END;""" % (sql_literal(relation), mapping['table_oid'], mapping['table_oid'])
+%sEND;""" % (sql_literal(relation), mapping['table_oid'], mapping['table_oid'], complete_check)
+    selection = 'TRUE' if require_complete_scope else (
+        expressions['identity'] + ' = ANY(ARRAY['
+        + ','.join(sql_literal(value) for value in identities) + ']::text[])')
     # Oversized or missing encodings yield no raw value; the reader refuses them.
     return """BEGIN READ ONLY;
 SET LOCAL statement_timeout = '5s';
@@ -56,7 +67,7 @@ LOCK TABLE %s IN ACCESS SHARE MODE;
 DO %s;
 WITH selected AS MATERIALIZED (
     SELECT %s AS identity, %s AS encoded_hash FROM %s t
-     WHERE %s = ANY(ARRAY[%s]::text[]) LIMIT %s
+     WHERE %s LIMIT %s
 ), projected AS (
     SELECT CASE WHEN encoded_hash IS NULL OR pg_catalog.octet_length(encoded_hash) NOT BETWEEN 1 AND 4096
                 THEN pg_catalog.json_build_object('representation_unavailable',true)
@@ -69,7 +80,7 @@ SELECT pg_catalog.json_build_object(
     'accounts',COALESCE((SELECT json_agg(account) FROM projected),'[]'::json));
 COMMIT;
 """ % (relation, sql_literal(identity_check), expressions['identity'], expressions['encoded_hash'], relation,
-       expressions['identity'], ','.join(sql_literal(value) for value in identities), len(identities) + 1,
+       selection, len(identities) + 1,
        mapping['table_oid'], len(identities))
 
 
@@ -88,8 +99,8 @@ class PasswordDatabaseReader:
         password_read_sql(self.binding, ['operator-mapping-validation'])
         self.transport = transport
 
-    def __call__(self, identities, *, timeout=15):
-        sql = password_read_sql(self.binding, identities)
+    def __call__(self, identities, *, timeout=15, require_complete_scope=False):
+        sql = password_read_sql(self.binding, identities, require_complete_scope=require_complete_scope)
         expected = set(identities)
         value = self.transport('operator', sql, timeout=timeout)
         binding = self.binding
