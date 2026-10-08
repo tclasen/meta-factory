@@ -1796,6 +1796,40 @@ restoration and bridge/cluster/volume/sandbox/workspace cleanup, and left global
 policy unchanged. No frozen candidate was repaired or rescored, and no
 acceptance was recorded.
 
+The next native prototype prepared a held process descriptor before watching
+the mapped job through independently bound, read-only PostgreSQL queries. After
+observing an active claim it sent SIGSTOP to that descriptor, verified the
+stopped process state, and read the durable lease again before conditionally
+scaling to zero and sending SIGKILL. The pause belongs to the restart fault and
+must never count toward running-service time. Failure cleanup resumes the held
+process where possible; the outer watchdog remains the final cleanup boundary.
+
+This exposed normal CRI record removal after process exit. Post-exit verification
+now retains the kernel descriptor's exit evidence and original node/runtime/
+Namespace/workload checks, then requires a successful CRI listing to show the
+selected container either exited or absent. CLI errors cannot prove absence.
+No exit code is invented when the record has been removed or only its listed
+state is available. Sanitized exception-chain locations preserve failed-check
+diagnostics without exposing runtime configuration or credential values.
+
+In the completed fixture, both the probe's stopped-process read and the parent's
+paused-worker read observed running status, two attempts, the same active claim
+fingerprint and zero completion events. The resumed durable read retained that
+claim. After storage restoration the job reached ready on attempt three with
+one completion event and no retained lease. The protected worker/API restart
+group passed. All six workload restoration receipts and bridge/cluster/volume/
+sandbox/workspace cleanup were verified, with 67 completed bridge connections
+and no errors. The three preceding failed attempts and their cleanup evidence
+remain retained.
+
+This supplies actual interrupted-claim prerequisite evidence. It does not prove
+the sixty-second recovery bound, the separate retry running-clock bound, or the
+interrupted job's restored physical artifact/ZIP properties. The existing
+artifact capability correctly refused its retired storage Pod binding after
+restoration; independently authorizing the new storage generation is still
+required. Candidate and protected suite remained unchanged, and the explicit
+write-control fixture precondition remains part of this development evidence.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_process_termination.py -v
 ```
