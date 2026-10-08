@@ -181,7 +181,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 fixture_lifetime.check()
             finally:
                 fixture_lifetime.restore_scope()
-            allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture',
+            allowed = {'tenants', 'accounts', 'scale_cases', 'scale_sample_fixture', 'performance_fixture',
                        'twenty_export_fixture', 'integrated_fixture', 'network_fixture',
                        'foundation_fixture', 'documentation_fixture',
                        'attestation_fixture', 'disposal_fixture', 'authentication_fixture'}
