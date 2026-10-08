@@ -97,6 +97,26 @@ known object versions and unrelated fixture preservation were independently
 checked. Stop, private workspace removal, credential-free evidence and unchanged
 global policy were verified. This is fixture evidence, not benchmark acceptance.
 
+`storage_policy.py` reads the selected bucket's entire policy twice through a
+trusted peer. It records hashes/counts and source identities, keeping raw policy
+fields and credentials out of evidence. Authenticated NoSuchBucketPolicy is
+distinguished from an inaccessible/missing bucket. Supported fixed principals
+and unconditional grants to everyone are observed conservatively; conditions,
+exceptions, unknown layouts/actions and mixed broad allow/deny policies stay
+inconclusive. Snapshot drift or failed peer/source rechecks invalidate the result.
+The reader does not mutate bucket policy and does not infer whole-bucket privacy:
+ACLs and other authorization controls require separate checks.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_policy.py' -v
+```
+
+Native synthetic controls also demonstrate that a canary can pass while an
+owned object in a different prefix is anonymously readable; the whole policy
+reader observes that broad grant. Absent-policy and conditional-policy cases
+remain distinct from a privacy verdict. These are grader-component fixtures,
+not application acceptance or protected-suite approval.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
