@@ -123,12 +123,34 @@ AllUsers and AuthenticatedUsers groups and anonymous canonical user ID. Unknown
 grantees, permissions, namespaces, ambiguous XML, unavailable APIs and oversized
 responses remain inconclusive. Counts describe declared grants; effective access
 can depend on other controls. A supported ACL with no broad grant is not a
-whole-bucket privacy verdict. Live collection, complete object/version inventory
+whole-bucket privacy verdict.
+
+`storage_acl.capture_acl` reads one selected bucket/object/version ACL twice with
+SigV4 through an independently bound peer. Its mode-0600 target JSON has exactly
+`key` and `version_id` fields: both null selects the bucket, a key with null version
+selects the current object, and both strings select a version. The private target
+stays outside evidence and builder mounts; outputs contain its digest and scope,
+not object names or version IDs. UTF-8 target bytes are bounded and URL-encoded;
+dot path segments are refused to avoid intermediary normalization ambiguity.
+Requests reject proxies/redirects and bound response size, time and evidence.
+Bind peer identity, credentials, target and source identities in `lifetime_check`
+before and after collection. Failed rechecks and changed ACL snapshots invalidate
+the observation. Unavailable APIs remain distinct from supported ACL observations.
+`privacy_verified` remains null and `inventory_complete` false: complete inventory
 and composition with policy observations remain separate work.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_acl.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_acl_capture.py' -v
 ```
+
+Native MinIO fixture checks exercised bucket, object and selected version reads,
+plus a missing object. The tested peer returns empty owner IDs for its ACLs;
+those layouts remain inconclusive rather than establishing private ownership.
+Missing-object error bytes changed between requests and produced no supported
+ACL observation. These controls validate transport and conservative handling,
+not native public ACL enforcement, complete inventory or acceptance. Exact source
+hashes, scoped cleanup and unchanged global policy were checked; no model calls.
 
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.

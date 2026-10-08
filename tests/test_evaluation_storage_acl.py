@@ -56,6 +56,7 @@ class StorageAclTest(unittest.TestCase):
     def test_missing_duplicate_foreign_and_mixed_schema_are_inconclusive(self):
         source = acl(grant())
         malformed = [acl(grant(), namespace='https://foreign.invalid'), acl(),
+                     source.replace(b'<ID>fixture-owner</ID>', b'<ID/>'),
                      source.replace(b'<Owner>', b'<Owner extra="1">'),
                      source.replace(b'</Owner>', b'</Owner><Owner><ID>second</ID></Owner>'),
                      source.replace(b'<Grant>', b'<Unknown>'),
