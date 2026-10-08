@@ -1689,9 +1689,25 @@ Bridge, owned cluster/volume, sandbox and workspace cleanup and unchanged global
 policy were verified in all retained attempts. The successful fixture completed
 all 68 bridge connections without errors. The candidate and protected suite
 remained unchanged; these are development fixtures without acceptance or
-original-candidate rescoring. Connecting these observations to the private job
-capability, staging/lease faults and an independent running-service clock remains
-necessary before authoritative job grading.
+original-candidate rescoring.
+
+A subsequent fresh native fixture connected these readers through the actual
+`grade_capture(job_observer=...)` and private `JobRuntime` broker. Single-snapshot
+peer checks compared the live identities with established bindings; database and
+physical reads retained their before/after checks. The broker observed a queued
+job with zero attempts/events/objects, then a ready job with one attempt, one
+completion event and one physical artifact. Durable-only reads agreed without
+returning artifact counts. All callback results met the enforced timeouts;
+the longest recorded peer command took 0.63 seconds for PostgreSQL and 0.94
+seconds for storage. Callback receipts used separate files from the parent
+attempt's event sequence, and exact operator input sources were archived.
+
+The same protected restart group passed again, with all four fault operations
+restored and bridge/cluster/volume/sandbox/workspace cleanup verified. Global
+policy, frozen candidate and protected suite remained unchanged. This fixture
+retained the explicit write-control precondition and supplies queued/ready
+capability evidence only. Interrupted leases, retry faults and an independent
+running-service clock remain necessary before authoritative job grading.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
