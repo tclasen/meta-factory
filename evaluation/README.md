@@ -1514,6 +1514,13 @@ this mapping to the immutable specification and fresh deployment rather than
 response flags. This preserves native Origin/CSRF behavior without rewriting
 headers or application configuration. Without this option, both URLs are equal.
 
+Forty-nine browser tests passed with the mapping. A native synthetic content
+journey also passed when its server required the mapped origin: five Origin-
+bearing mutations matched, three expected writes persisted, and both relay hops
+completed 25 requests with verified cleanup and a clean private secret scan.
+Native wrong-origin controls remain inconclusive because their transport did
+not finish cleanly; they do not establish rejection behavior for this mapping.
+
 A nonce-owned Mac loopback service was reached from a separately guarded Docker
 Desktop bridge container using its fixed host gateway. The service thread and
 container were cleaned up. This verifies the physical reachability prerequisite,
