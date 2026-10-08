@@ -117,6 +117,19 @@ reader observes that broad grant. Absent-policy and conditional-policy cases
 remain distinct from a privacy verdict. These are grader-component fixtures,
 not application acceptance or protected-suite approval.
 
+`storage_acl_semantics.py` parses a bounded bucket/object/version ACL response
+without emitting raw owner IDs or grantee fields. It recognizes the documented
+AllUsers and AuthenticatedUsers groups and anonymous canonical user ID. Unknown
+grantees, permissions, namespaces, ambiguous XML, unavailable APIs and oversized
+responses remain inconclusive. Counts describe declared grants; effective access
+can depend on other controls. A supported ACL with no broad grant is not a
+whole-bucket privacy verdict. Live collection, complete object/version inventory
+and composition with policy observations remain separate work.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_acl.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
