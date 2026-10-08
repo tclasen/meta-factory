@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 import uuid
 
-from evaluation.identity_observer import USERS, observe_default_fixture
+from evaluation.identity_observer import USERS, observe_default_fixture, observe_seed_fixture
 from evaluation.verdicts import Inconclusive
 
 
@@ -147,6 +147,33 @@ class IdentityObserverTest(LoopbackFixture):
         self.assertEqual(sum(path=='/api/v1/auth/logout' for _,path in self.requests),9)
         self.assertNotIn('csrf_token',json.dumps(observation))
         self.assertNotIn('password',json.dumps(observation))
+
+    def test_identity_only_recheck_allows_populated_tenants_without_case_reads(self):
+        self.fault = 'nonempty'
+        _, observation = observe_seed_fixture(
+            self.project, self.url, self.roles, self.passwords,
+            lifetime_check=lambda reserve: True, require_empty_cases=False)
+        self.assertEqual(len(observation['identities']['users']), len(USERS))
+        self.assertEqual(observation['case_counts'], {})
+        self.assertFalse(any('/cases' in path for _, path in self.requests))
+        self.assertFalse(self.sessions)
+
+    def test_identity_only_recheck_still_rejects_identity_and_membership_drift(self):
+        for fault in ('wrong-id', 'extra-role', 'extra-member', 'persisted-role-mismatch'):
+            with self.subTest(fault=fault):
+                self.fault = fault
+                with self.assertRaises((AssertionError, Inconclusive)):
+                    observe_seed_fixture(
+                        self.project, self.url, self.roles, self.passwords,
+                        lifetime_check=lambda reserve: True, require_empty_cases=False)
+
+    def test_invalid_identity_observation_mode_refuses_before_login(self):
+        for mode in (None, 0, 1, 'false'):
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                observe_seed_fixture(
+                    self.project, self.url, self.roles, self.passwords,
+                    lifetime_check=lambda reserve: True, require_empty_cases=mode)
+        self.assertFalse(self.requests)
 
     def test_distinct_entity_kinds_may_use_the_same_uuid(self):
         self.manifest['users']['alpha-analyst']=self.manifest['tenants']['alpha']
