@@ -3279,7 +3279,31 @@ All five groups passed. A bounded operator TCP bridge connects the existing host
 loopback publication to the grading VM's loopback endpoint; direct host requests
 reset before that bridge, while VM requests succeeded. The bridge forwards opaque
 bytes to one fixed destination and records no payloads. It stopped after 497
-connections with zero errors. This prototype still needs controller integration.
+connections with zero errors.
+
+`grade_capture(..., loopback_bridge=True)` now prepares the operator bridge before
+fixture loading and closes it before releasing the grading watchdog. The default
+is `False`; callers must declare this transport choice in the shared protocol for
+all arms. A direct HTTP response keeps the original publication. Only a refused,
+reset or timed-out connection starts the fixed VM-interface port 8080 to VM
+loopback port 8080 relay. It preserves bytes, including HTTP headers, and requires
+a unique private IPv4 default-route interface. Read-only Linux interface discovery
+requires no host administration or additional VM package.
+
+The relay shares the grading deadline, allows four concurrent connections, bounds
+each connection to 64 MiB and 30 seconds of inactivity, and bounds writes to five
+seconds. These transport limits must fit the selected checks. Cleanup verifies the
+owned PID, start time and UID before signalling, then requires a matching stopped
+receipt with no active connections. Preparation failure skips fixture loading;
+cleanup failure clears acceptance even if checks passed. The CLI does not yet
+expose this Python API option.
+
+A fresh controlled fixture exercised the actual controller integration: all five
+API groups passed, with 494 relay connections, zero errors and verified bridge,
+cluster, volume, sandbox and workspace cleanup. The captured original remained
+unchanged, and global policy remained unchanged. Direct-publication, expired
+lifetime, mismatched identity and deployment failure controls also passed. These
+results retain the development-only evidence limits above.
 
 The same fixture bound worker startup settings to the deployed storage Service,
 Endpoints, Pod and CRI container. A unique 512-byte canary passed authenticated

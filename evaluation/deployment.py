@@ -18,6 +18,7 @@ from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
 from .watchdog import Guard
 from .source_modes import restore_deployment_modes, validate_modes
+from .loopback_bridge import LoopbackBridge
 
 
 def verify_capture(source, inventory):
@@ -56,7 +57,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                   fault_storage_worker_restart=False, job_observer=None,
                   job_runtime_factory=JobRuntime, job_staging=False, staging_runtime_factory=StagingRuntime,
                   security_observer=None, security_runtime_factory=SecurityRuntime, fixture_loader=None,
-                  ops_resolver=None, ops_runtime_factory=OpsRuntime):
+                  ops_resolver=None, ops_runtime_factory=OpsRuntime,
+                  loopback_bridge=False, loopback_bridge_factory=LoopbackBridge):
     """No model execution. Application scripts run only in the named grading sbx.
 
     The source must already have been captured after builder termination. Callers
@@ -64,6 +66,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     never grants acceptance and is for synthetic preflights or grader development.
     Factory injection supports deterministic lifecycle/failure tests, not CLI bypasses.
     """
+    if type(loopback_bridge) is not bool or not callable(loopback_bridge_factory):
+        raise ValueError('Explicit shared-protocol bridge selection required')
     if ops_resolver is not None and not callable(ops_resolver):
         raise ValueError("Operations require a trusted post-bootstrap resolver")
     if fixture_loader is not None and not callable(fixture_loader):
@@ -127,6 +131,8 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
     ops_runtime = None
     security_runtime = None
     browser_binding = None
+    publication_bridge = None
+    publication_lifetime = None
     report = dict(suite.aggregate({}), outcome='grading_incomplete',
                   project_success=False, case_results={}, aborted=True,
                   reason='grading_not_started')
@@ -150,6 +156,15 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         remaining = grading_seconds - (time.monotonic() - grading_started)
         if remaining <= 0:
             raise TimeoutError('Grading budget consumed by deployment')
+        if loopback_bridge:
+            publication_lifetime = FixtureLifetime(box, guard,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            publication_bridge = loopback_bridge_factory(attempt, box, host_port=port,
+                lifetime_check=publication_lifetime.check,
+                monotonic_deadline=grading_started + grading_seconds,
+                wall_deadline=grading_wall_started + grading_seconds)
+            publication_bridge.start()
         if fixture_loader is not None:
             # This operator callback owns bounded fixture creation and independent
             # expected resources. It never receives or selects an executable from
@@ -314,6 +329,14 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                 report.update(outcome='grading_incomplete', project_success=False,
                               accepted_packages=[],
                               fault_cleanup_error=type(error).__name__)
+        if publication_lifetime is not None:
+            publication_lifetime.restore_scope()
+        if publication_bridge is not None:
+            try:
+                publication_bridge.close()
+            except Exception as error:
+                report.update(outcome='grading_incomplete', project_success=False,
+                              accepted_packages=[], bridge_cleanup_error=type(error).__name__)
         if guard is not None:
             try:
                 cleanup = guard.release()

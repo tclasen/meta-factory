@@ -80,6 +80,52 @@ class DeploymentTest(unittest.TestCase):
                              development=True, sandbox_factory=FakeSandbox, guard_factory=FakeGuard,
                              command_runner=command, suite_runner=runner or default_suite, **extras)
 
+    def test_bridge_precedes_fixture_loading_and_closes_before_guard(self):
+        calls=[]
+        class Bridge:
+            def __init__(self,*args,**kwargs):
+                self.check=kwargs['lifetime_check']
+                calls.append('construct')
+            def start(self):self.check(1);calls.append('start')
+            def close(self):calls.append('close')
+        def loader(box,**kwargs):
+            self.assertEqual(calls,['construct','start'])
+            calls.append('fixture')
+            return {'tenants':{'alpha':'fixture'}}
+        with Attempt(self.root/'logs',{}) as attempt:
+            report=self.run_grade(attempt,loopback_bridge=True,loopback_bridge_factory=Bridge,
+                                  fixture_loader=loader)
+        self.assertEqual(calls,['construct','start','fixture','close'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_bridge_startup_failure_skips_fixture_and_grading_and_still_closes(self):
+        closed=[]
+        class Bridge:
+            def __init__(self,*args,**kwargs):pass
+            def start(self):raise RuntimeError('private startup diagnostic')
+            def close(self):closed.append(True)
+        def forbidden(*args,**kwargs):raise AssertionError('Incomplete bridge must not grade')
+        with Attempt(self.root/'logs',{}) as attempt:
+            report=self.run_grade(attempt,loopback_bridge=True,loopback_bridge_factory=Bridge,
+                                  fixture_loader=forbidden,runner=forbidden)
+        self.assertEqual(closed,[True])
+        self.assertEqual(report['reason'],'grading_unavailable')
+        self.assertFalse(report['project_success'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+        self.assertNotIn('private startup diagnostic',str(report))
+
+    def test_bridge_cleanup_failure_clears_passed_package_acceptance(self):
+        class Bridge:
+            def __init__(self,*args,**kwargs):pass
+            def start(self):pass
+            def close(self):raise RuntimeError('private cleanup diagnostic')
+        with Attempt(self.root/'logs',{}) as attempt:
+            report=self.run_grade(attempt,loopback_bridge=True,loopback_bridge_factory=Bridge)
+        self.assertEqual(report['bridge_cleanup_error'],'RuntimeError')
+        self.assertEqual(report['accepted_packages'],[])
+        self.assertFalse(report['project_success'])
+        self.assertTrue(report['cleanup']['remote_termination_verified'])
+
     def test_capture_tampering_refused(self):
         (self.capture/'ops/bootstrap.sh').write_text('modified')
         with self.assertRaises(ValueError):verify_capture(self.capture, self.inventory)
