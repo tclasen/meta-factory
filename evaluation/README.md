@@ -1718,6 +1718,30 @@ policy verified. Setup completed in 61 seconds under the original 180-second
 allowance. These are browser-local response controls, not backend-outage evidence.
 The protected registry remains unchanged and partial; acceptance remains unset.
 
+A separate inert-text draft corrects an undisclosed display requirement: APP-011
+requires plain-text rendering, while APP-008/009 do not prescribe display of every
+API reason field. All eight independently seeded canaries and exact stored-value
+checks remain mandatory. Required displays may include surrounding status/size
+text. Three workflow metadata fields may be declared absent only with a reviewed
+readiness marker; unexpected visible text makes the operator binding inconclusive.
+Every view, including an absent view, rejects parsed attack nodes and dialogs on
+both initial load and refresh. Known cases are selected through the keyboard.
+
+Fifteen original display controls, fourteen required/absent-view controls, one
+binding-mismatch control and 50 binding checks passed. Both rendering control
+sets reject HTML injection in each of the eight fields. An earlier mock exposed
+unrelated metadata during injection tests and stopped with a binding mismatch;
+that attempt remains retained, with cleanup verified. A corrected independent
+mock passed without changing protected source or the native result.
+
+A fresh native fixture passed all eight stored-text/view checks. Five values were
+rendered as literal text; three metadata values remained absent under the reviewed
+bindings. Both browser hops and the closed Desktop proxy completed 140 requests
+without disconnects or errors, with all owned cleanup and unchanged global
+policy verified. Setup completed in 64 seconds under the original 180-second
+allowance. This is partial APP-011 evidence; the suite remains unapproved and
+acceptance unset, and earlier suites and comparison outcomes are unchanged.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
