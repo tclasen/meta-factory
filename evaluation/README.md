@@ -509,6 +509,38 @@ These observations do not grade the captured candidate or complete AC-001.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_python_dependencies.py' -v
 ```
 
+`npm_versions.inspect_npm_versions` inventories recorded package versions in
+private, nonworkspace npm v3 manifest/lock documents. It counts every registry
+package entry, including nested, development, optional and peer entries.
+Canonical exact semantic versions are fixed; missing versions, ranges and
+wildcards are observed unfixed. Unknown representations, workspace links,
+Git/file resolutions, credential-bearing URLs, malformed integrity annotations
+and duplicate JSON keys remain inconclusive. Documents are bounded at 4 MiB,
+4,096 package entries and 1,024 dependencies per group. Results expose counts,
+digests and error classes, without package names, URLs or parser diagnostics.
+
+This inventory does not resolve dependency graphs or manifest ranges.
+[`npm ci` checks manifest/lock consistency](https://docs.npmjs.com/cli/v10/commands/npm-ci/)
+using the selected npm version and configuration, including tree-shaping flags
+and required registry metadata/cache. Keep native consistency separate from
+recorded versions: a stale manifest or omitted transitive package can leave
+every remaining recorded version fixed. An unavailable registry is not evidence
+of an inconsistent lock. Integrity annotations are recognized without requiring
+them or claiming artifact byte verification. Native consistency, installed
+environment, artifact integrity and build consumption flags remain false in
+this inventory; a guarded collector must provide those observations separately.
+
+Six local controls passed. Native Node 22.14.0/npm 10.9.2 controls used a
+synthetic loopback registry inside a network-isolated pinned container. A valid
+lock passed both ordinary and cached offline installs; stale root declarations
+and an omitted transitive entry failed with `EUSAGE`. Each manifest/lock stayed
+unchanged. Cleanup and unchanged global policy were verified. These fixture
+results do not grade captured candidates or complete AC-001.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_versions.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
