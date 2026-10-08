@@ -339,6 +339,41 @@ policy. No model calls or additional host permission changes were needed.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_minio_storage.py' -v
 ```
 
+`storage_configuration.capture_storage_configuration` privately compares a
+selected application's startup storage settings with the private S3 binding.
+Supply operator-established environment names for endpoint, bucket, region,
+access key, secret key and optional session token, plus an independently selected
+application PID/start tick, executable digest, listener address/port and lifetime
+guard. No application setting names are imposed. Distinct names are required;
+an unmapped session token must also be absent from the private binding.
+
+Repeated executable/listener identities bracket two bounded reads of the
+selected process environment. Missing, duplicated, changed or mismatched selected
+values refuse observation. Credentials are compared privately and never returned,
+hashed into evidence or printed; unrelated settings are ignored. Reports contain
+only selected process identities, a digest of nonsecret endpoint/bucket/region
+and comparison flags. The environment is bounded at 64 KiB and 2,048 entries;
+individual selected values at 4 KiB. Transport allows 90 seconds, reserves 95
+seconds and invalidates observation after a failed lifetime recheck.
+
+Linux documents [proc PID environ](https://man7.org/linux/man-pages/man5/proc_pid_environ.5.html)
+as the environment established at exec; later changes may not appear there.
+Accordingly `application_use_verified`, `current_configuration_verified` and
+`deployment_attribution_verified` remain false. Source setting semantics, Pod/CRI
+attribution, actual application use, endpoint routing and private storage still
+require independent binding. An application using configuration files or another
+representation needs a reviewed adapter, not an inferred startup match.
+
+Six local controls and native matching/wrong-bucket/missing-name/wrong-start
+controls passed. The native application is a synthetic listener fixture, not a
+benchmark candidate. Credentials stayed out of evidence, the owned sandbox and
+private workspace were cleaned up, and global policy remained unchanged. These
+checks neither complete AC-001 nor change frozen pilot grades.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_configuration.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
