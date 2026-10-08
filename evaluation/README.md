@@ -1709,6 +1709,29 @@ retained the explicit write-control precondition and supplies queued/ready
 capability evidence only. Interrupted leases, retry faults and an independent
 running-service clock remain necessary before authoritative job grading.
 
+A further native fixture exercised the actual staging capability: verified
+worker suspension and API connectivity, authenticated enqueue/approval, then
+verified storage suspension/outage before worker restoration. During that outage
+the durable-only broker observed running status, one attempt, an active lease
+and zero completion events. A combined read correctly refused the absent bound
+storage Pod. The parent subsequently verified a worker restart while storage
+remained unavailable, including a durable read with the worker paused.
+
+That paused read found queued status, two attempts and no retained claim.
+The diagnostic wrapper's assertion that the original running claim would still
+be present failed; the subsequent protected restart group did not run. Worker
+suspension took about 32 seconds in that restart, so this procedure did not
+capture the intended interrupted lease. These observations establish neither
+lease reclamation nor the retry deadline. A protocol for abruptly stopping the
+exact owned worker, with independent process-termination evidence, is needed
+before interpreting a paused claim as interrupted-lease evidence. Do not change
+the application to manufacture such a claim or weaken the protected oracle.
+
+All staged faults restored, owned cluster/volume removal, sandbox stop, scratch
+removal, bridge cleanup and unchanged global policy were verified despite the
+wrapper failure. The attempt and exact operator inputs remain retained; the
+candidate and protected suite were unchanged, and no acceptance was recorded.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
 ```
