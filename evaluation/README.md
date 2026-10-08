@@ -466,8 +466,10 @@ uv run --locked python -m unittest discover -s tests -p 'test_evaluation_schema_
 ```
 
 `python_dependencies.inspect_python_dependencies` checks a plain Python version
-lock against declared requirements and a private, independently obtained
-[`pip inspect` v1 report](https://pip.pypa.io/en/stable/reference/inspect-report/).
+lock against declared requirements and private, independently obtained installed
+metadata in the [`pip inspect` v1 shape](https://pip.pypa.io/en/stable/reference/inspect-report/).
+The provider may be pip or the inert-image observer below; its provenance and
+marker environment must remain explicit.
 It uses the controller's explicitly pinned `packaging==26.3` dependency for
 PEP 508 requirements, version constraints and environment markers. Set up the
 controller with `uv sync --locked`; candidate packages are never imported or
@@ -521,6 +523,40 @@ consumption, production image identity and acceptance remain unverified.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_python_dependencies.py' -v
+```
+
+`python_image_metadata.py` reads installed metadata and file hashes from an inert
+image's `site-packages` tar stream. Run it in a trusted pinned observer with
+`python -I -S`, without candidate filesystem mounts. It never extracts files,
+imports candidate packages or executes `.pth` hooks. Only top-level
+`.dist-info/METADATA` in core metadata versions 2.1–2.6 is supported, following
+the [core metadata specification](https://packaging.python.org/en/latest/specifications/core-metadata/).
+Dependency headers feed closure verification; import-name/namespace declarations
+are retained privately and counted without claiming import resolution. Missing,
+duplicate or malformed headers, legacy layouts, links, unsafe paths and incomplete
+archives refuse observation. Streams are bounded at 256 MiB, individual files
+at 32 MiB, metadata at 1 MiB, and the private report at 4 MiB. Its stdout contains
+private normalized dependency metadata and must be captured without logging it.
+The separate receipt contains counts/hashes, including startup-hook counts.
+The caller bounds producer/observer lifetime, records both exit statuses, binds
+the stopped pristine image probe, and owns cleanup.
+
+Seven local controls and a fresh native production-image check passed. The native
+check built the captured API Dockerfile, verified its eleven selected source
+files and Python executable against independent witnesses, and checked the
+pinned base's OS, architecture and image-layer relationship. Two network-isolated,
+read-only base observers processed identical snapshots: 33 distributions and
+4,025 installed files. All 32 required distributions had a valid pinned closure;
+one unmatched installed distribution remained explicitly counted. Source/image
+checks bracketed both reads, and named resource cleanup/global policy checks
+passed. Marker context came from the compatible trusted base, rather than a
+running application. This observes production-image metadata and bytes without
+establishing package origins, import resolution, application environment, deployed
+Pod identity or acceptance. Supplemental retained-tree modes still do not replace
+missing legacy capture attestation.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_python_image_metadata.py' -v
 ```
 
 `npm_versions.inspect_npm_versions` inventories recorded package versions in

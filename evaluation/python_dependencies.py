@@ -109,7 +109,10 @@ def metadata(report):
 
 
 def inspect_python_dependencies(locked,declared,report):
-    """report is a private, independently bound pip-inspect v1 observation.
+    """report is private, independently bound installed metadata in v1 shape.
+
+    A pip-inspect report or compatible inert-image metadata provider may supply
+    it. The provider must disclose the marker environment and binding scope.
 
     Dependency roots and all active locked rows seed closure. Installed packages
     outside this declared closure are counted separately, never assumed baseline
