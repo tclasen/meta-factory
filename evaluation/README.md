@@ -2213,8 +2213,13 @@ without an identity filter, retaining the same one-extra-row bound, and refuses
 row security, extra accounts, missing identities or duplicates. Its result still
 stays private. The operator must establish that this relation represents all
 relevant accounts; this option does not discover other account stores or prove
-coverage over time. Focused boundary tests cover the new mode; native SQL
-integration remains to be verified.
+coverage over time. Ten focused reader tests passed. Native PostgreSQL controls
+in an isolated operator schema verified complete reads, rejection of an extra
+account, rejection with row security enabled and recovery after disabling it.
+The schema was dropped before the protected password case, which then passed
+against all nine accounts in the mapped application relation. The same private
+representation audit and owned-resource cleanup passed. This establishes the
+relation's scope at that read, without expanding it to other stores or history.
 
 A separate operator-local native prototype connected this reader to guarded
 parent security inspection and the protected `password-storage` case. It bound
