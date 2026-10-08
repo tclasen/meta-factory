@@ -3920,6 +3920,52 @@ unchanged global policy were verified. The timeout reproduces without the large
 case/comment workload. Storage behavior after startup, including the captured
 object-store network policy, needs separate diagnosis before full integration.
 
+### Storage growth in a separate reference fixture
+
+The next unchanged-storage diagnostic reached the master and filer through both
+loopback and the pod IP, and the volume server through the pod IP, early and after
+the 200-second delay. The volume server reported four volumes before the first
+application upload, matching its configured four-volume maximum. The upload
+timed out, both bounded direct storage writes raised `ReadTimeoutError`, and
+sanitized storage logs contained six `no writable volumes` messages. Its corrected
+error handler preserved both probe results and the final selected-source check.
+The diagnostic completed with verified cleanup; application acceptance stayed
+unset.
+
+Missing self-pod rules did not establish a network-policy fault. The observed
+pod-IP connections worked; [Kubernetes documents the self-pod access
+exception](https://kubernetes.io/docs/concepts/services-networking/network-policies/).
+The pinned runtime identifies SeaweedFS 3.80. Its [volume-growth
+implementation](https://github.com/seaweedfs/seaweedfs/blob/3.80/weed/topology/volume_growth.go)
+defaults single-copy growth to seven, and its [master
+configuration](https://github.com/seaweedfs/seaweedfs/blob/3.80/weed/server/master_server.go)
+reads that setting from configuration. This makes the growth setting and the
+four-slot cap relevant to the observed exhaustion.
+
+A fresh, explicitly separate reference copy adds
+`WEED_MASTER_VOLUME_GROWTH_COPY_1="1"` to the object-store environment alongside
+the earlier PostgreSQL data-directory diagnostic. Both changes are recorded in
+the source-boundary inventory; all other captured files, the four-volume cap,
+128 MiB volume size and network policy are preserved. The executed reference
+script retains an inaccurate inherited `no app config change` phrase; its explicit
+reference declaration and inventory record the actual configuration change.
+The original candidate and every earlier attempt remain unchanged and unrescored.
+
+After 200.010 seconds without application writes, the reference reported one
+default-collection volume and three free slots out of four. Its first 1 MiB upload
+completed in 0.276 seconds with the expected size and digest. Both independent
+storage put/get/delete probes returned matching bytes. This supports the storage
+growth/cap diagnosis and provides a configuration for subsequent reference oracle
+validation; it does not establish full scale correctness or repair a candidate
+score. Storage logs still contained eight unlocalized `connection refused`
+messages, so no continuous healthy-service or performance claim is made.
+
+Forty-seven selected-source checks covered 159 files in that reference. All 188
+VM bridge connections closed without relay errors, and cluster/volume absence,
+sandbox stop, bridge/private-workspace teardown and unchanged global policy were
+verified. Protected full-sample/profile/filter/comment-ceiling integration remains
+separate work; the suite retains its existing coverage flags and unapproved status.
+
 ### Operator-selected cases within one protected registry
 
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
