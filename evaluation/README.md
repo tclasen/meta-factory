@@ -1531,13 +1531,29 @@ earlier failed attempts remain retained.
 
 A nonce-owned Mac loopback service was reached from a separately guarded Docker
 Desktop bridge container using its fixed host gateway. The service thread and
-container were cleaned up. This verifies the physical reachability prerequisite,
-not the complete protected browser-to-sbx application chain.
+container were cleaned up.
+
+A separate native diagnostic subsequently exercised the complete connection to
+a fresh captured-source sbx application deployment. A nonce-owned, independently
+guarded TCP proxy joined the owned internal network and Desktop bridge, listened
+only on its internal address and forwarded opaque bytes to one fixed Mac
+publication port. It verified the fixed host gateway and imposed connection,
+idle, byte and lifetime bounds. The browser remained on `none`; its relay stayed
+on the internal network, with the original Origin preserved.
+Chromium keyboard login/logout, authenticated identity/tenant checks and the
+post-logout 401 passed. Each browser relay hop completed ten requests without
+errors. The VM publication and sandbox, cluster, volume, Desktop proxy/network
+and private workspace cleanup were verified, with unchanged global policy.
+The proxy's separate transport receipt was not collected in this first passing
+attempt. This is an operator-local diagnostic prototype and smoke-case result,
+not complete APP-011 coverage or accepted comparison evidence. The disclosed
+diagnostic-copy PGDATA adjustment still applies.
 
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
-they do not establish actual Kubernetes endpoint/fixture discovery, Mac Docker
-file-sharing/transport, or application acceptance. Those remain preflight work.
+they alone do not establish native endpoint/fixture discovery, Docker file sharing
+or application acceptance. The native diagnostic above verifies its particular
+transport and login bindings; broader fixture discovery remains preflight work.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_binding.py -v
