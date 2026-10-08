@@ -420,6 +420,51 @@ grading or a revision of frozen pilot outcomes.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_schema_catalog.py' -v
 ```
 
+`schema_comparison.compare_schema_replay` binds a baseline/live/live/baseline
+catalog comparison to protected operator evidence. Supply the captured source,
+complete ordered migration plan and replay receipt digests, plus distinct
+independently observed baseline/application database identity digests. These
+digests label evidence; they do not authenticate builder-provided claims.
+
+Each of `source_check(binding, reserve)`, `replay_check(binding, reserve)` and
+`live_check(binding, reserve)` must independently verify its original evidence
+and return exact `True` before and after the reads. Source checks bind the complete
+captured source and migration plan. Replay checks bind successful full execution,
+the initially empty independent database, original peer/schema and baseline
+quiescence. Live checks bind the actual application database and deployment.
+Readers and callbacks must belong to the trusted operator. A surrounding watchdog
+must bound callbacks and filesystem I/O; reader calls allow 15 seconds each,
+initial checks reserve 65 seconds and the comparison uses a 90-second dual-clock
+envelope. Each guard receives a separate copy of the frozen binding.
+
+Stable snapshots on the same exact server version produce a boolean
+`schema_matches_replay`; a stable mismatch is observed false, while changed,
+unsupported, missing or unbound evidence remains null. A successful comparison
+emits a schema identity binding the live catalog to the protected evidence.
+Raw definitions, guard exception messages and credentials are excluded. The
+receipt persists on interruption before the interruption propagates.
+
+This component neither discovers nor executes migrations. Its supported catalog
+scope excludes migration history, arbitrary/data migration semantics, grants,
+extension implementation and atomicity. `migration_current_verified` remains
+false; the foundation adapter still needs to establish that the independently
+reviewed replay method and supported catalog cover the actual migration requirement.
+Do not turn a startup setting match or synthetic replay into application acceptance.
+
+Nine local controls and four native controls passed: captured-source replays
+matched, a stable column mismatch was observed false, receipt drift after reads
+invalidated comparison, and an unsupported live view remained inconclusive.
+The native adapter checked the complete captured source, ordered files, successful
+replay commands, original peer/service configuration, copied migration bytes
+and baseline session quiescence. Its two databases share one owned test container;
+this is synthetic database-scope validation, not production isolation or actual
+application attribution. Scoped cleanup and unchanged global policy were verified,
+with no model calls or changes to frozen pilot grades.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_schema_comparison.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
