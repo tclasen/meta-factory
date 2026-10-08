@@ -152,6 +152,35 @@ ACL observation. These controls validate transport and conservative handling,
 not native public ACL enforcement, complete inventory or acceptance. Exact source
 hashes, scoped cleanup and unchanged global policy were checked; no model calls.
 
+`storage_inventory.py` enumerates unfiltered, general-purpose current objects
+and retained versions/delete markers with explicit URL-encoded pagination.
+It validates the bucket, request echoes, empty filters, entry identities, latest
+flags and terminal-page indicators. Invalid XML, unknown scope, missing/repeated
+markers, duplicate identities, unavailable APIs and page/entry/deadline bounds
+raise `InventoryIncomplete`; partial pages cannot produce a complete result.
+History cursors are followed without assuming they identify a returned entry,
+as the API permits them to identify the next version. Private results
+retain object names/version IDs for later ACL reads; keep these outside evidence
+and builder mounts. `summarize_inventory` emits only counts/digests after comparing
+current objects with latest retained versions, excluding latest delete markers.
+The callback must independently bind the peer and enforce a request timeout;
+the engine checks elapsed monotonic and wall time before and after each request.
+Listing completion is not an atomic snapshot, a writer fence, complete ACL
+coverage, application bucket identity or effective privacy. Repeated view
+comparisons and those separate checks are required for foundation composition.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_inventory.py' -v
+```
+
+Native MinIO fixture validation enumerated three current objects, five retained
+versions and one delete marker using two current pages and four history pages.
+Two complete views agreed, including the deleted object's retained history.
+The exact inventory source, bound peer rechecks, credential-free evidence,
+owned sandbox stop, private workspace removal and unchanged global policy were
+verified. Earlier failed helper attempts remain retained. These synthetic
+component results do not establish application acceptance or private ACLs.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
