@@ -374,6 +374,52 @@ checks neither complete AC-001 nor change frozen pilot grades.
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_configuration.py' -v
 ```
 
+`schema_catalog.SchemaCatalogReader` obtains a private PostgreSQL 16/17 catalog
+projection for an independently mapped schema. This supports migration mechanisms
+that apply SQL files without a version ledger. Supply a trusted guarded
+`DatabaseTransport` and the independently observed schema OID, database name,
+operator user and session user. Missing or changed identities refuse observation;
+the SQL explicitly casts the OID to a JSON integer.
+
+The read-only repeatable-read query collects ordinary heap tables, columns and
+types, nullability, defaults, identity/generated settings, collations, constraints,
+index definitions and validity flags, selected table settings and installed
+extension versions. It uses the documented [PostgreSQL catalogs](https://www.postgresql.org/docs/16/catalog-pg-class.html)
+and [definition reconstruction functions](https://www.postgresql.org/docs/16/functions-info.html).
+Raw definitions stay in the private transport and never appear in returned
+observations. The reader emits deterministic catalog digests and counts, excluding
+database/schema OIDs from the digest so independent databases can be compared.
+It includes the exact server version; compare baselines on that same version.
+
+Extension member definitions are explicitly excluded using
+[extension dependencies](https://www.postgresql.org/docs/16/catalog-pg-depend.html).
+Their recorded extension versions do not attest extension code. Views, sequences,
+partitioned/foreign/typed tables, inheritance, noninternal triggers, rules,
+policies, nonextension routines/types and other unsupported schema objects refuse
+comparison. Other representations need reviewed adapters. This collector does
+not inspect privileges, ownership, data or physical storage, and cannot by itself
+prove that migrations are current. `migration_current_verified`, `data_verified`
+and `privileges_verified` remain false. Independent migration replay, captured
+source binding, live application/database attribution and repeated lifetime checks
+remain prerequisites for foundation composition.
+
+Bounds are 64 tables, 4,096 columns/constraints/indexes each, 64 extensions,
+512 KiB private normalized catalog, 8 KiB individual definitions and five seconds
+per SQL statement. The guarded database transport provides its existing total
+deadline and excludes SQL/raw results/connection diagnostics from evidence.
+Five local controls passed. Native PostgreSQL 17.6 controls replayed the captured
+Projects pilot's five inspected SQL migration files into two owned databases:
+both yielded matching 11-table/78-column catalogs. Column, index and constraint
+changes altered the digest; views, sequences and enums were refused. Failed
+helper-label and OID-encoding attempts are retained. The owned network-isolated
+database container, sandbox and private workspace were cleaned up, with unchanged
+global policy and zero model calls. This is collector validation, not candidate
+grading or a revision of frozen pilot outcomes.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_schema_catalog.py' -v
+```
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
