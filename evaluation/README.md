@@ -3836,6 +3836,62 @@ AC-031 support envelope, concurrent comment enforcement, approved resource
 allocation, healthy/warm-service conditions, latency or export timing. Acceptance
 remains unset; full coverage review and suite freeze are separate work.
 
+### Mixed scale profiles and comment-ceiling controls
+
+Further protected development drafts prepare 72 independently expected case
+profiles: each tenant has every combination of four severities, three lifecycle
+states and three assignee choices. Public writes and independent reviewer
+decisions establish the profiles; exact resource, actor, version and timestamp
+read-backs verify them. Thirteen preparation controls reject incorrect writes,
+decisions, persistence and lost source/lifetime checks.
+
+The scale oracle checks assignee filters and AND combinations with severity,
+status and text search. Twenty model controls and eighteen protected-child/HTTP
+controls include ignored filters, OR semantics, wildcard interpretation, incorrect
+pagination and a backend returning empty results for every four-filter query.
+An explicit predecessor comparison demonstrates why positive four-filter results
+are necessary: the earlier draft accepted that backend; the revised draft rejects
+it. Literal-search fixtures now contain percent, underscore and quote characters
+in only selected descriptions, making wildcard behavior distinguishable.
+
+At scale, the existing comment-ceiling race uses an independently verified empty
+case already within the 1,000-case tenant. It prepares 99 comments, runs two
+concurrent additions, requires exactly one success and one `comment_limit`
+conflict, verifies all persisted comments and unchanged case metadata, and
+rejects a further addition. Twenty-six dedicated controls cover both possible
+winners, malformed fixtures and incorrect responses or persisted state. The
+ordinary fresh-case path retains its separate 38 controls. The race adds 100
+comments to the prepared sample; subsequent performance grading must use a
+fresh 200-comment sample rather than reuse that stressed deployment.
+
+Source checks around native loading initially exceeded the practical preparation
+budget; the controlled stop retains its 1,295-case prefix and verified cleanup.
+The bounded lifetime read scope described above passed 84 source, lifetime and
+deployment tests. Two fresh scoped attempts reached 2,000 cases and 200 comments
+but stopped at the first evidence upload. A sanitized diagnostic records a socket
+timeout after 10.002 seconds. These attempts remain inconclusive, with cleanup
+verified; neither is an application acceptance result.
+
+A separate draft permits an explicit operator preparation transport timeout up
+to 30 seconds. Twelve transport controls verify invalid values refuse before
+transport, the default remains ten seconds, and each request is sent once.
+Preparation overrides are omitted from the protected grading target, whose
+default remains ten seconds. No retries or application latency limits change.
+All executed drafts and failed attempts remain preserved. The registry still
+contains 77 groups and seven implementation-complete criteria; it is unapproved.
+
+The fresh 30-second preparation attempt also stopped on its first upload after
+30.002 seconds, with the sanitized exception chain identifying `TimeoutError`.
+It independently authenticated 50 users and created 2,000 cases and 200 comments,
+but uploaded no evidence and reached neither profile preparation nor protected
+grading. Its bootstrap completed in 60.437 seconds. The opaque VM bridge closed
+all 2,640 connections with no relay errors or active connections; those transport
+counts do not prove application completion. Cluster/volume absence, sandbox stop,
+bridge teardown, private-workspace removal and unchanged global policy were
+verified. Full sample integration, scale filter verdicts and comment-ceiling
+integration remain unverified in this source-bound attempt. Diagnose the upload
+path separately rather than retrying writes or weakening acceptance limits.
+
 ### Operator-selected cases within one protected registry
 
 `run_suite(..., case_ids=[...])` permits a trusted operator to select a nonempty,
