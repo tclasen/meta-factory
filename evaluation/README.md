@@ -3416,6 +3416,25 @@ the outage and remained inconclusive. Owned resource cleanup and unchanged globa
 policy passed. This validates service recovery observation, while the published
 API route's behavior during dependency loss still needs separate investigation.
 
+A subsequent read-only diagnostic during the independently verified storage
+outage found the same API Deployment, Pod, Service and container-state fingerprint
+before and after its observations. The Pod remained running and ready, and its
+Service EndpointSlice remained ready. Both direct Pod and Service liveness
+requests returned HTTP 200 with `{"status":"ok"}`. Readiness requests to both
+peers returned no HTTP status within the diagnostic's two-second request bound.
+The unchanged protected case still reported `Application endpoint unavailable`
+with its ten-second client timeout. These observations do not support readiness
+removing the Service endpoints during this window; they narrow the investigation
+to readiness response handling without establishing its eventual response time.
+
+The retained candidate source calls S3 `head_bucket` synchronously in readiness
+and does not supply explicit client timeout or retry settings. This suggests a
+dependency wait, but actual effective SDK settings and loaded-code provenance
+remain unverified. The diagnostic did not change the candidate or redirect the
+protected case. Fault restoration, owned cluster/volume removal, sandbox stop,
+bridge cleanup and unchanged global policy were verified. This is development
+fixture evidence, with an inconclusive case and no acceptance or promotion.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
