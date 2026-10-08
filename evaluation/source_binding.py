@@ -38,9 +38,10 @@ class SourceBinding:
     fixture/artifact paths may change. Unselected paths are outside this check.
     The outer owner must interrupt hanging filesystem I/O and callbacks.
     """
-    def __init__(self, project, expected, *, lifetime_check, max_bytes=64*1024**2,
+    def __init__(self, project, expected, *, lifetime_check, lifetime_scope=None, max_bytes=64*1024**2,
                  max_files=4096):
-        if (not callable(lifetime_check) or type(max_bytes) is not int or max_bytes <= 0
+        if (not callable(lifetime_check) or (lifetime_scope is not None and not callable(lifetime_scope))
+                or type(max_bytes) is not int or max_bytes <= 0
                 or type(max_files) is not int or max_files <= 0
                 or not isinstance(expected, dict) or not expected or len(expected) > max_files):
             raise ValueError('Bounded independent source selection required')
@@ -65,6 +66,7 @@ class SourceBinding:
         self.project = Path(os.path.abspath(project))
         self.expected = copy.deepcopy(expected)
         self.lifetime_check = lifetime_check
+        self.lifetime_scope = lifetime_scope
         self.owner = os.getpid()
         self.live(0)
         descriptor = open_directory(self.project)
@@ -83,7 +85,23 @@ class SourceBinding:
         """Return exact True only for stable selected bytes on the original root."""
         if type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0:
             raise ValueError('Finite nonnegative source reserve required')
+        if self.lifetime_scope is None:
+            return self._read(reserve, self.live)
         self.live(reserve)
+        with self.lifetime_scope(reserve) as check:
+            if not callable(check):
+                raise ValueError('Scoped lifetime check required')
+
+            def live(amount):
+                if os.getpid() != self.owner or check(amount) is not True:
+                    raise Inconclusive('Selected source scoped lifetime unavailable')
+
+            result = self._read(reserve, live)
+        self.live(reserve)
+        return result
+
+    def _read(self, reserve, live):
+        live(reserve)
         root = None
         try:
             root = open_directory(self.project)
@@ -91,7 +109,7 @@ class SourceBinding:
             if (metadata.st_dev, metadata.st_ino) != self.root_identity:
                 raise Inconclusive('Selected source mount identity changed')
             for name, expected in self.expected.items():
-                self.live(reserve)
+                live(reserve)
                 parent = os.dup(root)
                 descriptor = None
                 try:
@@ -111,9 +129,9 @@ class SourceBinding:
                     digest = hashlib.sha256()
                     size = 0
                     while True:
-                        self.live(reserve)
+                        live(reserve)
                         chunk = os.read(descriptor, min(65536, expected['size']-size+1))
-                        self.live(reserve)
+                        live(reserve)
                         if not chunk:
                             break
                         size += len(chunk)
@@ -147,7 +165,7 @@ class SourceBinding:
                     raise Inconclusive('Selected source mount identity changed')
             finally:
                 os.close(current_root)
-            self.live(reserve)
+            live(reserve)
             return True
         except OSError:
             raise Inconclusive('Selected source path unavailable') from None
