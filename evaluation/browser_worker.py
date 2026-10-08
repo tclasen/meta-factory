@@ -108,9 +108,12 @@ def execute(root, digest, identifier, target, *, socket_path, wall_deadline, pla
     """
     result = {"case_id": identifier, "verdict": "inconclusive"}
     relay = thread = browser = None
+    phase = 'deadline_validation'
     try:
         positive(wall_deadline, "browser wall deadline")
+        phase = 'isolation_validation'
         isolation_check()
+        phase = 'origin_validation'
         origin = urlsplit(target["base_url"])
         if (origin.scheme != "http" or origin.hostname != "127.0.0.1" or not origin.port
                 or origin.path or origin.query or origin.fragment or origin.username or origin.password
@@ -121,34 +124,49 @@ def execute(root, digest, identifier, target, *, socket_path, wall_deadline, pla
         def check():
             if time.time() >= wall_deadline:
                 raise TimeoutError("Browser lifetime expired")
+        phase = 'initial_lifetime_check'
         check()
+        phase = 'protected_case_loading'
         case, module = load_case(root, digest, identifier)
+        phase = 'operation_timeout_validation'
         target = dict(target)
         operation_ms = target.get("browser_timeout_ms", 10000)
         positive(operation_ms, "browser operation timeout")
         target["browser_timeout_ms"] = min(operation_ms, max(1, (wall_deadline - time.time()) * 1000))
+        phase = 'relay_creation'
         relay = RelayServer(("127.0.0.1", origin.port), {"kind": "unix", "path": str(socket_path)},
                             origin.netloc, check=check, request_seconds=min(30, max(.01, wall_deadline - time.time())))
         thread = threading.Thread(target=relay.serve_forever, kwargs={"poll_interval": .05}, daemon=True)
         thread.start()
+        phase = 'playwright_import'
         if playwright_factory is None:
             from playwright.sync_api import sync_playwright
             playwright_factory = sync_playwright
+        phase = 'playwright_start'
         with playwright_factory() as engine:
             try:
+                phase = 'chromium_launch'
                 browser = engine.chromium.launch(headless=True, chromium_sandbox=True)
+                phase = 'protected_journey'
                 result = invoke(case, module, browser, engine.request, target)
                 result["browser_version"] = browser.version
+                phase = 'final_lifetime_check'
                 check()
             finally:
                 if browser is not None:
                     try:
                         browser.close()
                     except Exception:
+                        phase = 'browser_close'
                         result.update(verdict="inconclusive", reason="browser_cleanup", abort_suite=True)
                         raise
-    except Exception:
-        result.update(verdict="inconclusive", reason="browser_worker_incomplete")
+    except Exception as error:
+        kind = next((name for cls, name in (
+            (PermissionError, 'permission'), (TimeoutError, 'timeout'),
+            (OSError, 'io'), (ImportError, 'import'), (ValueError, 'validation'))
+            if isinstance(error, cls)), 'exception')
+        result.update(verdict="inconclusive", reason="browser_worker_incomplete",
+                      failure_phase=phase, failure_kind=kind)
     finally:
         if relay is not None:
             try:

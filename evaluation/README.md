@@ -1377,6 +1377,11 @@ python3 -m evaluation.browser_worker \
 
 Focused worker fixtures:
 
+Incomplete worker setup records a fixed `failure_phase` and `failure_kind` in
+its private result. These distinguish isolation, source loading, transport and
+browser startup failures without serializing exception messages or target data.
+They do not change grading verdicts or containment requirements.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_worker.py -v
 ```

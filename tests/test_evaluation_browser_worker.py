@@ -85,11 +85,25 @@ class BrowserWorkerTest(unittest.TestCase):
                 result = execute('missing', 'digest', 'journey', {'base_url': origin}, socket_path='/channel/app.sock',
                                  wall_deadline=9999999999, playwright_factory=factory)
             self.assertEqual(result['verdict'], 'inconclusive')
+            self.assertEqual(result['failure_phase'],'origin_validation')
+            self.assertEqual(result['failure_kind'],'validation')
         with patch('evaluation.browser_worker.isolation_check', side_effect=RuntimeError('private-canary')):
             result = execute('missing', 'digest', 'journey', {}, socket_path='/channel/app.sock',
                              wall_deadline=9999999999, playwright_factory=factory)
         self.assertNotIn('private-canary', json.dumps(result))
+        self.assertEqual(result['failure_phase'],'isolation_validation')
+        self.assertEqual(result['failure_kind'],'exception')
         factory.assert_not_called()
+
+    def test_private_case_loading_error_reports_only_fixed_phase_and_kind(self):
+        with patch('evaluation.browser_worker.isolation_check'), patch(
+                'evaluation.browser_worker.load_case',side_effect=PermissionError('private-case-canary')):
+            result=execute('missing','digest','journey',{'base_url':'http://127.0.0.1:18080'},
+                           socket_path='/channel/app.sock',wall_deadline=9999999999)
+        self.assertEqual(result['verdict'],'inconclusive')
+        self.assertEqual(result['failure_phase'],'protected_case_loading')
+        self.assertEqual(result['failure_kind'],'permission')
+        self.assertNotIn('private-case-canary',json.dumps(result))
 
     def test_worker_cleanup_and_sandbox_launch(self):
         for broken in (None, 'browser', 'relay'):
