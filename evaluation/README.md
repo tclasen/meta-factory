@@ -1437,7 +1437,10 @@ network ID, numeric peer IP/port, and a trusted bounded `peer_check` callback. N
 image pull/build, host networking, Docker socket mount, or application command is
 performed by this adapter. The operator must provision the pinned browser image
 and resolve the peer from the fresh deployment through the binding below.
-Actual application-specific discovery and Mac transport remain unverified. Current live evidence is Linux nested Docker with a synthetic app.
+Native Linux and Mac Docker Desktop fixtures have verified the contained
+browser/relay path with a synthetic app. The Mac fixture used an explicit
+operator Docker context, without changing the default context. Connecting that
+relay to the fresh sbx application remains unverified.
 
 Each case snapshots hashed suite files and controller modules into private
 readonly mounts, gives only the browser its synthetic target and protected cases,
@@ -1448,7 +1451,10 @@ root, resource bounds, private IPC, network and exact mounts before starting cod
 Container logging is disabled; worker evidence is structured and redacted.
 Temporary target inputs are removed in finally. Directory/file permissions permit
 the unprivileged container to read its specific mounts while the containing
-attempt remains private. Mac file-sharing behavior is not yet verified.
+attempt remains private. Native Mac file sharing passed after granting only the
+Docker Desktop owner's account read/search access to that owned attempt tree;
+the initial inaccessible-directory failure remains retained. This permission
+setup is an operator prototype, not automatic provisioning by the executor.
 
 The parent checks peer identity and the independent resource guard before
 renewing a two-second relay lease, normally every 250 ms. The relay checks this
@@ -1467,6 +1473,13 @@ error-free counters from both hops and verified resource cleanup. Setup failures
 worker timeout or lost peer checks cannot pass; uncertainty aborts following
 cases through the browser result boundary. The protected suite remains
 unapproved and browser journey registration is still incomplete.
+
+The Mac synthetic content journey passed with Chromium 153.0.8010.12 and 25
+completed requests at each verified hop, no transport errors, a clean private
+secret scan and verified inner/outer resource cleanup. Exact-source native
+controls separately accepted the isolated namespace and rejected an active
+bridge-network interface. Neither control sends outbound traffic. These results
+do not establish browser acceptance against the benchmark application.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_browser_runtime.py -v
