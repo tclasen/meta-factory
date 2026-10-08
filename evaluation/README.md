@@ -3390,6 +3390,15 @@ bridge, cluster, volume, sandbox and workspace cleanup passed, with global polic
 unchanged. This verifies the controlled restart scenario, while storage outages,
 worker lease/retry faults and full runtime acceptance remain separate checks.
 
+The connected storage-outage fixture independently verified baseline reachability
+and service unreachability after suspension, using the owned node's HTTP probe
+with a separate web Service control. Recovery remained inconclusive: the workload
+was ready, but the immediate storage connectivity check was still unreachable
+while the web control responded. The fault broker withheld restoration, aborted
+grading and granted no acceptance. All owned resources were subsequently removed,
+with bridge cleanup and unchanged global policy verified. A bounded wait for real
+service recovery remains required; Pod readiness alone cannot establish it.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
