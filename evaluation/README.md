@@ -4379,6 +4379,13 @@ remain outside these API observations. Tenant aliases do not independently prove
 database display names. Returns declared IDs and sanitized observations, with no
 passwords or sessions; keep those records outside application mounts.
 
+For roster rechecks after independently loading application data, explicitly set
+`require_empty_cases=False`. Identity and administrator membership checks still
+run for every configured account; case lists are not queried and the returned
+`case_counts` is empty. The default remains `True` and rejects populated tenants
+when verifying a fresh seed. Identity-only observations do not prove case counts
+or replace the protected dataset read-back checks.
+
 Configuration is bounded to 100 users and 16 tenants. Each selected tenant needs
 an administrator and analyst/reviewer for the operator's API observation scope;
 unobservable configuration is rejected before login. Those are collector

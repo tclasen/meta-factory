@@ -117,7 +117,7 @@ class Session:
             raise AssertionError('Fixture API response is not bounded unique JSON') from None
 
 
-def observe_seed_fixture(project, base_url, expected_roles, passwords, *, lifetime_check, timeout=5):
+def observe_seed_fixture(project, base_url, expected_roles, passwords, *, lifetime_check, timeout=5, require_empty_cases=True):
     """Crosscheck operator-selected fixture names/roles against live identities.
 
     Returns (credential-free declared IDs, sanitized observations). The caller
@@ -126,8 +126,13 @@ def observe_seed_fixture(project, base_url, expected_roles, passwords, *, lifeti
     chosen here. Every tenant needs an administrator and a case reader for the
     disclosed API crosschecks. Tenant names are aliases, not independently read
     database display names; unexpected users without memberships are unobserved.
+    require_empty_cases defaults to True for fresh seed verification. Set it to
+    False only for identity rechecks after independently loading application data;
+    case_counts is then empty because no case-count observation is made.
     Neither coverage completion nor acceptance-suite approval is granted.
     """
+    if type(require_empty_cases) is not bool:
+        raise ValueError("Explicit empty-case observation mode required")
     roles_by_user = copy.deepcopy(expected_roles)
     try:
         if (not isinstance(roles_by_user, dict) or not 1 <= len(roles_by_user) <= 100
@@ -234,7 +239,7 @@ def observe_seed_fixture(project, base_url, expected_roles, passwords, *, lifeti
                 if sorted(actual, key=lambda item: item['user_id']) != sorted(expected, key=lambda item: item['user_id']):
                     raise AssertionError('Seed fixture persisted memberships mismatch')
                 membership_reads[name] = len(expected)
-            if name not in empty_case_reads and set(values) & {'analyst', 'reviewer'}:
+            if require_empty_cases and name not in empty_case_reads and set(values) & {'analyst', 'reviewer'}:
                 page = session.request('GET', path + '/cases?limit=1&offset=0', 200)
                 if (not isinstance(page, dict) or set(page) != {'items', 'total', 'limit', 'offset'}
                         or page['items'] != [] or type(page['total']) is not int or page['total'] != 0
