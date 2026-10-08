@@ -1666,6 +1666,28 @@ authorization bypasses. Both control sets preserve failed restoration as
 inconclusive. This is partial APP-011 evidence; AC-025–027 remain incomplete,
 the suite unapproved and acceptance unset.
 
+Separate stale-edit drafts support a unique inline edit form bound to its exact
+heading, with scoped labeled title/save controls and keyboard case selection.
+The independent concurrent write, exact version increment, visible conflict,
+unchanged newer object and refreshed-title checks remain mandatory. An optional
+operator binding identifies only the known detail resources loaded after final
+selection; their response bodies finish before the browser context closes, using
+existing operation timeouts. Selectors and resource names remain protected.
+
+Twenty-four existing journey controls, ten inline stale-edit controls and 43
+binding checks passed. They reject silent conflicts, automatic overwrites,
+ambiguous forms, missing labels and stale displayed values after refresh. A first
+native functional pass remained inconclusive because closing the context
+cancelled four detail requests. Two subsequent 180-second setup attempts timed
+out before the browser case began. These results remain retained. A separately
+labeled diagnostic with a 300-second bootstrap allowance completed setup in
+62 seconds and passed the browser case: both browser hops and the closed Desktop
+proxy completed 25 requests without disconnects or errors, with all owned cleanup
+and unchanged global policy verified. A control preparation failure also remains
+retained; a separate read-only inspection verified current absence of its owned
+resources. These are partial, unapproved APP-011 fixtures, with acceptance unset;
+the longer setup diagnostic does not replace the earlier timeout outcomes.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
