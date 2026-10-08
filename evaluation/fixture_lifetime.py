@@ -2,6 +2,8 @@
 import math
 import json
 import os
+import stat
+from contextlib import contextmanager
 from pathlib import Path
 import time
 
@@ -40,7 +42,7 @@ class FixtureLifetime:
         self.guard_wall_deadline = config['expires_at']
         self.check()
 
-    def check(self, reserve=0):
+    def _check_state(self, reserve=0):
         if (type(reserve) not in (int, float) or not math.isfinite(reserve) or reserve < 0):
             raise ValueError('Finite nonnegative fixture reserve required')
         changed = (any(getattr(self.sandbox, key) != value for key, value in self.scope.items())
@@ -48,14 +50,10 @@ class FixtureLifetime:
                    or self.guard.process is not self.guard_scope['process']
                    or self.guard.nonce != self.guard_scope['nonce'])
         directory = Path(self.guard_scope['directory'])
-        try:
-            config_changed = read_regular(directory / 'config.json', 65536, lambda: None) != self.config
-        except OSError:
-            raise Inconclusive('Fixture watchdog configuration unavailable') from None
         clocks = (self.monotonic(), self.wall())
         if any(type(value) not in (int, float) or not math.isfinite(value) for value in clocks):
             raise Inconclusive('Fixture lifetime clocks unavailable')
-        if (os.getpid() != self.owner or changed or config_changed or self.sandbox.stopped
+        if (os.getpid() != self.owner or changed or self.sandbox.stopped
                 or self.sandbox.creation_attempted is not True
                 or self.guard_scope['process'].poll() is not None
                 or (directory / 'release.json').exists() or (directory / 'result.json').exists()
@@ -63,6 +61,62 @@ class FixtureLifetime:
                        self.guard_wall_deadline - clocks[1]) <= reserve):
             raise Inconclusive('Fixture deployment lifetime unavailable')
         return True
+
+    def check(self, reserve=0):
+        self._check_state(reserve)
+        directory = Path(self.guard_scope['directory'])
+        try:
+            changed = read_regular(directory / 'config.json', 65536, lambda: None) != self.config
+        except OSError:
+            raise Inconclusive('Fixture watchdog configuration unavailable') from None
+        if changed:
+            raise Inconclusive('Fixture watchdog configuration changed')
+        return self._check_state(reserve)
+
+    def _config_identity(self):
+        try:
+            value = os.stat(Path(self.guard_scope['directory']) / 'config.json',
+                            follow_symlinks=False)
+        except OSError:
+            raise Inconclusive('Fixture watchdog configuration unavailable') from None
+        if not stat.S_ISREG(value.st_mode) or value.st_nlink != 1 or value.st_size > 65536:
+            raise Inconclusive('Fixture watchdog configuration metadata unavailable')
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_nlink,
+                value.st_uid, value.st_gid, value.st_size, value.st_mtime_ns,
+                value.st_ctime_ns)
+
+    @contextmanager
+    def read_scope(self, reserve=0):
+        """Bound one read with full config checks and per-step state/metadata checks.
+
+        The yielded check is valid only inside this scope. Full path/content
+        validation brackets the operation; metadata changes, including a write
+        followed by restoration, refuse. No config is cached across scopes.
+        This does not interrupt hanging I/O or prove continuous runtime state.
+        """
+        identity = self._config_identity()
+        self.check(reserve)
+        if self._config_identity() != identity:
+            raise Inconclusive('Fixture watchdog configuration changed during scope entry')
+        active = True
+
+        def check(step_reserve=0):
+            if not active:
+                raise Inconclusive('Fixture read scope is no longer active')
+            self._check_state(step_reserve)
+            if self._config_identity() != identity:
+                raise Inconclusive('Fixture watchdog configuration changed during read')
+            return self._check_state(step_reserve)
+
+        try:
+            yield check
+        finally:
+            try:
+                check(reserve)
+                self.check(reserve)
+                check(reserve)
+            finally:
+                active = False
 
     def restore_scope(self):
         """Keep cleanup pointed at original owned adapters, even on callback error."""

@@ -3776,6 +3776,17 @@ loaded = load_scale_sample(target, independent_identities,
 binding.check()
 ```
 
+For frequent source reads, an operator using a `FixtureLifetime` owner can
+explicitly pass `lifetime_scope=owner.read_scope` alongside
+`lifetime_check=owner.check`. Each source check still reads and hashes every
+selected file. Within that one read, the scoped callback checks owner, clocks,
+watchdog state and configuration metadata; it fully validates configuration
+paths and contents before and after the read. Writes followed by restoration,
+inode replacement, scope escape and guard loss refuse. No configuration or
+source contents are cached across reads. The default callback behavior remains
+available when no scope is supplied. The outer owner still bounds hanging I/O;
+these observations do not prove continuous runtime state.
+
 Selection review must distinguish immutable source from generated configuration
 such as `ops/fixture-ids.json`. This checks only selected files; it does not detect
 unselected additions or prove an exhaustive source classification, a simultaneous
@@ -3786,6 +3797,7 @@ entrypoint, protected-suite approval or AC-035 acceptance claim.
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_source_binding.py -v
+uv run --locked python -m unittest discover -s tests -p test_evaluation_fixture_lifetime_scope.py -v
 ```
 
 
