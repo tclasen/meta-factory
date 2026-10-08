@@ -724,6 +724,37 @@ executing source consumption, complete dependencies or application acceptance.
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_image_source.py' -v
 ```
 
+`process_source_probe.py` observes selected files through a held Linux process
+root. The operator supplies an independently selected PID/start-time witness,
+expected executable digest, command line, UID/GID and source byte/mode records.
+The probe checks process credentials, namespaces and root before and after reads,
+refuses source symlinks and changed files, and reopens source ancestry to detect
+directory replacement. Reports contain counts, digests and comparison booleans;
+they omit source contents, paths, command lines and environments. Known stable
+mismatches return false; incomplete or changing observations refuse.
+
+Six local controls cover matching observations, known mismatches, changed process
+identity, source links, process-root replacement and source-directory replacement.
+The caller must separately establish Pod/CRI attribution and bound observer
+lifetime and cleanup. Filesystem and command-line matches do not establish loaded
+Python modules, process memory, application behavior or acceptance.
+
+A fresh native development check used the captured candidate's unchanged
+Kubernetes bootstrap and selected its ready worker. It independently matched
+Deployment/ReplicaSet/Pod/CRI/PID identities and immutable image index, manifest,
+configuration and layer digests before and after inspection. A separate trusted
+observer shared only the owned node's PID namespace, with no network, a read-only
+filesystem and operator-only `SYS_PTRACE`. All eleven selected source files,
+ordinary modes, interpreter bytes, command line and actual UID/GID matched.
+Observer, cluster, volume, sandbox and scratch cleanup passed; global policy was
+unchanged. Bootstrap still exited 1 with PostgreSQL and API unavailable. This is
+partial deployed-worker evidence, using supplemental retained source modes,
+without loaded-module, original legacy-mode or acceptance attestation.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_process_source.py' -v
+```
+
 `Sandbox.stop` verifies stop with the pinned `sbx ls` status table, never `exec` (which would
 restart the sandbox). Source capture reads regular files without executing Git,
 hooks or build scripts on the host; nonblocking source opens reject special-file
