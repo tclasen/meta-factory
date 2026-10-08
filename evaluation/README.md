@@ -658,7 +658,37 @@ missing original attestation for legacy captures.
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_source*.py' -v
 ```
 
-It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
+`image_source_transport.capture_image_source` checks independently selected
+captured files against an immutable image's filesystem. The caller creates a
+fresh stopped container from the exact image ID and binds its full container ID,
+never-started state, pristine writable layer, selected source and active sandbox
+lifetime before, after and finally. The transport uses bounded private `docker cp`
+stdout; it never extracts the tar archive or starts an application entrypoint.
+`image_source.py` verifies complete uncompressed archives, canonical unique paths,
+regular files/directories and selected SHA-256/size/mode records. Known byte or
+mode mismatches return false; unsupported, incomplete or changed bindings stay
+unknown. Reports contain counts and hashes, without source bytes or file names.
+Extra files are outside the selection, rather than proof of exhaustive provenance.
+Timeouts do not attest remote command termination; the caller owns peer removal
+and outer sandbox cleanup.
+
+Eight local controls cover matches, changed/missing bytes and modes, extra files,
+unsafe or truncated archives, private diagnostics, output bounds, deadlines and
+late binding failure. Fresh native development controls built the captured API
+Dockerfile and matched all eleven selected application, migration and lock files
+in bytes and modes. Its exact immutable image was probed through an untouched,
+never-started container. After an operator canary changed that container's writable
+layer, the second observation refused before copying. Named image/container and
+sandbox cleanup passed, with global policy unchanged. The deployment copy used
+supplemental retained-tree mode metadata; it does not repair legacy capture
+attestation. Selected image files do not establish deployed image identity,
+executing source consumption, complete dependencies or application acceptance.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_image_source.py' -v
+```
+
+`Sandbox.stop` verifies stop with the pinned `sbx ls` status table, never `exec` (which would
 restart the sandbox). Source capture reads regular files without executing Git,
 hooks or build scripts on the host; nonblocking source opens reject special-file
 swaps, and metadata checks refuse mode/ownership/hardlink changes or rewrites
