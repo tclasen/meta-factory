@@ -49,9 +49,17 @@ class SecurityRuntime:
 
     def checked_peer(self,operation,allowance):
         self.check(allowance)
-        if self.peer_check(operation,timeout=1) is not True:
+        if self.invoke(self.peer_check,operation,timeout=1) is not True:
             raise SecurityObservationError('Security inspection peer unavailable')
         self.check(allowance)
+
+    def invoke(self,callback,*arguments,timeout):
+        """Reject late results; trusted callbacks must still bound their own IO."""
+        started,wall_started=self.monotonic(),self.wall()
+        value=callback(*arguments,timeout=timeout)
+        if max(self.monotonic()-started,self.wall()-wall_started)>timeout:
+            raise SecurityObservationError('Security observation callback exceeded its timeout')
+        return value
 
     def _inspect(self,operation,canaries):
         request_values(operation,canaries)
@@ -60,7 +68,7 @@ class SecurityRuntime:
         with Attempt(self.directory/('inspect-'+uuid.uuid4().hex),{'sandbox':self.sandbox.name,'operation':operation}) as attempt:
             attempt.transition('preflight');result=dict(outcome='security_inspection_incomplete')
             try:
-                value=self.inspections[operation](canaries,timeout=INSPECTION_TIMEOUT)
+                value=self.invoke(self.inspections[operation],canaries,timeout=INSPECTION_TIMEOUT)
                 self.checked_peer(operation,5)
                 receipt=project(operation,value)
                 result.update(outcome='security_observed',verdict=receipt['verdict'])

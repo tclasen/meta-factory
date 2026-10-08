@@ -2552,6 +2552,11 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_security
 ### Guarded parent security inspection lifetime
 
 `security_runtime.SecurityRuntime` wraps a fixed nonempty subset of the security
+operations with actual callback-duration checks on both parent clocks. Peer
+checks exceeding one second and inspections exceeding thirty seconds suppress
+their results before acceptance or further peer reads. Trusted callbacks must
+still bound their own commands; the wrapper cannot terminate a hung callback.
+The runtime binds its fixed subset of security
 operations in owned sandbox/watchdog lifetime checks. `inspections` maps each
 operation to trusted `reader(canaries, timeout=...)` code; password canaries are
 always `None`. Readers must independently bind actual accounts/library defaults or

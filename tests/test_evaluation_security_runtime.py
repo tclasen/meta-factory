@@ -44,6 +44,45 @@ class SecurityRuntimeTest(unittest.TestCase):
         for path in runtime.directory.rglob('*'):
             if path.is_file():self.assertNotIn(CANARY.encode(),path.read_bytes())
 
+    def test_late_inspection_is_rejected_on_either_clock_before_another_peer_check(self):
+        for which in ('monotonic','wall'):
+            with self.subTest(clock=which):
+                clocks={'monotonic':10,'wall':10};self.peers=[]
+                def inspect(canaries,*,timeout):
+                    clocks[which]+=30.1
+                    return PASS
+                runtime=self.runtime(inspections={'password_storage':inspect},
+                    monotonic=lambda:clocks['monotonic'],wall=lambda:clocks['wall'])
+                with self.assertRaises(SecurityObservationError):
+                    read_security(runtime.broker.configuration,'password_storage')
+                self.assertEqual(self.peers,[('password_storage',1)])
+                result=next(runtime.directory.glob('inspect-*/result.json')).read_text()
+                self.assertNotIn('security_observed',result)
+
+    def test_late_initial_peer_check_prevents_inspection_on_either_clock(self):
+        for which in ('monotonic','wall'):
+            with self.subTest(clock=which):
+                clocks={'monotonic':10,'wall':10};self.calls=[]
+                def peer(operation,*,timeout):
+                    clocks[which]+=1.1
+                    return True
+                runtime=self.runtime(peer_check=peer,
+                    monotonic=lambda:clocks['monotonic'],wall=lambda:clocks['wall'])
+                with self.assertRaises(SecurityObservationError):
+                    read_security(runtime.broker.configuration,'password_storage')
+                self.assertEqual(self.calls,[])
+
+    def test_late_final_peer_check_suppresses_an_on_time_inspection_result(self):
+        checks=[]
+        def peer(operation,*,timeout):
+            checks.append(operation)
+            if len(checks)==2:self.clock+=1.1
+            return True
+        runtime=self.runtime(peer_check=peer)
+        with self.assertRaises(SecurityObservationError):
+            read_security(runtime.broker.configuration,'password_storage')
+        self.assertEqual(checks,['password_storage','password_storage'])
+
     def test_binary_grant_delivers_bytes_and_sanitizes_parent_evidence(self):
         raw=b'PK\x03\x04\x00\xffprivate-binary-runtime'
         def reader(values,*,timeout):
