@@ -1965,6 +1965,17 @@ hold. Its fixed `paused_job` projection contains no artifact count, credentials
 or SQL. Reader failure restores owned contexts and aborts. The ordinary no-ID
 restart remains available for lifecycle transport preflights.
 
+An operator can configure `FaultRuntime(worker_restart_context=...)` with a
+trusted context-manager factory when compound restart is enabled. Staging passes
+the canonical requested export ID to this factory after verifying the storage
+hold. The context encloses worker suspension, the independent paused job read,
+and worker restoration, including failure cleanup. This allows a private native
+interruption handler to watch the selected durable claim without a manually set
+global export ID. No-ID restarts do not invoke the factory. This hook supplies
+neither a claim observation nor a successful interruption receipt by itself;
+the existing workload and paused-job verification remains required. It does not
+change the restart timing bounds or permit restarting after the running clock.
+
 The reclaim oracle must use this paused snapshot's lease fingerprint and confirm
 an active processed lease. A job that finished or expired before suspension does
 not establish an interrupted-lease precondition, even if an earlier poll saw it

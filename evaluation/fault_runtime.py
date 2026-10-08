@@ -1,6 +1,6 @@
 """Bind parent-owned fault requests to one guarded grading sandbox."""
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import copy
 import os
 from pathlib import Path
@@ -16,6 +16,7 @@ from .workloads import workload_operation
 from .services import service_operation
 from .audit_faults import audit_insert_failure, FAULT_RESERVE
 from .database_transport import DatabaseTransport
+from .job_broker import export_identity
 
 
 COMMAND_ALLOWANCE = 150  # 135-second command ceiling plus scheduling allowance.
@@ -27,7 +28,7 @@ class FaultRuntime:
                  monotonic_deadline, wall_deadline, operation=workload_operation,
                  monotonic=time.monotonic, wall=time.time, service_probes=None, service_runner=service_operation,
                  audit_binding=None, database_peer=None, database_peer_check=None,
-                 storage_worker_restart=False):
+                 storage_worker_restart=False, worker_restart_context=None):
         positive(monotonic_deadline, 'fault monotonic deadline')
         positive(wall_deadline, 'fault wall deadline')
         audit_enabled = audit_binding is not None
@@ -55,6 +56,9 @@ class FaultRuntime:
             raise ValueError('Service probes must belong to reviewed fault roles')
         if type(storage_worker_restart) is not bool:
             raise ValueError('Compound restart selection must be a boolean')
+        if worker_restart_context is not None and (
+                not callable(worker_restart_context) or not storage_worker_restart):
+            raise ValueError('Worker restart context requires compound restart and a trusted factory')
         if storage_worker_restart:
             if not {'storage', 'worker'} <= workloads.keys() or 'storage' not in service_probes:
                 raise ValueError('Compound restart requires independently mapped storage/worker and storage probe')
@@ -62,6 +66,7 @@ class FaultRuntime:
             if left['uid'] == right['uid'] or all(left[k] == right[k] for k in ('namespace', 'kind', 'name')):
                 raise ValueError('Compound restart requires distinct workload identities')
         self.storage_worker_restart = storage_worker_restart
+        self.worker_restart_context = worker_restart_context
         self.held_workloads = {}
         self.mutation_lock = threading.RLock()
         self.service_probes = copy.deepcopy(service_probes)
@@ -173,9 +178,13 @@ class FaultRuntime:
                 attempt.transition('failed')
                 attempt.finish(result)
 
-    def _restart_worker_under_storage(self, *, paused_reader=None):
+    def _restart_worker_under_storage(self, *, paused_reader=None, export_id=None):
         if paused_reader is not None and not callable(paused_reader):
             raise ValueError('Trusted paused-worker reader required')
+        if export_id is not None:
+            export_identity(export_id)
+            if paused_reader is None:
+                raise ValueError('Export-specific interruption requires a paused job reader')
         if not self.storage_worker_restart or 'storage' not in self.held_workloads:
             raise FaultSetupError('Reviewed storage hold is not active')
         paused_reserve = 3 * COMMAND_ALLOWANCE + 25 if paused_reader is not None else 0
@@ -207,7 +216,12 @@ class FaultRuntime:
                 held('before')
                 restart_earliest = self.monotonic()
                 paused = None
-                with self._fault('worker') as observation:
+                # Only the parent-selected handler receives the requested identity.
+                # Its lifetime includes restoration and the independent paused read.
+                context = (self.worker_restart_context(export_id)
+                           if export_id is not None and self.worker_restart_context is not None
+                           else nullcontext())
+                with context, self._fault('worker') as observation:
                     if observation.get('workload_suspended_verified') is not True:
                         raise FaultSetupError('Worker suspension was not verified')
                     if paused_reader is not None:

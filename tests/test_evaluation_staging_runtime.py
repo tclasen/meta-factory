@@ -1,5 +1,6 @@
 """Concrete context ownership/order with synthetic workload/service observations."""
 import copy
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import tempfile
@@ -270,6 +271,13 @@ class StagingRuntimeTest(unittest.TestCase):
     def test_requested_job_is_observed_after_worker_zero_before_restore(self):
         import uuid
         identity=str(uuid.uuid4());staging,faults=self.runtime();staging.close()
+        contexts=[]
+        @contextmanager
+        def context(export_id):
+            contexts.append(export_id)
+            try:yield
+            finally:contexts.append('closed')
+        faults.worker_restart_context=context
         def read(export_id,*,timeout):
             self.assertEqual(export_id,identity);self.assertEqual(timeout,15)
             self.assertEqual(self.states['worker']['replicas'],0)
@@ -286,6 +294,7 @@ class StagingRuntimeTest(unittest.TestCase):
         changes=[event for event in self.events if len(event)==2]
         index=changes.index(('paused-read',identity))
         self.assertEqual(changes[index-1],('worker',0));self.assertEqual(changes[index+1],('worker',1))
+        self.assertEqual(contexts,[identity,'closed'])
 
     def test_paused_reader_failure_still_restores_worker_and_storage(self):
         import uuid

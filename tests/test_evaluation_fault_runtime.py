@@ -1,6 +1,7 @@
 """Fault lifetime must end before sandbox cleanup and never follow new identities."""
 
 import copy
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
@@ -306,3 +307,61 @@ class CompoundFaultRuntimeTest(unittest.TestCase):
                          service_probes={},storage_worker_restart=True)
         self.resources['worker']['uid']='storage-uid'
         with self.assertRaises(ValueError):self.runtime()
+
+    def test_export_context_is_scoped_to_verified_storage_hold_and_worker_restore(self):
+        identity='12345678-1234-4234-8234-123456789abc'
+        phases=[]
+        @contextmanager
+        def context(export_id):
+            self.assertEqual(export_id,identity)
+            self.assertEqual(self.states['storage']['replicas'],0)
+            self.assertEqual(self.states['worker']['replicas'],1)
+            phases.append('entered')
+            try:yield
+            finally:
+                self.assertEqual(self.states['worker']['replicas'],1)
+                phases.append('exited')
+        runtime=self.runtime(worker_restart_context=context)
+        def read():
+            self.assertEqual(phases,['entered'])
+            self.assertEqual(self.states['worker']['replicas'],0)
+            return {'private':'observation'}
+        with runtime._fault('storage'):
+            result=runtime._restart_worker_under_storage(export_id=identity,paused_reader=read)
+            self.assertEqual(result['paused_job'],{'private':'observation'})
+        self.assertEqual(phases,['entered','exited'])
+        self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_failed_paused_read_exits_export_context_after_worker_restore(self):
+        phases=[]
+        @contextmanager
+        def context(export_id):
+            phases.append('entered')
+            try:yield
+            finally:
+                self.assertEqual(self.states['worker']['replicas'],1)
+                phases.append('exited')
+        runtime=self.runtime(worker_restart_context=context)
+        def read():raise RuntimeError('read unavailable')
+        with self.assertRaisesRegex(RuntimeError,'read unavailable'):
+            with runtime._fault('storage'):
+                runtime._restart_worker_under_storage(
+                    export_id='12345678-1234-4234-8234-123456789abc',paused_reader=read)
+        self.assertEqual(phases,['entered','exited'])
+        self.assertEqual(self.states['storage']['replicas'],1)
+
+    def test_export_context_requires_canonical_id_and_paused_reader(self):
+        runtime=self.runtime(worker_restart_context=lambda _:self.fail('Invalid context entered'))
+        for options in ({'export_id':'bad','paused_reader':lambda:None},
+                        {'export_id':'12345678-1234-4234-8234-123456789abc'}):
+            with self.assertRaises(ValueError):runtime._restart_worker_under_storage(**options)
+        self.assertEqual(self.calls,[])
+        with runtime._fault('storage'):
+            runtime._restart_worker_under_storage()
+
+    def test_export_context_configuration_requires_compound_opt_in(self):
+        with self.assertRaises(ValueError):self.runtime(worker_restart_context=True)
+        with self.assertRaises(ValueError):
+            FaultRuntime(self.root/'invalid',self.box,self.guard,self.resources,['kubectl'],
+                         monotonic_deadline=5000,wall_deadline=5000,
+                         worker_restart_context=lambda _:None)

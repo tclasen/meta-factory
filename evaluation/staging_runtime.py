@@ -226,7 +226,7 @@ class StagingHandle:
             self.runtime.check(COMMAND_ALLOWANCE)
             return self.runtime.job_runtime._read_lease(export_id)
         result=self.runtime.faults._restart_worker_under_storage(
-            **({'paused_reader':paused_reader} if export_id is not None else {}))
+            **({'paused_reader':paused_reader,'export_id':export_id} if export_id is not None else {}))
         if (result.get('held_fault_verified') is not True
                 or result.get('workload_restarted_verified') is not True):
             raise FaultRestoreError('Staged worker restart not verified')
