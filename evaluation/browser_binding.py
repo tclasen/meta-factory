@@ -11,23 +11,33 @@ from .browser_runtime import BrowserExecutor
 from .evidence import positive
 
 
+def loopback_origin(value):
+    if not isinstance(value, str) or not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}', value):
+        raise ValueError('Canonical operator loopback origin required')
+    port = int(value.rsplit(':', 1)[1])
+    if not 1 <= port <= 65535 or value != f'http://127.0.0.1:{port}':
+        raise ValueError('Canonical operator loopback origin required')
+    return value
+
+
 class BrowserBinding:
     def __init__(self, sandbox, guard, configuration, *, base_url, monotonic_deadline, wall_deadline,
                  executor_factory=BrowserExecutor, monotonic=time.monotonic, wall=time.time):
         positive(monotonic_deadline, 'browser grading deadline')
         positive(wall_deadline, 'browser grading wall deadline')
         required = {'image', 'seccomp', 'seccomp_sha256', 'network', 'peer_host', 'peer_port', 'peer_check', 'fixtures'}
-        if (not isinstance(configuration, dict) or set(configuration) != required
-                or not callable(configuration['peer_check']) or not isinstance(configuration['fixtures'], dict)
-                or not re.fullmatch(r'http://127\.0\.0\.1:[0-9]{1,5}', base_url)):
+        if (not isinstance(configuration, dict) or not required <= set(configuration)
+                or not set(configuration) <= required | {'browser_origin'}
+                or not callable(configuration['peer_check']) or not isinstance(configuration['fixtures'], dict)):
             raise ValueError('Incomplete post-bootstrap browser configuration')
+        self.base_url = loopback_origin(base_url)
+        self.browser_origin = loopback_origin(configuration.get('browser_origin', base_url))
         self.fixtures = copy.deepcopy(configuration['fixtures'])
         for identifier, fixture in self.fixtures.items():
             if (not isinstance(identifier, str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,57}', identifier)
                     or not isinstance(fixture, dict) or any(not isinstance(key, str) for key in fixture)
-                    or {'base_url', '_fault_control', '_audit_control', '_job_control', '_staging_control', '_ops_control'} & fixture.keys()):
+                    or {'base_url', 'browser_origin', '_fault_control', '_audit_control', '_job_control', '_staging_control', '_ops_control'} & fixture.keys()):
                 raise ValueError('Invalid browser fixture binding')
-        self.base_url = base_url
         self.sandbox, self.guard = sandbox, guard
         self.owner_pid = os.getpid()
         self.monotonic_deadline, self.wall_deadline = monotonic_deadline, wall_deadline
@@ -35,7 +45,8 @@ class BrowserBinding:
         self.revoked = threading.Event()
         self.peer_check = configuration['peer_check']
         self.check(1)
-        options = {key: value for key, value in configuration.items() if key not in ('peer_check', 'fixtures')}
+        options = {key: value for key, value in configuration.items()
+                   if key not in ('peer_check', 'fixtures', 'browser_origin')}
         self.executor = executor_factory(**options, peer_check=self.checked_peer)
 
     def check(self, allowance):
@@ -65,6 +76,7 @@ class BrowserBinding:
         # Fixture IDs and control labels come from the trusted post-bootstrap
         # resolver; neither can replace the outer deployment endpoint/capabilities.
         selected = dict(target, **copy.deepcopy(self.fixtures[case['id']]))
+        selected['base_url'] = self.browser_origin
         selected.pop('_audit_control', None)
         selected.pop('_fault_control', None)
         selected.pop('_job_control', None)

@@ -47,6 +47,31 @@ class BrowserBindingTest(unittest.TestCase):
         self.peer.side_effect=lambda _:setattr(self.box,'stopped',True)
         with self.assertRaises(RuntimeError):callback()
 
+    def test_trusted_browser_origin_mapping_keeps_outer_endpoint_and_fixed_peer(self):
+        self.config['browser_origin']='http://127.0.0.1:8080'
+        binding=self.bind()
+        binding(None,None,{'id':'journey'},{'base_url':binding.base_url},timeout_seconds=200)
+        selected=self.factory.return_value.call_args.args[3]
+        self.assertEqual(selected['base_url'],'http://127.0.0.1:8080')
+        self.assertEqual(binding.base_url,'http://127.0.0.1:18080')
+        self.assertEqual(self.factory.call_args.kwargs['peer_host'],self.config['peer_host'])
+        self.assertNotIn('browser_origin',self.factory.call_args.kwargs)
+        self.factory.return_value.reset_mock()
+        with self.assertRaises(ValueError):
+            binding(None,None,{'id':'journey'},{'base_url':binding.browser_origin},timeout_seconds=200)
+        self.factory.return_value.assert_not_called()
+
+    def test_invalid_or_fixture_selected_browser_origin_refused_before_execution(self):
+        for origin in ('https://127.0.0.1:8080','http://localhost:8080','http://127.0.0.1:0',
+                       'http://127.0.0.1:65536','http://127.0.0.1:08080',
+                       'http://user:private@127.0.0.1:8080','http://127.0.0.1:8080/',None):
+            self.config['browser_origin']=origin
+            with self.subTest(origin=origin),self.assertRaises(ValueError):self.bind()
+        self.config.pop('browser_origin')
+        self.config['fixtures']['journey']['browser_origin']='http://127.0.0.1:8080'
+        with self.assertRaises(ValueError):self.bind()
+        self.factory.assert_not_called()
+
     def test_outer_stop_release_expiry_revocation_and_process_change_refuse(self):
         for mode in ('stopped','dead','release','result','expired','close','owner'):
             with self.subTest(mode=mode):
