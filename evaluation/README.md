@@ -65,6 +65,38 @@ The latest cumulative usage snapshot is retained unchanged; unavailable usage
 and stage allocation remain missing/unallocated rather than inferred from time.
 
 
+`storage_canary.py` invokes a trusted private S3 peer through an operator-selected
+prefix. The caller must bind its UID, internal endpoint, immutable private
+credential configuration, source/deployment lifetime and watchdog budget. The
+probe accepts internal origins only, disables environment proxies/redirects,
+signs authenticated requests and tests one fresh UUID object. It checks an exact
+read after write, anonymous read/write denial, unchanged data after a denied
+write, and cleanup. Known write versions are deleted explicitly without creating
+a new delete marker; current absence is verified. An existing key is never
+overwritten or deleted. Bucket mutations and unrelated object requests are
+refused. Per-request timeout is five seconds, peer lifetime seventy seconds,
+and the outer transport eighty seconds; uncertain cleanup cannot pass.
+
+Credentials stay in an ordinary private configuration file in the trusted peer.
+The record contains owned key/version identifiers for recovery, bounded statuses
+and exception types, but no signing headers, credential values or object bytes.
+Final peer/source recheck failure invalidates success and current cleanup proof.
+These observations cover one canary, not whole-bucket policy/ACL/history, future
+application object privacy or complete AC-001 acceptance. No storage service,
+credentials or native deployment mapping is provisioned by this module.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_canary.py' -v
+```
+
+The local controls use actual signed loopback HTTP and a subprocess peer, plus an
+AWS published signature vector. Separate operator-local native preflight logs
+`req007-native-storage-canary-logs/run-682daiwj` bind the sandbox and MinIO fixture
+binary: private/versioned controls passed; public read/write were detected;
+known object versions and unrelated fixture preservation were independently
+checked. Stop, private workspace removal, credential-free evidence and unchanged
+global policy were verified. This is fixture evidence, not benchmark acceptance.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
