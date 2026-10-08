@@ -3361,6 +3361,20 @@ resource cleanup and unchanged global policy were verified. These observations
 remain development fixture evidence, separate from the 30-group batch and the
 historical candidate results.
 
+The last-administrator native fixture independently verifies exactly two selected
+administrators before its race. It exposed a membership projection assumption:
+APP-010 permits removing membership, so the successfully removed subject may be
+absent from a complete membership list. The revised development oracle projects
+absence as empty roles only for that known race winner. Missing original subjects
+or the surviving administrator remain inconclusive. Independent models cover
+both race winners with explicit empty-role rows or omitted removed rows, and
+refuse an omitted survivor. Earlier blocked and inconclusive attempts remain
+available with verified cleanup; the correction grants no acceptance.
+A fresh native fixture then passed the race and verified membership restoration,
+with bridge, cluster, volume, sandbox and workspace cleanup and unchanged global
+policy. This tests the controlled two-administrator scenario, not all database
+schedules or the complete acceptance suite.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
