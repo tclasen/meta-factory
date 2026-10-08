@@ -3321,6 +3321,20 @@ and workspace cleanup passed, with global policy unchanged. This establishes
 bounded fixture behavior, not exhaustive storage privacy, actual loaded modules,
 complete foundation coverage, suite approval or application acceptance.
 
+A later fresh native batch ran 30 protected API, identity and tenant groups:
+28 passed and two failed. The closure lifecycle failure exposed a test assumption:
+it used version zero to check the stale-version rule, mixing integer-domain
+validation with concurrency. The corrected development oracle performs a real
+edit, submits the previously valid positive version, and verifies both unchanged
+case data and absent request history. Its independent state model rejects stale
+versions while enforcing a positive integer domain; a deliberately accepted stale
+write is rejected by the oracle. A fresh run passed closure lifecycle and 28 other
+groups; only export audit correlation still failed. Cleanup passed. The old suite
+and native results remain archived.
+The second failure concerns which export request supplies worker correlation;
+classification awaits a separate review of the disclosed contract. These findings
+do not confer suite approval or replace the historical candidate grading.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
