@@ -3270,6 +3270,26 @@ Validate the native HTTP boundary with:
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_identity_observer.py' -v
 ```
 
+A controlled native development fixture now exercises this observer against the
+captured application on Kubernetes. Only PostgreSQL's `PGDATA` setting changes to
+a new child beneath its disposable volume; the original candidate is not regraded.
+The fresh manifest of two tenants and nine users is crosschecked through the API before
+protected membership, filter, concurrency, search and input-validation groups run.
+All five groups passed. A bounded operator TCP bridge connects the existing host
+loopback publication to the grading VM's loopback endpoint; direct host requests
+reset before that bridge, while VM requests succeeded. The bridge forwards opaque
+bytes to one fixed destination and records no payloads. It stopped after 497
+connections with zero errors. This prototype still needs controller integration.
+
+The same fixture bound worker startup settings to the deployed storage Service,
+Endpoints, Pod and CRI container. A unique 512-byte canary passed authenticated
+write/read, anonymous read/write denial, invalid-signature denial and exact-object
+cleanup. Selected worker source/process observations stayed stable; credentials
+and response bodies remained private. Relay, observer, cluster, volume, sandbox
+and workspace cleanup passed, with global policy unchanged. This establishes
+bounded fixture behavior, not exhaustive storage privacy, actual loaded modules,
+complete foundation coverage, suite approval or application acceptance.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
