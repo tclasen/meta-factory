@@ -1606,6 +1606,28 @@ retained. This is partial APP-011 fixture evidence: reviewer, administrator,
 auditor and broader accessibility coverage remain incomplete; no suite freeze,
 accepted package or frozen comparison rescore is established.
 
+Separate reviewer drafts support inline closure/export requests and approvals,
+an operator-bound preset decision reason, literal status text within surrounding
+UI text, and keyboard reselection after refresh. Independent API checks still
+require the exact requester, distinct reviewer, decision reason and case version;
+ZIP checks still require the approval snapshot and exact evidence bytes. Approval
+controls wait within the existing browser timeout. After refresh, export polling
+waits for an already-bound approved status to render using the remaining deadline
+before checking readiness. This prevents repeated reloads from cancelling the
+application's asynchronous detail requests.
+
+A fresh native reviewer journey passed closure approval, export approval, ZIP
+download, snapshot/evidence checks and logout invalidation. Both browser hops
+and the Desktop proxy completed 118 requests without disconnects or errors;
+proxy closure and all owned cleanup were verified, with unchanged global policy.
+Thirty Chromium workflow controls, seven inline preset-reason controls and 23
+binding checks passed. The controls reject incorrect decision identities/reasons,
+versions, ZIP snapshots and evidence bytes. Earlier timing and transport failures
+remain retained. One validator attempt used the wrong prior-suite path; a separate
+corrected validator verified the unchanged prior registry and focused source
+changes. These partial, unapproved drafts leave AC-025–027 incomplete and do not
+establish accepted packages, a suite freeze or a frozen comparison rescore.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
