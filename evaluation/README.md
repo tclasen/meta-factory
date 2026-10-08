@@ -3435,6 +3435,24 @@ protected case. Fault restoration, owned cluster/volume removal, sandbox stop,
 bridge cleanup and unchanged global policy were verified. This is development
 fixture evidence, with an inconclusive case and no acceptance or promotion.
 
+The protected `export-worker-restart` group subsequently passed in a fresh native
+development fixture with independently observed worker and API Deployment UIDs.
+It queued an approved export while the worker was stopped, observed completion
+after restoration, and verified its exact manifest, evidence bytes and safe
+download headers. A completed artifact and its metadata survived another worker
+restart and an API restart; source case/evidence and the single successful
+completion audit event remained consistent. All three parent-controlled faults
+were restored. This verifies durable enqueue and completed-artifact persistence;
+interrupted leases and storage retries still require their separate procedures.
+
+The bridge completed all 62 connections without errors. Owned cluster and volume
+absence, sandbox stop, private workspace removal and unchanged global policy were
+verified. An earlier attempt passed the case but had incomplete resource cleanup
+after a duplicate check label in the local fixture wrapper. Its sandbox was
+stopped, then removed by exact name with absence independently verified; its logs
+remain retained. The corrected fixture passed with full cleanup. Neither run
+granted acceptance or rescored the original candidate.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
