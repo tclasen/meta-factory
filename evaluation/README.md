@@ -181,6 +181,39 @@ owned sandbox stop, private workspace removal and unchanged global policy were
 verified. Earlier failed helper attempts remain retained. These synthetic
 component results do not establish application acceptance or private ACLs.
 
+`storage_inventory_capture.capture_inventory` runs the signed listing engine
+through an operator-bound peer, compares two complete current/history scans and
+writes their private identities to a new mode-0600 manifest in a mode-0700
+directory. Existing files, links and shared output directories are refused;
+private output must remain outside the evidence directory and all builder mounts.
+Only counts, digests and safe status fields enter evidence. The private manifest
+is bounded at 8 MiB; each response at 1 MiB, view at 20 pages/1,000 entries/12
+seconds, request at 5 seconds and transport at 60 seconds. Bounds exceeded remain
+incomplete observations, with no partial handoff or acceptance.
+
+Provide `lifetime_check(reserve_seconds)` to bind the actual peer, endpoint,
+immutable credential/source files and output directory before/after capture;
+the initial reserve is 65 seconds. Provide `manifest_check(observation)` to
+independently verify the output against `private_manifest_sha256`. For a private
+host-accessible shared file, use `verify_private_manifest(path, digest)`, which
+checks no-follow directory/file opens, mode, link count, byte bound, metadata,
+named-file identity and SHA-256 without returning contents. Bind the resulting
+file immutably in the final lifetime check. Failed checks invalidate completeness
+and `private_manifest_verified`; a written-file flag is only historical. Inspect
+and clean up the exact private destination after failures or interruption:
+partial files may remain, and an incomplete report never authorizes consuming
+them. Do not copy raw manifests into evidence or builder-mounted projects.
+The callback and full authorization/ACL composition remain operator obligations;
+`privacy_verified` stays null and `atomic_snapshot_verified` false.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_inventory*.py' -v
+```
+
+Guarded native fixture capture verified the private manifest against its report,
+bound it in the final peer recheck and repeated the expected current/history
+counts. Scoped cleanup and global policy checks passed, with no model calls.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
