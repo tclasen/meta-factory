@@ -1573,6 +1573,17 @@ strict transport boundary refused an authoritative failure or pass. These drafts
 remain partial and unapproved; previous suites, specifications and frozen pilot
 results are unchanged.
 
+A further draft waits within the existing browser timeout for the nonmatching
+search case to disappear before running the original absence assertion. The
+previous immediate assertion raced the application's asynchronous search.
+All 24 table controls, five list controls and six malformed-binding checks
+passed; ignored search still timed out and was rejected. A fresh native
+create/search journey then passed keyboard creation, refresh, inert text and
+independent persisted-data checks. Both browser relay hops and the Desktop proxy
+completed 26 requests without errors; proxy closure and all owned cleanup were
+verified, with unchanged global policy. This single-group result leaves
+AC-025–027 incomplete and the suite unapproved. Earlier failures remain retained.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
