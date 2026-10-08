@@ -229,6 +229,9 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
     pending = b""
     buffer = b""
     total = 0
+    stream_bytes = {"stdout": 0, "stderr": 0}
+    failure_location = "transport_start"
+    failure = None
     started = time.monotonic()
     wall_started = time.time()
     builder_start = None
@@ -266,6 +269,7 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                     if session.outcome and not session.interrupted and not queued and not pending:
                         break
                     if not pending and queued:
+                        failure_location = "request_encoding"
                         message = queued.popleft()
                         if message.get("method") == "turn/start":
                             builder_start = time.monotonic()
@@ -273,38 +277,55 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                             attempt.emit("controller", "builder.request", {"thread_id": session.thread})
                         pending = (json.dumps(message, allow_nan=False) + "\n").encode()
                         if len(pending) > 1024 * 1024:
+                            failure_location = "request_size_limit"
                             raise ValueError("Oversized runtime request")
                     if pending:
+                        failure_location = "request_write"
                         try:
                             written = os.write(process.stdin.fileno(), pending)
                             pending = pending[written:]
                         except BlockingIOError:
                             pass
+                    failure_location = "stream_select"
                     for key, _ in selector.select(0.02):
+                        failure_location = "stream_read"
                         data = os.read(key.fd, 65536)
                         if not data:
                             selector.unregister(key.fileobj)
                             continue
                         total += len(data)
+                        stream_bytes[key.data] += len(data)
                         if total > max_stream_bytes:
+                            failure_location = "stream_size_limit"
                             raise ValueError("Runtime output limit exceeded")
                         if key.data == "stderr":
+                            failure_location = "stderr_recording"
                             err.write(data)
                         else:
                             buffer += data
                             if len(buffer) > 1024 * 1024:
+                                failure_location = "line_size_limit"
                                 raise ValueError("Runtime line limit exceeded")
                             while b"\n" in buffer:
                                 line, buffer = buffer.split(b"\n", 1)
+                                failure_location = "message_decoding"
                                 message = json.loads(line)
+                                failure_location = "message_recording"
                                 attempt.emit("runtime", "message", message)
+                                failure_location = "message_processing"
                                 queued.extend(session.receive(message))
                     if not selector.get_map():
                         if buffer or session.phase != "finished":
+                            failure_location = "premature_stream_close"
                             raise ValueError("Runtime closed without complete final event")
     except Exception as error:
         session.outcome = "infrastructure_incomplete"
-        attempt.emit("controller", "runtime.error", {"error_type": type(error).__name__})
+        # Fixed locations and numeric counters identify transport failures without
+        # copying exception messages, runtime payloads, commands or credentials.
+        failure = dict(error_type=type(error).__name__, location=failure_location,
+                       stream_bytes=dict(stream_bytes), buffered_stdout_bytes=len(buffer),
+                       stream_limit_bytes=max_stream_bytes)
+        attempt.emit("controller", "runtime.error", failure)
     finally:
         observation_stop = (time.monotonic(), time.time())
         cleanup_outcome = 'incomplete' if process else 'not_started'
@@ -325,4 +346,5 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                 session.outcome = 'clock_discontinuity_incomplete'
     result = session.result()
     result['timing'] = timing
+    result['runtime_failure'] = failure
     return result

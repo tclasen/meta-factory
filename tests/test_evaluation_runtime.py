@@ -103,6 +103,40 @@ class RuntimeTest(unittest.TestCase):
             result = self.transport(code, max_stream_bytes=1000)
             self.assertEqual(result["outcome"], "infrastructure_incomplete")
 
+    def test_transport_failures_have_safe_distinct_diagnostics(self):
+        cases = [
+            ("print('private-runtime-payload')", "message_decoding"),
+            ("print('{\"id\":1,\"result\":\"private-runtime-payload\"}')",
+             "message_processing"),
+            ("import os,time; os.close(1); os.close(2); time.sleep(60)",
+             "premature_stream_close"),
+            ("import os; os.write(2, b'private-runtime-payload' * 100)",
+             "stream_size_limit"),
+        ]
+        for code, location in cases:
+            with self.subTest(location=location):
+                result = self.transport(code, max_stream_bytes=1000)
+                self.assertEqual(result['outcome'], 'infrastructure_incomplete')
+                failure = result['runtime_failure']
+                self.assertEqual(failure['location'], location)
+                self.assertNotIn('private-runtime-payload', json.dumps(failure))
+                self.assertEqual(failure['stream_limit_bytes'], 1000)
+                self.assertEqual(result['timing']['local_cleanup_outcome'], 'settled')
+                if location == 'stream_size_limit':
+                    self.assertGreater(failure['stream_bytes']['stderr'], 1000)
+
+    def test_error_event_retains_the_same_safe_diagnostic_as_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with Attempt(Path(directory) / 'attempt', {}) as attempt:
+                result = run_session(attempt, [sys.executable, '-c', "print('not json')"],
+                    Session('/work', 'fixture', ['WP-001']), cwd=directory,
+                    builder_seconds=1, setup_seconds=0.5, grace_seconds=0.1)
+                events = [json.loads(line) for line in
+                          (attempt.directory / 'events.jsonl').read_text().splitlines()]
+                failures = [event['payload'] for event in events
+                            if event['type'] == 'runtime.error']
+                self.assertEqual(failures, [result['runtime_failure']])
+
     def test_silent_server_is_bounded_without_remote_termination_claim(self):
         result = self.transport("import time; time.sleep(60)")
         self.assertEqual(result["outcome"], "timeout_incomplete")
@@ -123,6 +157,7 @@ for line in sys.stdin:
 '''
         result = self.transport(code)
         self.assertEqual(result["outcome"], "completed")
+        self.assertIsNone(result['runtime_failure'])
         timing = result['timing']
         self.assertEqual(timing['clock_evidence'], 'monotonic_with_wall_crosscheck')
         self.assertEqual(timing['local_cleanup_outcome'], 'settled')
