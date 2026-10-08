@@ -184,7 +184,7 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             allowed = {'tenants', 'accounts', 'scale_cases', 'performance_fixture',
                        'twenty_export_fixture', 'integrated_fixture', 'network_fixture',
                        'foundation_fixture', 'documentation_fixture',
-                       'attestation_fixture', 'disposal_fixture'}
+                       'attestation_fixture', 'disposal_fixture', 'authentication_fixture'}
             flags = {'isolated_membership_fixture'}
             if (not isinstance(fixture, dict) or not fixture
                     or not set(fixture) <= allowed | flags

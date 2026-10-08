@@ -2584,6 +2584,14 @@ uv run --locked python -m unittest discover -s tests -p test_evaluation_security
 
 ### Guarded parent security inspection lifetime
 
+The trusted post-bootstrap fixture loader may supply an `authentication_fixture`
+mapping for protected authentication checks. As with other fixture mappings, the
+controller copies it into the grading target without sharing mutable parent
+objects. The loader must independently establish runtime mode and its documented
+local HTTP exception; application response flags are insufficient. Protected
+cases validate their own field schema. This transport grants no automatic mode
+discovery, cookie compliance or complete AC-004 coverage.
+
 `security_runtime.SecurityRuntime` wraps a fixed nonempty subset of the security
 operations with actual callback-duration checks on both parent clocks. Peer
 checks exceeding one second and inspections exceeding thirty seconds suppress
