@@ -1544,8 +1544,12 @@ Chromium keyboard login/logout, authenticated identity/tenant checks and the
 post-logout 401 passed. Each browser relay hop completed ten requests without
 errors. The VM publication and sandbox, cluster, volume, Desktop proxy/network
 and private workspace cleanup were verified, with unchanged global policy.
-The proxy's separate transport receipt was not collected in this first passing
-attempt. This is an operator-local diagnostic prototype and smoke-case result,
+The proxy's separate transport receipt was not collected in the first passing
+attempt. A fresh follow-up bound the internal network ID during peer checks and
+stopped the proxy gracefully: its receipt showed ten completed connections,
+zero errors, zero active connections and verified closure. Both browser hops
+again completed ten requests; all owned cleanup was verified.
+This is an operator-local diagnostic prototype and smoke-case result,
 not complete APP-011 coverage or accepted comparison evidence. The disclosed
 diagnostic-copy PGDATA adjustment still applies.
 
