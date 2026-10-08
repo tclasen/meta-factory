@@ -214,6 +214,43 @@ Guarded native fixture capture verified the private manifest against its report,
 bound it in the final peer recheck and repeated the expected current/history
 counts. Scoped cleanup and global policy checks passed, with no model calls.
 
+`storage_acl_inventory_capture.capture_acl_inventory` consumes that exact private
+manifest and its SHA-256, verifies ordinary private file identity/content, and
+reads the bucket ACL, every current object ACL and every retained non-delete
+version ACL twice. Retained versions behind a latest delete marker are included;
+delete markers themselves are counted separately. Duplicate/partial/changed
+private inventories cannot define successful coverage. Fresh complete current
+and history listings must match the private manifest both before and after the
+ACL scan, and the manifest identity is rechecked after all requests. Names and
+version IDs stay in private files/requests; evidence contains only counts and
+digests. Keep the private input outside evidence and all builder mounts.
+
+Bind endpoint identity, immutable credentials/controller sources, private
+manifest and peer lifetime in `lifetime_check`, reserving 65 seconds initially.
+Requests are signed read-only GETs with no proxy/redirect fallback, a 5-second
+timeout and 64-KiB ACL response limit. The complete scan has a 55-second deadline
+and 60-second transport bound; larger/slow scopes remain incomplete, never
+sampled. Inventory rechecks retain the separate listing bounds. Denied or unknown
+ACLs and changing response bytes are reported as inconclusive targets.
+`scope_visited_complete` describes enumerated targets read; it does not imply
+`acl_schema_coverage_complete`, effective private access or an atomic snapshot.
+Unknown native layouts remain inconclusive even when every target was visited.
+Policy/other authorization and application-bucket binding still require
+independent composition; `privacy_verified` remains null.
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_storage_acl_inventory*.py' -v
+```
+
+The native MinIO fixture visited all nine targets (one bucket, three current
+objects and five retained versions). Its empty ACL owner IDs remain unsupported;
+one old version behind a delete marker returned ACL 404 with changing error bytes
+while a separate version-specific object GET returned 200. Inventory/manifest
+rechecks passed, but schema coverage and privacy remain inconclusive. The failed
+initial fixture assumption of stable ACL responses is retained. Final source
+hashes, credential-free evidence, scoped cleanup and unchanged global policy
+were verified. These results establish scan behavior, not application acceptance.
+
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
