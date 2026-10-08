@@ -1624,6 +1624,31 @@ controls and owned-resource cleanup passed. These synthetic SQL checks validate
 the adapter; they do not establish the application's actual lease reclaim or
 connect its physical storage observations.
 
+A subsequent native deployment diagnostic connected this reader to the actual
+PostgreSQL Pod. It bound the owned node, Pod/ReplicaSet/Deployment ownership,
+runtime image, container identity, restart count and start time before and after
+each read. Catalog observations verified database and operator role `incident`,
+physical columns and relation OIDs. Discovery explicitly casts OIDs to `bigint`
+because PostgreSQL otherwise serializes this type as JSON strings. A deliberately
+mismatched Pod identity was refused before SQL was attempted.
+
+With the owned worker stopped, the reader observed an approved export as queued
+with zero attempts, no lease and no completion event. After verified restoration,
+both API and database reported running. Across 56 durable reads, the database
+showed one processing attempt and an active claim; later observations showed the
+same retained fingerprint after lease expiry. No completion event or terminal
+state was observed within the diagnostic's sixty-second convergence allowance.
+This establishes real durable claim observations, while completion, physical
+artifact counts, interrupted-lease recovery and the running-service retry clock
+remain unverified. The allowance is diagnostic, not an APP-009 failure threshold.
+
+The diagnostic remained incomplete and the subsequent protected restart group
+did not run in this attempt. Fault restoration, cluster/volume absence, sandbox
+stop, bridge cleanup, workspace removal and unchanged global policy were verified.
+Earlier refused connection and OID-discovery attempts are retained with verified
+cleanup. Raw metadata, SQL output, connection diagnostics and claim tokens were
+not logged. No acceptance or original-candidate rescoring was performed.
+
 ```sh
 uv run --locked python -m unittest discover -s tests -p test_evaluation_job_database.py -v
 ```
