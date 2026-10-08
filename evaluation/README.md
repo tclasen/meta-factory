@@ -2715,6 +2715,22 @@ the actual cookie/header transport separately:
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_fixture_session.py' -v
 ```
 
+### Reviewed specification path
+
+The reviewed comparison prompts use `/spec`. Native `sbx` mounts retain their
+original Mac paths. Before starting a comparison builder, call
+`specification_alias.install_specification_alias` with independently bound
+reviewed file hashes and the owned sandbox's deadline/watchdog check. It creates
+the alias inside that guest, preserves the reviewed prompt bytes, and refuses
+an existing unrelated alias. Guest root verifies the file hashes and inability
+to open each file for writing. The caller remains responsible for cleanup;
+this helper does not launch a model or establish a comparison result. Verify
+the mount with native preflight before using it in a comparison.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_specification_alias.py' -v
+```
+
 ### Runtime usage reconciliation
 
 `runtime_ledger.summarize_runtime_events(records, package_ids)` projects one
