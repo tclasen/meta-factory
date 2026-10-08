@@ -2704,3 +2704,30 @@ source/deployment binding, protected verifier composition and complete AC-002
 coverage remain separate work. The observer fixture command above includes
 alternate names/passwords, removed/default-name assumptions, extra members,
 role mismatches, manifest drift and lifetime loss.
+
+### Runtime usage reconciliation
+
+`runtime_ledger.summarize_runtime_events(records, package_ids)` projects one
+contiguous operator event stream, including an explicitly identified live
+prefix. Supply the frozen work-package IDs and independently bind the input
+snapshot's provenance. It verifies attempt/sequence/clock consistency and a
+single telemetry thread/turn, validates relevant pinned protocol messages,
+deduplicates native compaction IDs and repeated stage calls, and records
+cumulative usage deltas. Initial observed counters plus subsequent deltas must
+reconcile exactly to the latest snapshot; duplicate counter updates add zero.
+It never sums `total` with `last`, or adds cache/reasoning subcategories on top
+of `totalTokens`. Missing counters remain null, not zero.
+
+Usage intervals retain the previously reported stage, the current reported
+stage and intervening stage markers. These are builder reports with timestamps,
+not independently controlled SDLC stages or causal token allocations. All usage
+remains explicitly unallocated under the unresolved Q-011 policy, and monetary
+estimates remain null without a separately frozen sourced tariff. A completed
+runtime turn does not establish operator finalization, acceptance or remote
+cleanup. Provider billing completeness, model identity and allowed-state audits
+also remain independent evidence. Raw tool/model/error contents are omitted
+from the ledger projection.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_runtime_ledger.py' -v
+```
