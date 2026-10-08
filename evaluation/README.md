@@ -1807,6 +1807,37 @@ without errors or disconnects; the VM bridge completed 281. All owned cleanup
 and unchanged global policy were verified. This is partial native evidence,
 with earlier failures retained, the suite unapproved and acceptance unset.
 
+A separate reference UI fixture now exercises the complete tenant-list oracle
+without repairing or rescoring the captured benchmark candidate. Independent
+source comparisons allow only the diagnostic PostgreSQL data-directory setting
+and the reference UI file to differ. The reference adds severity, status and
+assignee filters; its assignee control intentionally offers only the current
+analyst. Independently created and read-back cases distinguish each filter in
+the combined query. This validates the oracle against that disclosed fixture,
+not a complete product UI or original candidate acceptance.
+
+The first native fault attempt stopped before the filter observation because
+Search was temporarily disabled during tenant loading. Its trusted diagnostic
+and a delayed-submit Chromium reproduction exposed a readiness race. A new
+separate draft waits for list submit controls to become enabled within the
+existing operation timeout, then activates them through the keyboard. It retains
+all tenant, query, pagination, independent API and combined-filter predicates.
+Eighty-three local controls passed, including the predecessor race reproduction,
+corrected delayed submit, retained list/pagination controls and 59 binding and
+provenance checks. Earlier drafts and failed attempts remain preserved.
+
+A fresh unwrapped native reference run passed the complete list group with 49
+completed requests on each browser hop and the closed Desktop proxy. Separate
+reference faults omit exactly one query parameter for severity, status or
+assignee; each was rejected at the combined-filter observation, with respectively
+41, 43 and 43 completed requests on each browser hop and the closed proxy.
+The initial reference failure and runner bookkeeping failures are retained rather than
+reclassified as valid negative controls. Owned resource cleanup and unchanged
+global policy were verified for all four counted native results. The original
+candidate still lacks the three filter controls and remains inconclusive for
+this group. The suite remains partial and unapproved, with seven of 36 criteria
+marked complete; these checks neither freeze it nor change acceptance results.
+
 The binding is revoked before outer sandbox cleanup, including grading failure.
 Unit tests verify resolution and teardown ordering and guard/precondition failures;
 they alone do not establish native endpoint/fixture discovery, Docker file sharing
