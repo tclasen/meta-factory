@@ -2589,3 +2589,53 @@ reason. This applies before bootstrap/fixture preparation reaches the protected
 workers. Cleanup loss also clears accepted packages even if a worker returned
 passing observations. Raw observations are retained; failed preparation or
 unverified cleanup cannot become accepted work.
+
+
+### Fresh Kubernetes topology observations
+
+`topology.capture_topology(attempt, sandbox, kubectl_prefix=..., selected=...,
+lifetime_check=...)` runs a fixed read-only collector inside the owned grading
+sandbox. Supply an independently selected, credential-free kubectl argv prefix
+and the following mapping outside builder mounts:
+
+```json
+{
+  "components": {
+    "web": {"kind": "Deployment", "name": "api", "container": "api"},
+    "api": {"kind": "Deployment", "name": "api", "container": "api"},
+    "worker": {"kind": "Deployment", "name": "worker", "container": "worker"},
+    "database": {"kind": "StatefulSet", "name": "postgres", "container": "postgres"},
+    "storage": {"kind": "StatefulSet", "name": "storage", "container": "storage"}
+  },
+  "services": {"web": "app", "api": "app", "database": "postgres", "storage": "storage"}
+}
+```
+
+Names are illustrative operator selections, not imposed application names. The
+collector follows Deployment→ReplicaSet→Pod ownership or direct StatefulSet,
+DaemonSet and ReplicaSet ownership, and also supports a directly selected Pod.
+The worker remains a separate Deployment; APP-001 permits the API to serve web
+assets. Ready Pod identities and addresses must agree with owned ready Service
+EndpointSlices; internal Services must cover exactly the mapped Pod population.
+The callback reserves 70 seconds from the existing grading/source lifetime and
+checks it again after transport; four subprocess queries share a 60-second bound.
+
+Two bracketed projections must agree. The `kube-system` namespace UID is an
+explicit cluster anchor, paired with the application namespace UID, rather than
+a claimed canonical Kubernetes cluster identifier. Only selected identity,
+readiness, address, port and image metadata leave the sandbox. Raw resource
+objects, labels, environment values and query diagnostics remain inside the
+bounded probe. Query failures retain their original exit status.
+
+Declared references and runtime-reported image IDs/digests remain separate: an
+OCI index, platform manifest and image configuration may have different digests.
+These observations do not attest artifacts or prove that the selected roles
+implement the required technologies, that routing targets the intended container
+port, or that the whole rollout/source matches its locks. Compose those checks
+with independent origin, migration, storage, source and image observations
+before producing a complete foundation fixture. No suite approval or acceptance
+is granted by this collector. Validate its projections and subprocess boundary:
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_topology.py' -v
+```
