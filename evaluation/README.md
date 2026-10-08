@@ -3345,6 +3345,17 @@ policy stayed unchanged. Shared-account mutations, runtime fault injection,
 browser behavior and the remaining independent collectors are outside this batch;
 the full protected acceptance suite remains incomplete and unapproved.
 
+A separate fresh fixture passed seven shared-account API groups: session
+lifecycle, CSRF across mutation routes, rolling login rate limiting, membership
+revocation, write permissions, export download authorization and membership audit
+events. The independently verified multi-tenant analyst served as a distinct
+alpha membership subject; the test restored its alpha role after mutations.
+The real login-window check and cleanup wait were included in the 128.68-second
+grading interval. All 659 bridge connections completed without errors, and owned
+resource cleanup and unchanged global policy were verified. These observations
+remain development fixture evidence, separate from the 30-group batch and the
+historical candidate results.
+
 
 Grading deployment failures retain the complete registry's criterion denominator
 with `untested` verdicts, empty case results and accepted packages, and a bounded
