@@ -43,6 +43,9 @@ class LoopbackFixture(unittest.TestCase):
                 self.end_headers()
                 self.wfile.write(raw)
             def do_POST(self):
+                if self.path == '/api/v1/test-mutation':
+                    self.mutate()
+                    return
                 fixture.requests.append(('POST',self.path))
                 if self.path == '/api/v1/auth/login':
                     data = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -65,6 +68,18 @@ class LoopbackFixture(unittest.TestCase):
                     self.answer(204)
                 else:
                     self.answer(404,{})
+            def mutate(self):
+                fixture.requests.append((self.command,self.path))
+                token = self.headers.get('Cookie','').removeprefix('fixture=')
+                if token not in fixture.sessions or self.headers.get('X-CSRF-Token') != token:
+                    self.answer(403,{})
+                    return
+                size = int(self.headers.get('Content-Length','0'))
+                data = json.loads(self.rfile.read(size)) if size else None
+                self.answer(200,dict(method=self.command,body=data))
+            do_PUT = mutate
+            do_PATCH = mutate
+            do_DELETE = mutate
             def do_GET(self):
                 fixture.requests.append(('GET',self.path))
                 token = self.headers.get('Cookie','').removeprefix('fixture=')

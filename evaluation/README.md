@@ -2705,6 +2705,16 @@ coverage remain separate work. The observer fixture command above includes
 alternate names/passwords, removed/default-name assumptions, extra members,
 role mismatches, manifest drift and lifetime loss.
 
+The fixture `Session` supplies its session-bound CSRF token on authenticated
+POST, PUT, PATCH and DELETE requests, including operator membership changes
+and case edits. Invalid outbound token/header encoding is sanitized as unavailable
+transport; private token values never appear in those exception messages. Check
+the actual cookie/header transport separately:
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_fixture_session.py' -v
+```
+
 ### Runtime usage reconciliation
 
 `runtime_ledger.summarize_runtime_events(records, package_ids)` projects one

@@ -85,7 +85,9 @@ class Session:
         if body is not None:
             headers['Content-Type'] = 'application/json'
             data = json.dumps(body).encode()
-        if method == 'POST' and self.csrf is not None:
+        if method in ('POST', 'PUT', 'PATCH', 'DELETE') and self.csrf is not None:
+            if not isinstance(self.csrf, str) or not self.csrf:
+                raise ValueError('Opaque session-bound CSRF token required')
             headers['X-CSRF-Token'] = self.csrf
         request = urllib.request.Request(self.base_url + '/api/v1' + path,
                                          data=data, headers=headers, method=method)
@@ -100,7 +102,7 @@ class Session:
             if missing:
                 return None
             raise Inconclusive('Fixture API transport unavailable') from None
-        except (OSError, urllib.error.URLError):
+        except (OSError, urllib.error.URLError, ValueError):
             raise Inconclusive('Fixture API transport unavailable') from None
         self.check(0)
         if actual != status or len(content) > 65536:
