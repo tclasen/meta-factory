@@ -3,6 +3,7 @@
 import argparse
 import ipaddress
 import json
+import math
 import re
 import subprocess
 import time
@@ -38,21 +39,44 @@ def classify(returncode, stderr):
     return 'inconclusive'
 
 
-def observe(check, target, control, mode):
+def observe(check, target, control, mode, *, deadline=None,
+            monotonic=time.monotonic, sleep=time.sleep):
+    if mode not in ('available','unavailable'):
+        raise ValueError('Known service observation mode required')
+    if deadline is not None and (type(deadline) not in (int,float)
+            or not math.isfinite(deadline) or deadline<=0):
+        raise ValueError('Finite service observation deadline required')
     records = []
+    def incomplete():
+        return {'outcome': 'service_probe_incomplete', 'checks': records}
+    def live():
+        return deadline is None or monotonic()<deadline
     def run(label, url):
-        value = check(url)
+        if not live():return 'inconclusive'
+        try:
+            value = check(url)
+        except Exception as error:
+            value = {'connectivity':'inconclusive','exit_code':None,
+                     'error_type':type(error).__name__}
         records.append(dict(value, check=label))
-        return value['connectivity']
-    if run('control-before', control) != 'reachable':
-        return {'outcome': 'service_probe_incomplete', 'checks': records}
-    expected = 'unreachable' if mode == 'unavailable' else 'reachable'
-    for index in range(3 if mode == 'unavailable' else 1):
-        if run('target-' + str(index), target) != expected:
-            return {'outcome': 'service_probe_incomplete', 'checks': records}
-    if run('control-after', control) != 'reachable':
-        return {'outcome': 'service_probe_incomplete', 'checks': records}
-    return {'outcome': 'service_' + mode + '_verified', 'checks': records}
+        return value['connectivity'] if live() else 'inconclusive'
+    attempts=64 if mode=='available' and deadline is not None else 1
+    for attempt in range(attempts):
+        suffix='' if attempt==0 else '-'+str(attempt)
+        if run('control-before'+suffix, control) != 'reachable':return incomplete()
+        if mode=='unavailable':
+            for index in range(3):
+                if run('target-'+str(index),target)!='unreachable':return incomplete()
+            if run('control-after',control)!='reachable':return incomplete()
+            return {'outcome':'service_unavailable_verified','checks':records}
+        observed=run('target-'+str(attempt),target)
+        if observed not in ('reachable','unreachable'):return incomplete()
+        if run('control-after'+suffix,control)!='reachable':return incomplete()
+        if observed=='reachable':
+            return {'outcome':'service_available_verified','checks':records}
+        if deadline is None or not live():return incomplete()
+        sleep(min(.25,max(0,deadline-monotonic())))
+    return incomplete()
 
 
 def main():
@@ -86,7 +110,7 @@ def main():
                 raise ValueError('Oversized service probe output')
             return {'exit_code': command.returncode,
                     'connectivity': classify(command.returncode, command.stderr.decode('utf-8', errors='replace'))}
-        result = observe(check, target, control, args.mode)
+        result = observe(check, target, control, args.mode, deadline=deadline)
     except Exception as error:
         result['error_type'] = type(error).__name__
     print(json.dumps(result, sort_keys=True))

@@ -1047,6 +1047,15 @@ as a private bucket's 403 still prove connectivity. Only recognized connection
 failures prove unreachability; missing utilities, exec errors and ambiguous output
 remain inconclusive. Baseline and recovery require a reachable target plus controls;
 outage requires three unreachable target observations bracketed by working controls.
+Available-service checks now poll recognized connection failures within the same
+30-second probe deadline, with at most 64 attempts. Each attempt requires a
+reachable control before and after the target. Unknown failures or lost controls
+refuse immediately; late responses cannot establish availability. All sanitized
+observations remain recorded. This handles a restored Pod whose listener starts
+after Kubernetes reports readiness, without substituting readiness for an HTTP
+connectivity observation. The unavailable-service proof is unchanged.
+Probe-command exceptions retain earlier observations and a sanitized exception
+class, with no invented exit status or raw diagnostic text.
 Each probe process is bounded to 40 seconds. Three phases raise fault admission
 reserve to 750 seconds; the private worker RPC timeout is 360 seconds.
 
@@ -3398,6 +3407,14 @@ while the web control responded. The fault broker withheld restoration, aborted
 grading and granted no acceptance. All owned resources were subsequently removed,
 with bridge cleanup and unchanged global policy verified. A bounded wait for real
 service recovery remains required; Pod readiness alone cannot establish it.
+
+Two fresh native fixtures with the bounded polling verified outage and recovery.
+The storage listener became reachable on the 62nd attempt, with 186 bracketed
+observations retained. The fault broker confirmed restoration in both runs.
+The protected API case still reported `Application endpoint unavailable` during
+the outage and remained inconclusive. Owned resource cleanup and unchanged global
+policy passed. This validates service recovery observation, while the published
+API route's behavior during dependency loss still needs separate investigation.
 
 
 Grading deployment failures retain the complete registry's criterion denominator
