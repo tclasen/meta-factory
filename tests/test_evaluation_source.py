@@ -49,6 +49,9 @@ class SourceTest(unittest.TestCase):
         self.assertEqual(result['selection']['deleted'], ['deleted.py'])
         self.assertFalse((self.root / 'capture/.venv').exists())
         self.assertEqual((self.root / 'logs/captured-source/app.py').read_text(), 'source\n')
+        self.assertEqual(result['unix_modes']['files']['app.py'], self.source.joinpath('app.py').stat().st_mode&0o777)
+        saved = json.loads((self.root/'logs/source-capture.json').read_text())
+        self.assertEqual(saved['unix_modes'], result['unix_modes'])
         retention = json.loads((self.root / 'logs/source-retention.json').read_text())
         self.assertEqual(retention, {
             'bytes': result['bytes'],

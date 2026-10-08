@@ -611,17 +611,37 @@ uv run --locked python -m unittest discover -s tests -p 'test_evaluation_npm_tra
 
 `sandbox.py` builds explicit 8-vCPU/16-GiB, loopback-only sbx plans and refuses
 workspace/specification mounts overlapping operator evidence or controller files.
-The current source capture preserves bytes and executable status, while storing
-files/directories with private `0600`/`0700` modes. Those storage modes must not
-be mistaken for original build-input permissions. Fresh native diagnostics found
+Source capture preserves bytes, executable status and an original Unix mode
+record, while storing files/directories with private `0600`/`0700` modes. Those
+storage modes must not be mistaken for original build-input permissions. Native
+diagnostics found
 that carrying them into Docker `COPY` prevented nonroot application processes
 from reading source and nginx configuration. A development control matched all
 160 captured files to the retained builder bytes and restored the retained Unix
 modes on a private deployment copy: web and worker became ready, while a separate
-PostgreSQL data-directory startup failure still blocked the API. Original capture
-mode metadata and explicit deployment materialization remain required before
-source-fidelity acceptance. Retained-tree reconstruction is supplemental
-development evidence and does not revise frozen pilot results.
+PostgreSQL data-directory startup failure still blocked the API. Retained-tree
+reconstruction is supplemental development evidence and does not revise frozen
+pilot results.
+
+`source_modes.py` binds ordinary file and directory mode bits to the captured
+byte manifest, including empty directories and the root. Capture refuses special
+mode bits and directory metadata changes during traversal. Grading validates the
+complete record and restores it only on a new owned deployment copy beneath a
+private parent; retained capture permissions stay unchanged. A recopy's private
+storage modes cannot replace the original mode record. Legacy captures without
+that record return `grading_incomplete` before creating remote resources. Mode
+bits do not attest owners, ACLs, extended attributes or timestamps.
+
+Two native Docker build/COPY controls verified this distinction using a pinned
+Python image and UID/GID 10001. The private-storage copy prevented source reads
+and tool execution; the materialized copy permitted both. An intentionally
+private `0600` file remained unreadable in both cases. Images, containers and
+the sandbox were cleaned up, with global network policy unchanged. These are
+synthetic permission controls, not application acceptance evidence.
+
+```sh
+TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_source*.py' -v
+```
 
 It verifies stop with the pinned `sbx ls` status table, never `exec` (which would
 restart the sandbox). Source capture reads regular files without executing Git,

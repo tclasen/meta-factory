@@ -17,6 +17,7 @@ from .browser_binding import BrowserBinding
 from .grading import run_suite, sha256
 from .sandbox import Sandbox, capture_tree, disjoint, symlink_record
 from .watchdog import Guard
+from .source_modes import restore_deployment_modes, validate_modes
 
 
 def verify_capture(source, inventory):
@@ -103,9 +104,19 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
         for protected in (suite.root, attempt.directory, repository):
             disjoint(mount, protected)
     verify_capture(source, inventory)
+    if inventory.get('unix_modes') is None:
+        report = dict(suite.aggregate({}), outcome='grading_incomplete', project_success=False,
+                      case_results={}, aborted=True, reason='source_permission_metadata_missing',
+                      cleanup={'resources_created': False, 'remote_termination_verified': None})
+        atomic_json(attempt.directory/'deployment-result.json', report)
+        return report
+    validate_modes(source, inventory)
     copied = capture_tree(source, project, termination_verified=True)
     if copied['files'] != inventory['files']:
         raise ValueError('Redeployment copy differs from frozen capture')
+    restore_deployment_modes(project, inventory, captured_source=source)
+    verify_capture(project, inventory)
+    copied['unix_modes'] = inventory['unix_modes']
     atomic_json(attempt.directory / 'redeployment-source.json', copied)
     box = sandbox_factory(attempt, project, specification, repository, port=port, role='grader')
     guard = None

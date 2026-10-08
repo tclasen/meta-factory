@@ -84,6 +84,16 @@ class DeploymentTest(unittest.TestCase):
         (self.capture/'ops/bootstrap.sh').write_text('modified')
         with self.assertRaises(ValueError):verify_capture(self.capture, self.inventory)
 
+    def test_legacy_missing_mode_metadata_stops_before_sandbox_creation(self):
+        self.inventory.pop('unix_modes')
+        previous = len(FakeSandbox.instances)
+        with Attempt(self.root/'logs', {}) as attempt:
+            result = self.run_grade(attempt)
+        self.assertEqual(result['reason'], 'source_permission_metadata_missing')
+        self.assertEqual(len(FakeSandbox.instances), previous)
+        self.assertEqual(self.commands, [])
+        self.assertFalse(result['project_success'])
+
     def test_link_identity_and_relocation_verified(self):
         source = self.root / 'linked-source'; source.mkdir()
         (source / 'real').write_text('content')

@@ -9,6 +9,7 @@ import stat
 import uuid
 
 from .evidence import atomic_json, collect
+from .source_modes import mode_record, unix_mode
 
 
 def disjoint(*paths):
@@ -259,6 +260,7 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
             selected_directories.update(str(parent) for parent in path.parents)
     destination.mkdir(mode=0o700)
     inventory = {}
+    file_modes, directory_modes, directory_snapshots = {}, {}, {}
     total = 0
     def copy_link(path, relative):
         nonlocal total
@@ -275,6 +277,13 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
     try:
         for root, directories, files in os.walk(source, followlinks=False):
             relative = Path(root).relative_to(source)
+            directory_info = Path(root).lstat()
+            if not stat.S_ISDIR(directory_info.st_mode):
+                raise ValueError('Unsupported or excessive source directories')
+            if Path(root) in directory_snapshots and capture_identity(directory_info) != directory_snapshots[Path(root)]:
+                raise ValueError('Source directory changed before traversal')
+            directory_modes[str(relative)] = unix_mode(directory_info)
+            directory_snapshots[Path(root)] = capture_identity(directory_info)
             if selected is not None:
                 directories[:] = [name for name in directories
                                   if str(relative / name) in selected_directories or str(relative / name) in selected]
@@ -284,6 +293,11 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                 if path.is_symlink():
                     copy_link(path, relative / name)
                 else:
+                    info = path.lstat()
+                    if not stat.S_ISDIR(info.st_mode) or len(directory_modes) >= 100000:
+                        raise ValueError('Unsupported or excessive source directories')
+                    directory_modes[str(relative/name)] = unix_mode(info)
+                    directory_snapshots[path] = capture_identity(info)
                     (destination / relative / name).mkdir(mode=0o700)
             for name in files:
                 path = Path(root) / name
@@ -316,12 +330,17 @@ def capture_tree(source, destination, *, termination_verified, max_bytes=2 * 102
                         raise ValueError("Source changed during capture")
                     inventory[str(relative / name)] = {"sha256": digest.hexdigest(), "size": size,
                                                        "executable": bool(before.st_mode & 0o111)}
+                    file_modes[str(relative / name)] = unix_mode(before)
                     total += size
                 finally:
                     os.close(descriptor)
         if selected is not None and set(inventory) != selected:
             raise ValueError("Selected source changed during capture")
-        return {"files": inventory, "bytes": total, "outcome": "captured"}
+        if any(capture_identity(path.lstat()) != identity for path, identity in directory_snapshots.items()):
+            raise ValueError('Source directory metadata changed during capture')
+        result = {"files": inventory, "bytes": total, "outcome": "captured"}
+        result['unix_modes'] = mode_record(result, file_modes, directory_modes)
+        return result
     except BaseException:
         # Partial bytes are retained for diagnosis; never relabel as a full capture.
         raise
