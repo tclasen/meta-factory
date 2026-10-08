@@ -3331,9 +3331,19 @@ versions while enforcing a positive integer domain; a deliberately accepted stal
 write is rejected by the oracle. A fresh run passed closure lifecycle and 28 other
 groups; only export audit correlation still failed. Cleanup passed. The old suite
 and native results remain archived.
-The second failure concerns which export request supplies worker correlation;
-classification awaits a separate review of the disclosed contract. These findings
+The second failure exposed an approval-only correlation assumption. APP-007
+requires reuse of an originating request ID but does not distinguish export
+creation from approval. The revised development oracles accept the independently
+observed UUID of either request for that same export; ready and failed worker
+events still reject a fresh UUID or another export's request ID. Independent
+models cover both valid origins and those unrelated-origin failures. These findings
 do not confer suite approval or replace the historical candidate grading.
+
+A fresh native development run with both corrections passed all 30 selected
+groups. Bridge, cluster, volume, sandbox and workspace cleanup passed, and global
+policy stayed unchanged. Shared-account mutations, runtime fault injection,
+browser behavior and the remaining independent collectors are outside this batch;
+the full protected acceptance suite remains incomplete and unapproved.
 
 
 Grading deployment failures retain the complete registry's criterion denominator
