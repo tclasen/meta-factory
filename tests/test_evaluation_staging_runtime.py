@@ -375,6 +375,16 @@ class StagingRuntimeTest(unittest.TestCase):
             self.assertEqual(session.observe_running(),{'minimum':10,'maximum':10})
             with self.assertRaises(FaultSetupError):session.restart_worker()
         self.assertFalse(staging.broker.aborted)
+        records=[json.loads(path.read_text()) for path in staging.directory.glob('running-bounds-*.json')]
+        self.assertEqual(sorted(record['running_seconds']['maximum'] for record in records),[0,10])
+        directories=[]
+        for record in records:
+            self.assertEqual([item['role'] for item in record['role_observations']],['api','worker'])
+            for item in record['role_observations']:
+                directory=staging.directory/item['directory'];directories.append(directory)
+                self.assertEqual(json.loads((directory/'result.json').read_text())['outcome'],
+                                 'running_observation_verified')
+        self.assertEqual(len(set(directories)),4)
 
     def test_missing_continuity_metadata_aborts_timing_and_restores(self):
         staging,_=self.runtime()
@@ -383,6 +393,7 @@ class StagingRuntimeTest(unittest.TestCase):
                 session.handoff();session.observe_running()
         self.assertTrue(staging.broker.wait_idle(2));self.assertTrue(staging.broker.aborted)
         self.assertEqual(self.states['storage']['replicas'],1)
+        self.assertFalse(list(staging.directory.glob('running-bounds-*.json')))
 
     def test_storage_generation_change_during_timing_suppresses_receipt(self):
         base=self.operation;changed=[]

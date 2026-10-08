@@ -146,6 +146,7 @@ class StagingHandle:
         self.runtime,self.worker_stack,self.storage_stack=runtime,worker_stack,storage_stack
         self.api_replicas,self.worker_replicas=api_replicas,worker_replicas
         self.handed_off=False;self.restarted=False;self.running_clock=None;self.running_earliest=None
+        self.running_observations=[]
         self.observations={}
 
     def verify(self):
@@ -193,12 +194,15 @@ class StagingHandle:
         self.verify()
         runtime=self.runtime
         runtime.check(2*COMMAND_ALLOWANCE)
+        observations=self.running_observations
+        observations.clear()
         def observe(role):
             with Attempt(runtime.directory/('running-'+uuid.uuid4().hex), {'operation':'running_observation'}) as attempt:
                 attempt.transition('preflight');result={'outcome':'running_observation_incomplete'}
                 try:
                     value=runtime._observe(attempt,role,convergence='running')
                     result['outcome']='running_observation_verified'
+                    observations.append({'role':role,'directory':attempt.directory.name})
                     return value
                 finally:
                     attempt.transition('failed');attempt.finish(result)
@@ -209,6 +213,9 @@ class StagingHandle:
         try:
             value=self.running_clock.sample()
             self.verify()
+            atomic_json(runtime.directory/('running-bounds-'+uuid.uuid4().hex+'.json'),
+                {'schema_version':1,'running_seconds':dict(value),
+                 'handoff_earliest':self.running_earliest,'role_observations':observations})
             return value
         except BaseException:
             self.running_clock.invalidate()

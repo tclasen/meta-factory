@@ -2115,6 +2115,13 @@ No retry oracle should substitute sampled HTTP health or raw wall time for that
 clock, or count preclaim latency as proven storage-retry duration.
 
 `running_clock.RunningClock` supplies a parent-only continuity primitive for exact
+API/worker identities. Successful staging samples also retain private
+`running-bounds-*.json` receipts containing the duration bounds, handoff lower
+anchor and links to that sample's verified API/worker observation attempts.
+Each sample has its own observation links; failed continuity or hold verification
+produces no successful bounds receipt. These records preserve the clock's
+operator-envelope limits and do not turn sampled continuity into CPU scheduling
+or useful-work evidence. The continuity primitive binds exact
 API/worker workloads. Trusted callbacks bracket bounded workload reads with the
 outer guard, owner and immutable grading deadlines. Each sample requires running
 Pods, unique Pod identities and complete instance fingerprints; it rejects changed
