@@ -3883,14 +3883,42 @@ contains 77 groups and seven implementation-complete criteria; it is unapproved.
 The fresh 30-second preparation attempt also stopped on its first upload after
 30.002 seconds, with the sanitized exception chain identifying `TimeoutError`.
 It independently authenticated 50 users and created 2,000 cases and 200 comments,
-but uploaded no evidence and reached neither profile preparation nor protected
-grading. Its bootstrap completed in 60.437 seconds. The opaque VM bridge closed
-all 2,640 connections with no relay errors or active connections; those transport
+but received no completed evidence upload response and reached neither profile
+preparation nor protected grading. Its bootstrap completed in 60.437 seconds.
+The opaque VM bridge closed all 2,640 connections with no relay errors or active
+connections; those transport
 counts do not prove application completion. Cluster/volume absence, sandbox stop,
 bridge teardown, private-workspace removal and unchanged global policy were
 verified. Full sample integration, scale filter verdicts and comment-ceiling
 integration remain unverified in this source-bound attempt. Diagnose the upload
 path separately rather than retrying writes or weakening acceptance limits.
+
+Separate small native diagnostics distinguish the upload path from the full
+dataset workload. A fresh case accepted 1 KiB and then 1 MiB uploads with expected
+size and digest responses. Four bounded direct storage put/get/delete probes
+also returned matching bytes. That attempt's final summary raised `KeyError`;
+its original failed outcome remains retained despite the successful observations
+and verified cleanup. A corrected fresh diagnostic accepted a 1 MiB upload as
+the first write in 0.315 seconds, then completed two independent 1 MiB storage
+probes. Its 188 VM bridge connections closed without relay errors; all selected
+source checks and owned-resource cleanup passed. Pods were ready, and sanitized
+web-log category counts found none of the selected permission, space, connection
+or timeout errors. These observations establish neither the cause of the earlier
+timeouts nor full scale correctness. A timed-out write's persisted outcome is
+unknown unless independently observed; the loader's zero evidence count records
+completed responses, not proof that the database or object store stayed empty.
+
+A third fresh diagnostic waited 200.010 seconds after identity/source preparation
+without application writes, then successfully logged in and created a case.
+Its first 1 MiB upload timed out after 30.003 seconds. An independent bounded
+storage `put_object` then raised `ReadTimeoutError`; the diagnostic error handler
+subsequently raised `AttributeError` while reading a missing response mapping.
+That failed attempt is preserved, and no completed storage probe or final source
+checkpoint is claimed. Its 188 VM bridge connections closed without relay errors,
+and cluster/volume absence, sandbox stop, bridge/private-workspace teardown and
+unchanged global policy were verified. The timeout reproduces without the large
+case/comment workload. Storage behavior after startup, including the captured
+object-store network policy, needs separate diagnosis before full integration.
 
 ### Operator-selected cases within one protected registry
 
