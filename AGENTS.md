@@ -43,6 +43,8 @@ Use standard-library `unittest` for template behavior fixtures. No coverage thre
 
 The maintenance agent runs directly on the owner's Mac as the `agent` user, without sudo; it is no longer running inside Docker `sbx`. The owner explicitly authorizes using the shell tool to invoke `sbx` directly for iterative setup and preflight testing, without asking the owner to run scripts. Sandbox-local provisioning and configuration remain authorized for this testing. Use the available host access directly, keep changes scoped to test resources, and do not assume host administrative privileges. Repository edits still follow the Git workflow below.
 
+The owner explicitly removed the idle-host testing constraint. Do not block testing merely because unrelated owner sandboxes are running. Record concurrent activity, preserve declared resource allocations and timing bounds, and report observed contention rather than assuming it. Keep test resources separate and never stop unrelated workloads to satisfy a testing gate.
+
 For host checks, prepare complete, reviewable scripts in the shared workspace and run them directly when the `agent` account has the required access. If a check requires unavailable privileges or owner-only access, provide its exact invocation for the owner to run. Scripts must:
 
 - Write logs to a unique per-attempt directory under `.factory-planning/`, using the host checkout path so the agent can read them through the shared mount. Print that directory at startup and completion.
