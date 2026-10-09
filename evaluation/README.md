@@ -4880,3 +4880,28 @@ changes; it did not repair or rescore the original candidate. The suite remains
 unapproved, and grouping/reset order must preserve this sample before full-suite
 execution. This isolated development result establishes no package acceptance,
 three-arm comparison outcome or promotion evidence.
+
+### Native export and database recovery references
+
+The separate scaled-export v2 development reference passed AC-033's timed
+recipe: approval through complete download took 0.949 seconds, and the archive
+matched all twenty independently prepared 1 MiB objects. The full sample,
+source boundaries, allocation and healthy application conditions were checked
+before and after grading.
+
+The public-origin database v1 reference passed the AC-030 recovery recipe.
+Independent TCP observations from a bound API Pod verified PostgreSQL service
+availability, outage and restoration while checking a reachable control endpoint.
+Application requests used the normal frontend origin throughout. During the
+outage, liveness remained healthy, readiness returned the required safe 503, and
+writes were rejected. After restoration, identity, case/comment metadata and
+evidence bytes were preserved; rejected writes stayed absent and a new comment
+persisted. The database Pod was recreated; other application Pods stayed stable.
+These observations cover the tested fault interval, not a sustained-outage claim.
+
+Both references retained the two disclosed fixture configuration changes and
+verified relay, cluster, volume, sandbox and temporary-workspace cleanup, plus
+unchanged global network policy. Original candidates and prior attempts remain
+unrescored. The protected suite is still unapproved; performance-stage isolation
+and human coverage/threat-model review remain prerequisites to acceptance.
+Neither result establishes package acceptance or a REQ-007 comparison outcome.
