@@ -4905,3 +4905,34 @@ unchanged global network policy. Original candidates and prior attempts remain
 unrescored. The protected suite is still unapproved; performance-stage isolation
 and human coverage/threat-model review remain prerequisites to acceptance.
 Neither result establishes package acceptance or a REQ-007 comparison outcome.
+
+### Native storage recovery and audit references
+
+The public-origin storage v4 development reference passed the existing
+`storage-outage` recipe. A bound API Pod independently observed the storage
+Service at port 9000 before, during and after the outage. The test used the normal
+frontend origin, retained the two disclosed reference configuration changes,
+and verified 145 source checks. The storage Pod was recreated; the other four
+application Pods stayed unchanged. Relay, cluster, volume, sandbox and temporary
+workspace cleanup, plus unchanged global network policy, were verified.
+
+Earlier storage attempts remain retained: v1 refused concurrent sandbox activity,
+v2 rejected an incorrect driver assertion of a 300-second case limit, and v3
+completed bootstrap but could not bind stable topology. The unchanged protected
+suite declares 900 seconds for this case. V4 added a bounded 60-second readiness
+preflight; it observed a terminating worker Pod followed by two stable five-Pod
+snapshots. This observation does not identify the exact failed assertion in v3.
+
+The separate native audit read reference passed `audit-authentication-events`
+using real PostgreSQL catalog metadata and the private audit broker. The native
+audit fault reference then passed `audit-write-failure`, `audit-workflow-failure`
+and `audit-export-download-failure`. All three exact constraint gates were
+established and restored, with rollback-only insertion canaries verifying
+rejection and recovery. The gate rejects INSERT and UPDATE; both operator and
+runtime labels use the observed `incident` database identity, so this is not a
+separate-role privilege test. Raw SQL, command streams and credentials were not
+logged. Both audit references verified the same owned cleanup boundaries.
+
+These are selected development fixtures against an incomplete, unapproved suite.
+They do not repair or rescore original candidates, establish full-suite coverage,
+replace human coverage/threat-model review, or prove a REQ-007 comparison outcome.
