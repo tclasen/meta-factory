@@ -5143,3 +5143,36 @@ collection remain unfinished. This observer shares the node's PID namespace;
 an integrated collector must preserve evidence across node shutdown and establish
 writer closure without losing its private memory. No complete-history or privacy
 acceptance claim follows from this mapping preflight.
+
+### Native log custody after original-node shutdown
+
+A separate custody reference ran its pinned Python observer in the guest Docker
+host's PID namespace, outside the original k3s node's PID namespace. It retained
+the original proc, mount and root descriptors while entering the node's mount
+and root view. A filesystem notification supplied a readonly descriptor for a
+single synthetic append-only log opened by a writer launched inside that node.
+Independent native peer observations and the original container/image mapping
+bracketed observer startup and writer launch.
+
+After capture, the controller stopped the exact original node and independently
+verified its container ID/image, `Running=false` and PID zero. The observer
+remained alive, verified the original process was absent, and preserved its
+initial 65-byte prefix. Its final read contained 715 bytes, including 650 bytes
+of later growth, with the same descriptor identity and stable bytes/size across
+two observations. Raw log bytes remained in observer memory; receipts contain
+only metadata, counts, a digest and synthetic-marker presence.
+
+Two fresh negative references rejected a shutdown control naming another node
+and a correctly named shutdown claim while the original node was independently
+observed running. Neither produced a final custody result. The observer process
+was reaped and all synthetic/owned node, volume, container, image, VM and workspace
+resources were removed for all three attempts; global policy was unchanged.
+The helper and prospective plan use an 80-second child bound. The v1 driver's
+legacy startup banner incorrectly said 75 seconds; v2 corrects that diagnostic,
+and the earlier receipt remains unchanged.
+
+Linux [PID namespace shutdown semantics](https://man7.org/linux/man-pages/man7/pid_namespaces.7.html)
+explain why the collector must survive separately from the node's processes.
+This reference covers one synthetic writer and file. Runtime/API attribution,
+namespace-wide births, rotation coverage and complete collection through grading
+remain unfinished; all history receipts retain `history_complete=False`.
