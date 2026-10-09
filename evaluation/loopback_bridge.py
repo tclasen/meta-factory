@@ -34,15 +34,17 @@ print(json.dumps(dict(outcome='owned_relay_stop_requested')))
 
 class LoopbackBridge:
     def __init__(self, attempt, sandbox, *, host_port, lifetime_check,
-                 monotonic_deadline, wall_deadline):
+                 monotonic_deadline, wall_deadline, cleanup_lifetime_check=None):
         if (not NAME.fullmatch(sandbox.name) or '-grader-' not in sandbox.name
                 or type(host_port) is not int or not 1024<=host_port<=65535
                 or not callable(lifetime_check)
+                or (cleanup_lifetime_check is not None and not callable(cleanup_lifetime_check))
                 or any(type(v) not in (int,float) or not math.isfinite(v) or v<=0
                        for v in (monotonic_deadline,wall_deadline))):
             raise ValueError('Owned grading publication and lifetime required')
         self.attempt, self.sandbox = attempt, sandbox
         self.port, self.check = host_port, lifetime_check
+        self.cleanup_check = lifetime_check if cleanup_lifetime_check is None else cleanup_lifetime_check
         self.deadline, self.wall_deadline = monotonic_deadline, wall_deadline
         self.nonce = uuid.uuid4().hex
         self.process = self.binding = None
@@ -129,12 +131,16 @@ class LoopbackBridge:
                 return
             if self.binding is None:
                 raise Inconclusive('Bridge identity missing; sandbox cleanup required')
-            self.check(12)
-            result=subprocess.run(self.sandbox.exec_argv(['python3','-c',STOP_SOURCE,json.dumps(self.binding)]),
-                stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
-            if result.returncode or len(result.stdout)+len(result.stderr)>8192:
-                raise Inconclusive('Bridge stop request unavailable')
-            self.process.wait(timeout=10)
+            # A finished transport must still supply its validated native stop
+            # receipt. Never signal a possibly reused PID after it has exited.
+            if self.process.poll() is None:
+                if self.cleanup_check(12) is not True:
+                    raise Inconclusive('Bridge cleanup lifetime unavailable')
+                result=subprocess.run(self.sandbox.exec_argv(['python3','-c',STOP_SOURCE,json.dumps(self.binding)]),
+                    stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=10)
+                if result.returncode or len(result.stdout)+len(result.stderr)>8192:
+                    raise Inconclusive('Bridge stop request unavailable')
+                self.process.wait(timeout=10)
             out,err=self.process.communicate(timeout=2)
             if self.process.returncode or len(out)+len(err)>8192:
                 raise Inconclusive('Bridge stop receipt unavailable')

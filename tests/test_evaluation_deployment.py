@@ -98,6 +98,42 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(calls,['construct','start','fixture','close'])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
 
+    def test_bridge_cleanup_reserve_excludes_grading_and_revoked_guard(self):
+        from evaluation.fixture_lifetime import FixtureLifetime
+        from evaluation.verdicts import Inconclusive
+        for advance, revoked in ((21, False), (141, False), (21, True)):
+            with self.subTest(advance=advance, revoked=revoked):
+                clock=[time.monotonic(),time.time()];checks=[];guards=[]
+                class Lifetime(FixtureLifetime):
+                    def __init__(inner,*args,**kwargs):
+                        guards.append(args[1])
+                        super().__init__(*args,**kwargs,monotonic=lambda:clock[0],wall=lambda:clock[1])
+                class Bridge:
+                    def __init__(inner,*args,**kwargs):
+                        inner.grading=kwargs['lifetime_check'];inner.cleanup=kwargs['cleanup_lifetime_check']
+                    def start(inner):inner.grading(1)
+                    def close(inner):
+                        with self.assertRaises(Inconclusive):inner.grading(0)
+                        inner.cleanup(12);checks.append('cleanup-authorized')
+                def runner(*args,**kwargs):
+                    clock[0]+=advance;clock[1]+=advance
+                    if revoked:guards[0].process.poll=lambda:0
+                    return dict(project_success=True,accepted_packages=['WP-001'])
+                name='reserve-'+str(advance)+'-'+str(revoked)
+                # Each iteration owns a separate deployment and guard directory.
+                destination=self.root/'project'
+                if destination.exists():shutil.rmtree(destination)
+                with Attempt(self.root/name,{}) as attempt, patch('evaluation.deployment.FixtureLifetime',Lifetime):
+                    report=self.run_grade(attempt,loopback_bridge=True,loopback_bridge_factory=Bridge,
+                                          grading_seconds=20,runner=runner)
+                if advance==21 and not revoked:
+                    self.assertEqual(checks,['cleanup-authorized'])
+                    self.assertNotIn('bridge_cleanup_error',report)
+                else:
+                    self.assertEqual(checks,[])
+                    self.assertEqual(report['bridge_cleanup_error'],'Inconclusive')
+                    self.assertEqual(report['accepted_packages'],[])
+
     def test_bridge_startup_failure_skips_fixture_and_grading_and_still_closes(self):
         closed=[]
         class Bridge:

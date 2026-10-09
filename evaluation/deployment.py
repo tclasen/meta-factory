@@ -160,8 +160,14 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
             publication_lifetime = FixtureLifetime(box, guard,
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds)
+            # Cleanup may use the watchdog's existing reserve after grading
+            # expires. This capability is passed only to bridge termination.
+            publication_cleanup_lifetime = FixtureLifetime(box, guard,
+                monotonic_deadline=grading_started + lifetime,
+                wall_deadline=grading_wall_started + lifetime)
             publication_bridge = loopback_bridge_factory(attempt, box, host_port=port,
                 lifetime_check=publication_lifetime.check,
+                cleanup_lifetime_check=publication_cleanup_lifetime.check,
                 monotonic_deadline=grading_started + grading_seconds,
                 wall_deadline=grading_wall_started + grading_seconds)
             publication_bridge.start()

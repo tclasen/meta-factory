@@ -4832,3 +4832,27 @@ bounds both need sufficient space for a larger native payload. Larger transport
 bounds must be declared in a new frozen protocol before launch; they do not repair, resume,
 rescore or establish acceptance for the failed attempt. Hardlink rejection in
 source capture remains in force.
+
+
+### Bridge cleanup after grading expiry
+
+The owned loopback bridge uses the grading lifetime for startup and traffic.
+`grade_capture` gives bridge termination a separate guarded lifetime capped by
+the watchdog's existing 120-second cleanup reserve. Expired grading does not
+extend application checks, measurement intervals, or the relay's own lifetime.
+Revoked guards, stopped sandboxes, changed identities and exhausted cleanup
+reserve still prevent remote commands. Standalone bridge callers retain the
+historical shared lifetime unless they supply `cleanup_lifetime_check`.
+
+An already exited relay must return its bounded stop receipt with the expected
+nonce and zero active connections; transport exit alone proves no cleanup. A
+live relay still requires its verified identity and authorized stop request.
+This avoids signaling a possibly reused remote PID after an observed transport exit.
+
+The native warm-read v1 development reference exhausted its 30-minute
+preparation budget while verifying the full sample. It created 2,000 cases,
+200 comments and 20 evidence objects, but produced no timed read observations.
+Its cluster and volume removal, sandbox stop and unchanged global policy were
+verified; its bridge stop receipt was unverified after the shared lifetime
+expired. Preserve this attempt as incomplete. Future attempts must declare
+their preparation budgets and instrumentation before execution.
