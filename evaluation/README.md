@@ -5401,3 +5401,38 @@ bootstrap; live registration across application births, anchored API/runtime/log
 metadata composition, terminal fences, rotations, other filesystems and all
 writers remain unfinished. `subscription_acknowledged=False` and
 `history_complete=False` remain explicit; no candidate was rescored or accepted.
+
+### Held host PID observations after entering the node filesystem (REQ-007)
+
+`LinuxProcView` opens the operator's genuine `/proc` before changing mount
+namespace or root. Passing it as `proc_view` to `PrivateCRIRPCConnection` or
+`PrivateCRIClientGuard` retains the host PID mapping used by socket credentials
+while the observer enters the original node's filesystem. Without this option,
+the guards continue using the local `/proc` view.
+
+The view checks procfs identity, held directory identity, read-only and close-on-exec
+flags, owner PID/start and PID namespace on use. It reads only bounded process
+stat/cgroup data and executable identity. It currently supports 64-bit Linux
+`aarch64` and `x86_64`. The caller owns and closes the view; guards borrow it.
+Closing it refuses the next guarded operation. A runtime operation then closes
+its socket and invalidates dependents; view closure alone does not synchronously
+invalidate borrowers. Process forks and PID namespace changes cannot reuse it.
+Independent peer mappings, original endpoint identity, source callbacks and
+execution bounds remain required.
+
+Two owned cache-backed native attempts passed 33 Linux fixture tests without
+skips. They checked actual socket traffic across a chroot with no `/proc`, wrong
+client mapping, fake proc directory, fork ownership and view-loss refusal, plus
+existing runtime/client/relay regressions. The second attempt independently
+observed the original K3s runtime, entered that node's actual mount namespace and
+root, then admitted a distinct runtime FD against its canonical endpoint using
+the held host PID view. The node's absolute `/proc` mapping could not reproduce
+the original host PID identity. Closing the held view caused the next runtime
+poll to close and invalidate. Both attempts removed their owned resources and
+left global policy unchanged.
+
+This verifies process observation and socket admission across a filesystem
+context change. It does not establish a CRI subscription acknowledgment,
+bootstrap-through-grading event coverage, or joined API/runtime/log history.
+Terminal intervals, rotations, other filesystems and all writers still need
+independent validation; `history_complete=False` remains explicit.
