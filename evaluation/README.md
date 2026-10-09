@@ -5284,3 +5284,40 @@ about 0.096 seconds. Its small duration does not prove absence of intervening
 births or metadata changes. Authenticated runtime attribution, this terminal
 interval, rotations, other filesystems and all-writer closure still need coverage.
 The result retains `history_complete=False` and establishes no acceptance.
+
+### Original-node CRI event capability
+
+Fresh owned-node probes checked the runtime event interface before wiring it to
+the authentication adapters. The pinned image rejected `k3s crictl` with an
+unknown help topic; the first driver stopped and retired its resources. Fixed
+path discovery then found the standalone `/bin/crictl`. Its explicit endpoint
+reported containerd `v2.1.4-k3s2`, runtime API `v1`; `crictl events` supplies JSON
+output by default.
+
+The generated containerd configuration was inspected privately at the
+[documented K3s path](https://docs.k3s.io/advanced#configuring-containerd).
+The targeted `enable_pod_sandbox_events` field was absent; the receipt records
+unknown configuration, not a disabled feature. No runtime configuration changed.
+
+An eight-second private stream produced six completely framed JSON objects with
+no RPC error or stderr. The stronger metadata-count probe identified all six as
+sandbox-ID events with creation/start types and sandbox metadata, but none with
+a matching container status. A separately declared fresh 45-second probe then
+observed 12 complete objects: six sandbox-ID events and six with matching
+container status, all with sandbox metadata. This distinguishes actual container
+metadata availability from early sandbox-only startup observations.
+
+Only validated enum fields, counts and bounded status flags were persisted;
+raw event bodies, runtime configuration and diagnostics remained private.
+The longer probe declared a 47-second native command timeout, 90-second helper
+and separate 60-second private transport under the existing 480-second VM guard
+and 600-second outer limit. It did not alter earlier eight-second receipts or
+protected recipe/benchmark deadlines. Every attempt removed its owned node,
+volume, VM and private workspace and verified unchanged global network policy.
+
+CLI output alone does not independently authenticate the runtime/client/socket
+or acknowledge a subscription boundary for application births. Connecting the
+held-FD authentication and single-client relay, controlled registration evidence,
+private runtime metadata admission and log-file attribution remains unfinished.
+All receipts retain `authenticated_runtime_attribution=False`,
+`subscription_acknowledged=False` and `history_complete=False`.
