@@ -5111,3 +5111,35 @@ API container identity or runtime metadata. New filesystems, event overflow,
 rotation ordering, all-writer closure and collection through grading need an
 integrated coverage protocol. Every receipt retains `history_complete=False`;
 this preflight establishes no application privacy pass or REQ-007 comparison.
+
+### Native original-node filesystem observer mapping
+
+The node-bound v6 preflight started the exact captured cluster setup in a fresh
+grader VM. A pinned Python observer shared the original k3s container's PID
+namespace, entered its mount namespace through a held descriptor, and changed
+root through a separately held original-node root descriptor. Independent fixed
+commands inside the pinned node container verified its process start ticks and
+mount device/inode before and after the observer. The Kubernetes Node UID and
+the VM-side container/image/process projection also remained unchanged.
+
+All four synthetic overlayfs/tmpfs scope controls passed inside that original
+node view, including reading event descriptors after writer exit and file/parent
+removal. The observer selects exact synthetic writer PIDs and private paths and
+reports only counts; this passing attempt observed no incidental opens. Its mounts,
+writers and descriptors were cleaned up, followed by the observer container,
+original node, volume, probe image, VM and workspace. Global policy was unchanged.
+
+Earlier attempts remain recorded. The v4 driver read an empty Node list before
+registration and stopped before launching the observer. The v5 observer ran its
+tests, but the driver rejected differing mount device/inode values from VM-side
+and node-side observations. V6 adds a bounded registration wait and independently
+brackets the native identity inside the pinned node; it retains the VM-side
+projection separately. The exact cause of the differing representations remains
+unestablished, and the v5 result was not accepted retroactively.
+
+These tests use synthetic files, not application CRI log streams. Runtime and
+API container attribution, authenticated private byte transfer and full lifetime
+collection remain unfinished. This observer shares the node's PID namespace;
+an integrated collector must preserve evidence across node shutdown and establish
+writer closure without losing its private memory. No complete-history or privacy
+acceptance claim follows from this mapping preflight.
