@@ -5436,3 +5436,29 @@ context change. It does not establish a CRI subscription acknowledgment,
 bootstrap-through-grading event coverage, or joined API/runtime/log history.
 Terminal intervals, rotations, other filesystems and all writers still need
 independent validation; `history_complete=False` remains explicit.
+
+### Authenticated event relay in a private node filesystem context (REQ-007)
+
+The native observer can enter the original node's root, clone its mount namespace,
+make mount propagation private, and mount a fresh read-only procfs for its unchanged
+host PID namespace. This observer-only mount lets its CLI resolve its own
+executable. Using the node PID view directly caused that lookup to fail. Socket
+and process guards still borrow the independently opened `LinuxProcView`.
+
+A controlled native window in this context independently authenticated the
+original runtime and one operator client, then strictly decoded 15 events:
+seven creates, seven starts and one stop. Both fresh probe events matched, six
+events carried matching container statuses, and stderr was empty. The original
+node's container/process and native mount/start identities matched before and
+after the window. Owned probe, descriptors, client, observer, node, volume, VM
+and workspace were retired; global policy was unchanged.
+
+On the same helper and SDK revisions, wrong runtime executable and client PID
+mappings refused before probe creation. Both closed the runtime descriptor and
+invalidated dependents. The original node remained unchanged in both controls.
+
+This establishes a bounded event window in the filesystem context needed for
+subsequent log observation. The filesystem collector and anchored API history
+have not yet been joined to this stream. Bootstrap-through-grading coverage,
+terminal intervals, rotations, all filesystems and all writers remain unfinished.
+Subscription acknowledgment and complete-history claims remain false.
