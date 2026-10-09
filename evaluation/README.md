@@ -4778,6 +4778,21 @@ late telemetry from known turns preserve cumulative usage and native compaction
 counts without double-counting. Unknown turns, conflicting declarations and
 counter resets are refused. The default retains single-turn validation.
 
+A native protocol preflight at revision
+`e0303ce661b6073bc6843865c279880a23ba070d` verified two turns in one
+thread with Codex 0.160.0 and Luna/medium: the first successful undeclared
+turn received the fixed continuation, and the second called `finish_workload`.
+The ledger reconciled all observed cumulative counters to the runtime's
+30,791 total tokens, with zero compactions. The owned sandbox was stopped
+and subsequently removed; global policy and unrelated resources were unchanged.
+Its initial noninteractive removal failed because `sbx rm` requires `--force`;
+that failure and the separate successful cleanup are retained privately.
+This toy probe establishes protocol compatibility, not application completion,
+natural-compaction feasibility, allowed-state compliance or acceptance. The
+previous single-turn calibration remains an unfinished scaffold with zero
+compactions; a new continuous calibration must freeze the common continuation
+and terminal interface rather than rescore or pool that earlier outcome.
+
 Usage intervals retain the previously reported stage, the current reported
 stage and intervening stage markers. These are builder reports with timestamps,
 not independently controlled SDLC stages or causal token allocations. All usage
