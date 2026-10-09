@@ -4043,6 +4043,47 @@ so this deployment provides no performance-sample result. Acceptance remains
 unset; complete coverage review, human content review and suite freeze remain
 pending alongside the other criteria.
 
+### Complete scale sample prerequisite
+
+A new registered `scale-sample-preconditions` group checks the full APP-014
+sample before the comment race changes it. The trusted loader supplies
+independently expected identities, comments, evidence metadata and byte patterns;
+the owner adds independently collected population counts before and after loading.
+The protected group refuses incomplete or malformed preparation as inconclusive.
+It authenticates all 50 users and compares their live identities and roles,
+reads comment/evidence pages on all 2,000 known cases against the 200-comment,
+twenty-object sample and empty remaining collections, and verifies every 1 MiB
+download's bytes and safe headers. Incorrect live contents fail.
+
+All 22 model and 22 protected-child HTTP controls passed their expected verdicts,
+including missing preparation, wrong identities/roles, missing or extra content,
+changed comments, corrupted bytes and unsafe download headers. All HTTP listeners
+stopped. Thirteen loader controls passed with the additional metadata, and the
+current count oracle passed 38 general controls and 26 existing-scale-case
+controls covering both race winners and no creation of case 1,001. The population
+query remains an owner capability mapped independently to the particular captured
+fixture; no SQL schema is imposed on future builders by the protected prerequisite.
+
+A fresh native reference passed all three groups with the full sample and all
+72 independently verified case profiles. Read-only counts before and after
+loading each reported 50 users, two tenants and no unassigned users. Preparation
+recorded 13,340 selected-source checks across 159 files; additional checks bracketed
+grading. All 11,731 bridge connections completed without relay errors or active
+connections at cleanup, and all owned resource removal and unchanged global
+policy were verified. The same two disclosed reference configuration changes
+remain in effect; the captured candidate and prior outcomes remain unchanged.
+
+The clause-level author review supports AC-031's complete implementation coverage
+in a new prospective development registry: 78 groups and eight complete criteria.
+Its registered executable bytes match the preceding native-tested version.
+Thirteen synthetic aggregation controls verify that all three scale groups are
+required: any failure, inconclusive result, untested or omitted group prevents a
+passing criterion. The registry remains unapproved; no acceptance package or
+project success is granted. This declaration does not rescore the preceding
+native criterion outcome. Human content/threat-model review, the remaining
+criteria, performance and full runtime attestation remain separate work. The
+comment race left 300 comments, so this is not a performance-sample result.
+
 ### Operator-selected cases within one protected registry
 
 The trusted post-bootstrap loader may supply `scale_sample_fixture` alongside
