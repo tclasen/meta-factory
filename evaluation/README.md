@@ -4988,3 +4988,35 @@ entire AC-002 contract. Tenant aliases come from the initial fixture; independen
 database display names and unassigned users are not covered. The protected suite
 remains incomplete and unapproved, with no package acceptance or REQ-007 matched
 comparison outcome established by this reference.
+
+### Native log recipes and observer follow-up
+
+The content v7, error v8 and export v8 log development fixtures each executed
+one existing protected recipe in a separate fresh deployment. All three returned
+inconclusive because independent complete-history inspection remains unavailable.
+Each fixture detected a synthetic marker in the owned API Pod's stdout through
+the private security broker; an unwritten control remained inconclusive. Owned
+relay, cluster, volume, sandbox and workspace cleanup, plus unchanged global
+network policy, were verified for each attempt.
+
+Earlier attempts retained source-observer setup failures and a bootstrap timeout
+during host disk exhaustion. Full selected-source verification now surrounds
+inventory, injection, inspection and grading operations. Each stream still checks
+the original watchdog, sealed helper bytes and native node/Pod/process identity
+within its one-second observation budget. No deadline was widened to obtain a
+result. The recorded peer callbacks in the two v8 fixtures took at most 0.596
+seconds; this is a development observation, not a performance guarantee.
+
+The v8 helper reduces client startup overhead by fetching the exact Namespace
+and Pod in one kubectl process, with node checks before and after. It passed
+twenty-eight bounded local controls and native validation in both fixtures.
+Kubectl's [mixed type/name requests](https://raw.githubusercontent.com/kubernetes/kubectl/v0.32.2/pkg/cmd/get/get.go)
+produce a display `List` of individual objects. The helper requires exactly one
+Namespace and one Pod with matching identities; it never treats this pair as an
+unfiltered PodList or watch cursor. Independent raw namespace inventory remains
+separate. Content v7 used the earlier two-client method, so these observations
+are not a single frozen-method batch or a matched state-arm comparison.
+
+Complete bootstrap, birth, rotation and deleted-writer history remains unresolved.
+The suite is incomplete and unapproved; these fixtures establish neither a
+privacy pass nor package acceptance.
