@@ -1,5 +1,17 @@
 # Repository Guidelines
 
+## Sandbox disk cleanup
+
+Keep disk usage low by tracking every `sbx` sandbox created for this work.
+Once a sandbox is no longer needed, preserve required results and evidence on
+the host, then stop and remove that specific sandbox with `sbx stop NAME` and
+`sbx rm NAME`. Apply this on success, failure, and cancellation; use cleanup
+handlers where practical and record resources left behind after interruption.
+Pass this requirement to child agents. Retain sandboxes needed for active tasks
+or deployments, and never prune another thread's resources. Remove task-specific
+images that are no longer needed only after verifying that no remaining
+container references them. Stopping a sandbox alone does not reclaim its disk.
+
 ## Project Structure & Module Organization
 
 This workspace contains an experimental Copier template for repository-contained agent workflows. The factory is instructions, policies, skills, and focused tools, not an application. A separate Python evaluation controller and protected grading suite are authorized for implementation; benchmark execution remains separately gated.
