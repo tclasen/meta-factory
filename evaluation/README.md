@@ -5499,3 +5499,40 @@ do not establish a joined authoritative history. Terminal coverage, rotations,
 other filesystems and all writers remain unfinished. Subscription acknowledgment,
 complete-history and acceptance claims remain false. This controlled preflight
 does not complete the frozen three-arm comparison required by REQ-007.
+
+
+### Independent native API and runtime metadata agreement (REQ-007)
+
+The runtime observer can enter the original owned node's network namespace and
+use its direct `kubectl` alias for read-only API requests. It independently checks
+the original Namespace UID and Node UID before and after runtime-buffer
+operations. An empty unfiltered PodList anchors a separate ordered Pod watch in
+the same observer; watch interruption invalidates its history and buffered
+metadata. Runtime transport loss also releases dependent metadata.
+
+The observer keeps a private sealed in-memory copy of the original node's
+kubeconfig. API commands and the watch read that held copy through the observer's
+procfs mapping. Kernel seals prevent write, resize and seal changes; actual write
+and truncation controls were refused. Credentials are neither copied into the
+application nor logged. The credential descriptor and runtime metadata were
+released before the successful final receipt.
+
+A fresh native fixture on this helper decoded 96 runtime events and found 14
+creation records agreeing with independently observed API declarations. Four
+anchored watch windows observed eight Pods, three deletions, 14 container
+identities and 63 API events without an identity gap. The unchanged bootstrap
+took 50.15 seconds, and the public membership recipe passed. On the same helper
+and SDK, a deliberately wrong Namespace UID was refused after a successful
+original API read, before probe creation; the runtime descriptor closed and
+dependents were invalidated. Thirteen private-client controls and five bounded
+API-command IO controls passed. Both native attempts removed all owned resources
+and preserved global policy. Concurrent functional activity was recorded.
+
+This establishes bounded API/runtime metadata agreement, including retained
+creation metadata for observed deleted containers. The held kernel log files
+still belong to a separate collector and have not been admitted through this
+runtime buffer's file-binding path. API and runtime observation end before node
+shutdown. Terminal intervals, rotations, all filesystems and all writers remain
+unfinished; subscription acknowledgment, complete-history and acceptance claims
+remain false. No eligible candidate was rescored, and the frozen three-arm
+comparison remains outstanding.
