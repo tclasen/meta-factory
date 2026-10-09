@@ -92,7 +92,8 @@ class RuntimeTest(unittest.TestCase):
 
     def transport(self, code, **options):
         with tempfile.TemporaryDirectory() as name:
-            with Attempt(Path(name) / "attempt", {}) as attempt:
+            with Attempt(Path(name) / "attempt", {},
+                         max_record_bytes=options.pop("max_record_bytes", 1024 * 1024)) as attempt:
                 return run_session(attempt, [sys.executable, "-u", "-c", code],
                     Session("/work", "fixture", ["WP-001"]), cwd=name,
                     builder_seconds=options.pop("builder_seconds", 1), setup_seconds=0.5,
@@ -138,6 +139,39 @@ for line in sys.stdin:
         result = self.transport(code, builder_seconds=3)
         self.assertEqual(result['outcome'], 'completed')
         self.assertIsNone(result['runtime_failure'])
+
+    def test_explicit_large_message_bound_preserves_default_and_refuses_overflow(self):
+        code = """import sys,json
+for line in sys.stdin:
+ m=json.loads(line)
+ if m.get('method')=='initialize':print(json.dumps({'id':m['id'],'result':{}}),flush=True)
+ if m.get('method')=='thread/start':print(json.dumps({'id':m['id'],'result':{'thread':{'id':'t'}}}),flush=True)
+ if m.get('method')=='turn/start':
+  print(json.dumps({'id':m['id'],'result':{'turn':{'id':'u'}}}),flush=True)
+  print(json.dumps({'method':'fixture/notice','params':{'output':'x'*(1024*1024+4096)}}),flush=True)
+  print(json.dumps({'method':'turn/completed','params':{'threadId':'t','turn':{'id':'u','items':[],'status':'completed'}}}),flush=True)
+"""
+        default = self.transport(code, builder_seconds=3)
+        self.assertEqual(default['outcome'], 'infrastructure_incomplete')
+        self.assertEqual(default['runtime_failure']['location'], 'line_size_limit')
+        self.assertEqual(default['runtime_failure']['message_limit_bytes'], 1024 * 1024)
+        record_limited = self.transport(code, builder_seconds=3,
+                                        max_message_bytes=2 * 1024 * 1024)
+        self.assertEqual(record_limited['outcome'], 'infrastructure_incomplete')
+        self.assertEqual(record_limited['runtime_failure']['location'], 'message_recording')
+        larger = self.transport(code, builder_seconds=3, max_message_bytes=2 * 1024 * 1024,
+                                max_record_bytes=3 * 1024 * 1024)
+        self.assertEqual(larger['outcome'], 'completed', larger)
+        self.assertIsNone(larger['runtime_failure'])
+        overflow = self.transport(code, builder_seconds=3, max_message_bytes=1024 * 1024 + 100)
+        self.assertEqual(overflow['outcome'], 'infrastructure_incomplete')
+        self.assertEqual(overflow['runtime_failure']['location'], 'line_size_limit')
+
+    def test_invalid_message_bounds_are_rejected_before_transport(self):
+        for bound in (True, False, 0, -1, 1.5, float('inf'), None, 64 * 1024 * 1024 + 1):
+            with self.subTest(bound=bound), self.assertRaises(ValueError):
+                self.transport('raise AssertionError("must not launch")',
+                               max_message_bytes=bound, max_stream_bytes=1000)
 
     def test_transport_failures_have_safe_distinct_diagnostics(self):
         cases = [
