@@ -136,9 +136,18 @@ class PodIdentityHistory:
                     self._refuse()
                 prior = last.get('terminated', {}).get('containerID')
                 if prior:
-                    if not count or not node: self._refuse()
-                    self._identity(state, count-1, prior, name, uid)
-                    state['previous'] = count-1
+                    if not node: self._refuse()
+                    # Kubelet can move the latest terminated attempt into
+                    # lastState while waiting, without advancing restartCount.
+                    # Preserve that index only if its identity was already seen;
+                    # a cached older ID cannot manufacture a new instance.
+                    if 'waiting' in current_state and state['ids'].get(count) == prior:
+                        prior_index = count
+                    else:
+                        if not count: self._refuse()
+                        prior_index = count-1
+                    self._identity(state, prior_index, prior, name, uid)
+                    state['previous'] = prior_index
                 elif prior is not None and prior != '': self._refuse()
                 current = observation.get('containerID')
                 if current is not None and current != '':

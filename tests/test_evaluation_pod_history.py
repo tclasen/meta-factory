@@ -116,6 +116,42 @@ class PodHistoryTest(unittest.TestCase):
         self.assertEqual([s['available_as'] for s in h.sources()],['historical','previous','current'])
         self.assertFalse(h.summary()['identity_gap'])
 
+    def test_waiting_latest_known_termination_keeps_its_original_index(self):
+        for role in ('containers','initContainers','ephemeralContainers'):
+            with self.subTest(role=role):
+                h=history([pod(role=role)]);start=h.begin()
+                h.accept(event(pod(role=role,count=1,current='containerd://two',prior='containerd://one')))
+                h.accept(event(pod(role=role,count=1,current='containerd://two',prior='containerd://two',state='waiting')))
+                rows=h.sources()
+                self.assertEqual([row['restart_index'] for row in rows],[0,1])
+                self.assertEqual([row['available_as'] for row in rows],['historical','previous'])
+                self.assertTrue(rows[1]['source']['previous'])
+                h.accept(event(pod(role=role,count=2,current='containerd://three',prior='containerd://two')))
+                h.finish(receipt(start,3))
+                self.assertEqual([row['restart_index'] for row in h.sources()],[0,1,2])
+                self.assertFalse(h.summary()['identity_gap'])
+                self.assertNotIn(SECRET,repr(h._pods))
+
+    def test_waiting_initial_known_failure_does_not_require_a_restart(self):
+        h=history([pod()]);start=h.begin()
+        h.accept(event(pod(current='containerd://one',prior='containerd://one',state='waiting')))
+        h.finish(receipt(start,1))
+        self.assertEqual(h.sources()[0]['restart_index'],0)
+        self.assertEqual(h.sources()[0]['available_as'],'previous')
+        self.assertEqual(h.summary()['pending_containers'],1)
+        self.assertFalse(h.summary()['identity_gap'])
+
+    def test_waiting_unknown_identity_and_running_same_index_reuse_still_refuse(self):
+        for state,prior,count in (('waiting','containerd://unknown',1),
+                                  ('running','containerd://two',1),
+                                  ('waiting','containerd://unknown',0)):
+            with self.subTest(state=state,prior=prior,count=count):
+                h=history([pod()]);h.begin()
+                if count:h.accept(event(pod(count=1,current='containerd://two',prior='containerd://one')))
+                with self.assertRaises(ValueError):
+                    h.accept(event(pod(count=count,current='containerd://two',prior=prior,state=state)))
+                self.assertFalse(h.summary()['valid'])
+
     def test_skipped_unknown_identities_stay_incomplete_and_missing_status_is_pending(self):
         h=history([pod(count=3,current='containerd://four',prior='containerd://three')])
         self.assertTrue(h.summary()['identity_gap']);start=h.begin()
