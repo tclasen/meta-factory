@@ -5462,3 +5462,40 @@ subsequent log observation. The filesystem collector and anchored API history
 have not yet been joined to this stream. Bootstrap-through-grading coverage,
 terminal intervals, rotations, all filesystems and all writers remain unfinished.
 Subscription acknowledgment and complete-history claims remain false.
+
+
+### Live authenticated runtime observation through public grading (REQ-007)
+
+A fresh controlled native fixture kept the same authenticated runtime/client
+stream live from before the unchanged application bootstrap through the public
+current-user membership recipe. Eight exact pinned image archives were imported
+and verified without changing global network policy. Bootstrap took 53.14 seconds
+within its existing preparation/bootstrap bound; the membership recipe passed.
+The stream strictly decoded 96 events with no stderr. Sixty-four events carried
+the application namespace name; this name filter does not establish attribution
+to the original Namespace UID.
+
+The anchored API watch observed eight Pods, three deletions and 14 container
+identities across 62 events without an identity gap or pending containers at its
+closing fence. A known terminated attempt can move into `lastState` while waiting
+without advancing `restartCount`. `PodIdentityHistory` preserves that index only
+when the same identity was already observed there; unknown identities and
+conflicting reuse still refuse. Fifteen focused tests and the full 1,253-test
+fixture suite passed, with 123 platform skips. An earlier Mac process-group error
+did not recur in isolation or the full rerun; its cause remains unestablished.
+
+The runtime's readiness probe was independently confirmed absent after its stop,
+even though a subsequent removal returned an error. Cleanup now requires a
+bounded, strict inventory check of that exact ID before accepting such an error.
+Nine cleanup failure controls and 12 client diagnostic/lifetime controls passed.
+The native closing receipt passed, and the separate kernel collector retained
+its private marker through independently verified original-node shutdown. All
+owned observers, node, volume, VM and workspace were removed; global policy was
+unchanged. Failed attempts retain their original outcomes and host evidence.
+
+These API, runtime and kernel histories remain separate. API and runtime
+observation end before node shutdown; matching path fields and namespace names
+do not establish a joined authoritative history. Terminal coverage, rotations,
+other filesystems and all writers remain unfinished. Subscription acknowledgment,
+complete-history and acceptance claims remain false. This controlled preflight
+does not complete the frozen three-arm comparison required by REQ-007.
