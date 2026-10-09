@@ -5176,3 +5176,39 @@ explain why the collector must survive separately from the node's processes.
 This reference covers one synthetic writer and file. Runtime/API attribution,
 namespace-wide births, rotation coverage and complete collection through grading
 remain unfinished; all history receipts retain `history_complete=False`.
+
+### Native Kubernetes CRI file custody
+
+The next capability probe armed an outside-node-PID observer before creating a
+real Kubernetes log-writer Pod in a fresh `incident-app` Namespace. Kernel open
+notifications supplied readonly descriptors for canonical CRI paths containing
+Pod name/UID, container name and restart index. Descriptors and log bytes stayed
+in bounded observer memory; successive reads rejected a changed prefix or inode.
+The controller matched the captured path fields to an independently read Pod API
+response, which also recorded its declared containerd container ID.
+
+The passing v4 driver observed one CRI file with 65 initial bytes. It injected a
+fresh private marker through stdin, then found that marker in the retained file
+both before and after independently verified shutdown of the original node.
+The observer survived shutdown and finalized 154 stable bytes without emitting
+the stream or marker. Safe receipts contain source metadata, counts and scan
+presence. The observer exited successfully, and the owned container, node,
+volumes, probe image, VM and workspace were removed; global policy was unchanged.
+The prospective bounds were 180 seconds for the observer, 480 seconds for the
+VM guard and 600 seconds for the driver, with a 120-second image pull bound.
+
+Earlier attempts remain unchanged. V1 refused setup without a persisted stage
+diagnostic; v2 identified the log-root check. Independent native inspection
+showed that `/var/log` and `/var/log/pods` use a different filesystem device from
+the node root. V3 marks that actual log filesystem, rejects symlink directories
+and checks captured descriptor devices against it. It captured a 65-byte CRI
+file, but the immediate Pod API read lacked `containerID`, so the driver refused
+to proceed. V4 uses an explicit Kubernetes Pod command and bounded phase
+diagnostics and passed. Earlier file birth than API identity availability still
+needs bounded late attribution. Every attempt removed its owned VM.
+
+This is one live file with API-declared identity, not authenticated runtime event
+attribution or complete application history. Short-lived Pod identity capture,
+rotations, other filesystems, overflow, writer closure and collection throughout
+bootstrap and public-origin grading still need integrated verification.
+`history_complete=False` and acceptance remains unset.
