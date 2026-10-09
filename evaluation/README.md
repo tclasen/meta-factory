@@ -5082,3 +5082,32 @@ Server-side watch arming before bootstrap is not attested, and the watch ends
 before API grading. Runtime/file births, log bytes, rotations and writer closure
 remain unverified. All history summaries retain `history_complete=False`; this
 does not establish privacy acceptance or a REQ-007 matched comparison.
+
+### Native filesystem notification alias preflight
+
+A fresh grader VM running Linux 7.0.14 on aarch64 rejected `FAN_OPEN_PERM`
+marks with `EINVAL` for both mount and filesystem scopes on overlayfs and tmpfs.
+That attempt remains recorded. The result does not identify the exact kernel
+configuration cause and provides no permission-blocking guarantee.
+
+Separate notification-only v2 and v3 preflights tested `FAN_OPEN` through the
+original path, an existing bind alias and an alias attached after the mark.
+In both filesystems, the mount-scoped control observed only the original path;
+the filesystem-scoped mark observed all three. This matches the documented
+[filesystem scope of fanotify marks](https://man7.org/linux/man-pages/man2/fanotify_mark.2.html).
+
+The stronger v3 preflight waited for each synthetic writer to exit and remove
+both its file and temporary parent directory before reading the queued event.
+The event's held descriptor still yielded the expected synthetic bytes with zero
+links. All writers were reaped, descriptors closed, mounts removed, and private
+fixtures deleted. Each attempt removed its probe container, image and owned VM,
+preserved receipts and verified unchanged global network policy. These probes
+used a pinned Python image, a privileged network-none child container and explicit
+75-second child, 90-second command and 480-second VM bounds.
+
+This tests a kernel route for retaining short-lived files across aliases. It
+does not yet bind notifications to the application's original node, Namespace,
+API container identity or runtime metadata. New filesystems, event overflow,
+rotation ordering, all-writer closure and collection through grading need an
+integrated coverage protocol. Every receipt retains `history_complete=False`;
+this preflight establishes no application privacy pass or REQ-007 comparison.
