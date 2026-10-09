@@ -1,4 +1,4 @@
-"""Pinned Codex 0.160.0 single-thread/turn adapter. No model launch CLI."""
+"""Pinned Codex 0.160.0 runtime adapters. No model launch CLI."""
 
 from collections import deque
 import hashlib
@@ -187,6 +187,145 @@ class Session:
                 "remote_termination_verified": False}
 
 
+class Conversation(Session):
+    """Opt-in fixed continuation, one thread and an explicit terminal report.
+
+    Terminal reports are builder declarations, not acceptance. The owner freezes
+    the continuation before launch; this adapter never supplies grading feedback,
+    selects work packages, resets context, or continues to reach a compaction count.
+    """
+    def __init__(self, cwd, prompt, packages, *, continuation_prompt, stage_tool=False):
+        if (not isinstance(continuation_prompt, str) or not continuation_prompt.strip()
+                or len(continuation_prompt.encode()) > 65536):
+            raise ValueError('Bounded frozen continuation prompt required')
+        super().__init__(cwd, prompt, packages, stage_tool=stage_tool)
+        self.continuation_prompt = continuation_prompt
+        self.turn_request_id = 3
+        self.rpc_responses = set()
+        self.completed_turns = {}
+        self.turn_ids = []
+        self.continuation_count = 0
+        self.declaration = None
+        self._completed_telemetry = False
+
+    def _identity(self, params, *, turn=True):
+        if (turn and self._completed_telemetry and params.get('threadId') == self.thread
+                and params.get('turnId') in self.completed_turns):
+            return
+        super()._identity(params, turn=turn)
+
+    def receive(self, message):
+        if not isinstance(message, dict):
+            raise ValueError('Runtime message must be an object')
+        method = message.get('method')
+        params = message.get('params', {})
+        if 'id' in message and method is None:
+            identifier = message['id']
+            if type(identifier) is not int:
+                raise ValueError('Unexpected RPC response identity type')
+            if identifier in self.rpc_responses:
+                raise ValueError('Duplicate RPC response')
+            if identifier not in (1, 2, 4, self.turn_request_id):
+                raise ValueError('Unknown RPC response')
+            self.rpc_responses.add(identifier)
+            # The base state machine retains its original single-turn IDs.
+            normalized = dict(message, id=3) if identifier == self.turn_request_id else message
+            replies = super().receive(normalized)
+            if identifier == 1 and replies:
+                tools = replies[1]['params'].setdefault('dynamicTools', [])
+                tools.append(dict(type='function', name='finish_workload',
+                    description='Declare the whole workload complete, or a concrete blocker preventing further work. This is not independent acceptance. Incomplete work alone is not a blocker.',
+                    inputSchema=dict(type='object', additionalProperties=False,
+                        properties=dict(status=dict(enum=['complete', 'blocked']),
+                                        reason=dict(type='string', minLength=1, maxLength=2000)),
+                        required=['status', 'reason'])))
+                # Dynamic tools require the native experimental capability.
+                # initialize already selected it in Conversation.initial().
+                validate('ThreadStartParams', replies[1]['params'])
+            if self.turn in self.completed_turns:
+                raise ValueError('Runtime reused a completed turn identity')
+            if self.turn and self.turn not in self.turn_ids:
+                self.turn_ids.append(self.turn)
+            return replies
+        if method == 'item/tool/call' and isinstance(params, dict) and params.get('tool') == 'finish_workload':
+            if 'id' not in message or type(message['id']) not in (int, str):
+                raise ValueError('Terminal tool request identity unavailable')
+            validate('DynamicToolCallParams', params)
+            self._identity(params)
+            args = params['arguments']
+            valid = (params.get('namespace') is None and isinstance(args, dict)
+                     and set(args) == {'status', 'reason'} and args['status'] in ('complete', 'blocked')
+                     and isinstance(args['reason'], str) and 1 <= len(args['reason']) <= 2000
+                     and bool(args['reason'].strip()))
+            if valid:
+                identity = params['callId']
+                if identity in self.calls and self.calls[identity] != args:
+                    raise ValueError('Conflicting duplicate terminal call')
+                if self.declaration is not None and self.declaration != args:
+                    valid = False
+                else:
+                    self.calls[identity] = dict(args)
+                    self.declaration = dict(args)
+            if not valid:
+                self.outcome = 'protocol_violation'
+            response = dict(contentItems=[dict(type='inputText', text='Recorded' if valid else 'Rejected')], success=valid)
+            validate('DynamicToolCallResponse', response)
+            return [dict(id=message['id'], result=response)]
+        if method == 'turn/completed':
+            validate('TurnCompletedNotification', params)
+            self._identity(params, turn=False)
+            turn = params['turn']
+            signature = (turn['status'], json.dumps(turn.get('error'), sort_keys=True))
+            if turn['id'] in self.completed_turns:
+                if self.completed_turns[turn['id']] != signature:
+                    raise ValueError('Conflicting terminal turn event')
+                return []
+            if turn['id'] != self.turn:
+                raise ValueError('Unexpected final turn')
+            self.completed_turns[turn['id']] = signature
+            replies = super().receive(message)
+            if self.outcome != 'completed':
+                return replies
+            if self.declaration is not None:
+                if self.declaration['status'] == 'blocked':
+                    self.outcome = 'builder_declared_blocked'
+                return replies
+            self.continuation_count += 1
+            self.turn_request_id = 5 if self.turn_request_id == 3 else self.turn_request_id + 1
+            self.responses.discard(3)
+            self.turn = None
+            self.outcome = None
+            self.phase = 'starting_turn'
+            return [request(self.turn_request_id, 'turn/start', dict(threadId=self.thread,
+                input=[dict(type='text', text=self.continuation_prompt)], model='gpt-6-luna',
+                effort='medium', approvalPolicy='never'), 'TurnStartParams')]
+        if method == 'turn/started' and isinstance(params, dict):
+            self._identity(params, turn=False)
+            identity = params.get('turn', {}).get('id')
+            if identity in self.completed_turns:
+                return []
+        self._completed_telemetry = method in ('thread/tokenUsage/updated', 'item/completed')
+        try:
+            replies = super().receive(message)
+        finally:
+            self._completed_telemetry = False
+        if self.turn and self.turn not in self.turn_ids:
+            self.turn_ids.append(self.turn)
+        return replies
+
+    def result(self):
+        return dict(super().result(), turn_mode='continuous_conversation',
+                    turn_ids=list(self.turn_ids), continuation_count=self.continuation_count,
+                    workload_declared_status=None if self.declaration is None else self.declaration['status'],
+                    completion_evidence='Builder terminal declaration, not independent acceptance')
+
+    def initial(self):
+        message = super().initial()
+        message['params']['capabilities']['experimentalApi'] = True
+        validate('InitializeParams', message['params'])
+        return message
+
+
 def _runtime_timing(started, requested, observed_end, cleaned_end, interrupted=None):
     """Nonoverlapping local intervals; the interruption grace is a builder subset."""
     samples = dict(transport_start=started, turn_request=requested,
@@ -285,9 +424,11 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                         failure_location = "request_encoding"
                         message = queued.popleft()
                         if message.get("method") == "turn/start":
-                            builder_start = time.monotonic()
-                            builder_wall_start = time.time()
-                            attempt.emit("controller", "builder.request", {"thread_id": session.thread})
+                            if builder_start is None:
+                                builder_start = time.monotonic()
+                                builder_wall_start = time.time()
+                            attempt.emit("controller", "builder.request", {"thread_id": session.thread,
+                                                                         "request_id": message['id']})
                         pending = (json.dumps(message, allow_nan=False) + "\n").encode()
                         if len(pending) > 1024 * 1024:
                             failure_location = "request_size_limit"

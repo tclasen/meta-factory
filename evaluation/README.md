@@ -4735,6 +4735,28 @@ TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'tes
 
 ### Runtime usage reconciliation
 
+`runtime.Conversation(..., continuation_prompt=...)` is an opt-in alternative
+to the single-turn `Session`. Freeze its bounded continuation text before launch.
+It continues the same native thread when a successful turn ends without a
+whole-workload terminal declaration, keeping Luna/medium, natural context settings
+and the initial conversation deadline. It does not choose tasks or provide
+protected grading feedback. The write-only `finish_workload` tool declares
+`complete` or a concrete `blocked` condition; those are builder reports, not
+acceptance. Either declaration stops even before three natural compactions.
+Quota, infrastructure/protocol failures and deadlines also stop without retry.
+
+Duplicate completions cannot enqueue extra turns; turn identities, cumulative
+usage and late compaction notifications remain bound to the same thread. Results
+record the actual turns, continuation count and terminal status without returning
+the builder's terminal reason. The default `Session` remains single-turn.
+The existing ledger below still requires its separate multi-turn extension before
+using this mode in a new calibrated study. Local protocol and subprocess tests:
+
+```sh
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_conversation.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_runtime.py' -v
+```
+
 `runtime_ledger.summarize_runtime_events(records, package_ids)` projects one
 contiguous operator event stream, including an explicitly identified live
 prefix. Supply the frozen work-package IDs and independently bind the input
