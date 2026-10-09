@@ -4966,3 +4966,25 @@ Available snapshots cannot establish coverage of deleted Pods, rotated streams,
 bootstrap intervals or unobserved writers. Complete-history collection and human
 coverage/threat-model review remain unresolved prerequisites; these controls do
 not establish package acceptance or a REQ-007 comparison outcome.
+
+### Native repeat-bootstrap preservation reference
+
+The public-origin repeat-bootstrap v2 development reference passed the existing
+180-second `repeat-bootstrap-preservation` recipe through the private operations
+broker. Before the repeat, the operator created a persisted case and changed the
+dual-role account's membership to auditor. Independent authenticated reads of all
+nine accounts, administrator membership pages and the case matched exactly before
+and after the repeat. The unchanged bootstrap command completed in 7.70 seconds;
+283 source checks and an unchanged node identity were recorded. Database and
+storage Pod processes stayed unchanged while application workloads restarted.
+
+The reference retained the two disclosed fixture configuration changes and used
+the normal frontend origin. Owned relay, cluster, volume, sandbox and workspace
+cleanup, plus unchanged global network policy, were verified. Concurrent host
+activity is recorded without imposing an idle-host prerequisite.
+
+This tests repeated bootstrap preservation, not alternate seed behavior or the
+entire AC-002 contract. Tenant aliases come from the initial fixture; independent
+database display names and unassigned users are not covered. The protected suite
+remains incomplete and unapproved, with no package acceptance or REQ-007 matched
+comparison outcome established by this reference.
