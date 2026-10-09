@@ -4856,3 +4856,27 @@ Its cluster and volume removal, sandbox stop and unchanged global policy were
 verified; its bridge stop receipt was unverified after the shared lifetime
 expired. Preserve this attempt as incomplete. Future attempts must declare
 their preparation budgets and instrumentation before execution.
+
+### Native warm-read development reference
+
+The separate warm-read v2 reference completed with all 100 measured operations
+passing: nearest-rank p95 was 9.916 ms and the maximum was 11.896 ms. Every
+operation finished within two seconds. The sequence used four checked warmups,
+then 25 case-detail reads and 25 literal-query searches per tenant. The full
+50-user, 2,000-case, 200-comment and twenty-object sample was independently
+verified before measurement.
+
+This attempt declared a 7,200-second preparation/grading budget and 7,500-second
+outer bound before execution. The ten-second request bound, 1,500-second
+protected-case limit and AC-032 thresholds were unchanged. Its 8-vCPU/16-GiB
+allocation, five healthy application Pods, source boundaries and absence of
+other active sandboxes were checked before and after grading. Those observations
+do not establish continuous absence of host interference or inference elsewhere.
+
+The relay reported zero active connections; owned cluster/volume removal,
+sandbox stop, unchanged global network policy and temporary-workspace removal
+were verified. The reference retained the same two declared fixture configuration
+changes; it did not repair or rescore the original candidate. The suite remains
+unapproved, and grouping/reset order must preserve this sample before full-suite
+execution. This isolated development result establishes no package acceptance,
+three-arm comparison outcome or promotion evidence.
