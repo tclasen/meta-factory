@@ -5248,3 +5248,39 @@ grading, declared CIDs lack authenticated runtime creation attribution, and
 rotation, other filesystem and all-writer coverage remain unverified. A ready
 observer with zero observed files is not a runtime/log-history empty proof.
 Every history receipt remains incomplete; no candidate was rescored or accepted.
+
+### Anchored Pod watch through public grading
+
+The next development driver kept the original anchored Pod watch alive through
+the public membership recipe. It froze conservative parent monotonic and wall
+deadlines immediately before `grade_capture`, binding observation to the existing
+900-second grading budget while retaining the separate 180-second bootstrap
+limit. Each window continued from the original opaque cursor; API inventory
+reads fenced identity without replacing or resetting that cursor.
+
+The watch evidence remained open across bootstrap return. An explicit owner
+requested closure, joined the bounded worker and finalized its evidence before
+owned node removal. Cleanup invokes the same owner on failure; an unjoined
+worker cannot produce a finalized watch receipt. Seven local lifecycle controls
+covered normal, repeated, early, absent-thread, timeout and later verified joins,
+including refusal to label early cleanup as observed grading coverage.
+
+The native reference passed the ordinary frontend membership recipe while the
+watch remained live. Five committed windows observed 60 events, eight Pods,
+three deletions and 11 declared container identities. After grading, the final
+five current Pod UIDs exactly matched the independently read API inventory, with
+no pending identities or observed identity gap. Preparation plus bootstrap took
+112.5 seconds, including 91.6 seconds of bootstrap; watch closure now occurs after
+grading and counts toward the unchanged grading budget.
+
+Private CRI custody finalized 11 files containing 30,824 stable bytes after the
+original node stopped. The private marker matched before and after grading and
+after shutdown. The watch worker and observer were reaped, and all owned node,
+volume, collector, relay, VM and workspace resources were removed; global policy
+was unchanged. Raw CRI streams and the marker were not persisted.
+
+The measured interval from completed watch closure to starting node stop was
+about 0.096 seconds. Its small duration does not prove absence of intervening
+births or metadata changes. Authenticated runtime attribution, this terminal
+interval, rotations, other filesystems and all-writer closure still need coverage.
+The result retains `history_complete=False` and establishes no acceptance.
