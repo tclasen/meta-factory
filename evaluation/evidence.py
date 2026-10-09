@@ -55,8 +55,11 @@ def private_file(path):
 
 
 class Attempt:
-    def __init__(self, directory, manifest, *, max_event_bytes=64 * 1024 * 1024):
+    def __init__(self, directory, manifest, *, max_event_bytes=64 * 1024 * 1024, max_record_bytes=1024 * 1024):
         positive(max_event_bytes, "max_event_bytes")
+        if type(max_record_bytes) is not int or not 0 < max_record_bytes <= 64 * 1024 * 1024:
+            raise ValueError("Record bound must be a positive integer no larger than 64 MiB")
+        self.max_record_bytes = max_record_bytes
         self.directory = Path(directory)
         # Atomic mkdir is the ownership lock. Never reopen/resume an old attempt.
         self.directory.mkdir(mode=0o700)
@@ -96,7 +99,7 @@ class Attempt:
                  "utc": utc_now(), "elapsed_seconds": time.monotonic() - self.started,
                  "source": source, "type": kind, "payload": payload}
         encoded = (json.dumps(event, allow_nan=False) + "\n").encode()
-        if len(encoded) > 1024 * 1024 or self.event_bytes + len(encoded) > self.max_event_bytes:
+        if len(encoded) > self.max_record_bytes or self.event_bytes + len(encoded) > self.max_event_bytes:
             raise ValueError("Evidence size limit exceeded")
         self.events.write(encoded)
         self.events.flush()

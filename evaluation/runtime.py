@@ -367,8 +367,12 @@ def _runtime_frames(buffer, line_limit=1024 * 1024):
 
 
 def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=60, grace_seconds=60,
-                max_stream_bytes=64 * 1024 * 1024):
+                max_stream_bytes=64 * 1024 * 1024, max_message_bytes=1024 * 1024):
     """Transport execution requires separately authorized sandbox/launch setup.
+
+    Inbound message bounds are explicit protocol controls; the historical default
+    remains 1 MiB. A larger bound must be declared before a new launch. Outbound
+    requests retain their independent 1 MiB bound.
 
     This function always kills its local transport; the caller MUST stop/verify the
     named remote sandbox before capture. It does not change any host policy.
@@ -376,6 +380,9 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
     for name, value in (("builder_seconds", builder_seconds), ("setup_seconds", setup_seconds),
                         ("grace_seconds", grace_seconds), ("max_stream_bytes", max_stream_bytes)):
         positive(value, name)
+    if (type(max_message_bytes) is not int or max_message_bytes <= 0
+            or max_message_bytes > 64 * 1024 * 1024):
+        raise ValueError("Message bound must be a positive integer no larger than 64 MiB")
     process = None
     queued = deque([session.initial()])
     pending = b""
@@ -458,7 +465,7 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
                         else:
                             buffer += data
                             failure_location = "line_size_limit"
-                            lines, buffer = _runtime_frames(buffer)
+                            lines, buffer = _runtime_frames(buffer, line_limit=max_message_bytes)
                             for line in lines:
                                 failure_location = "message_decoding"
                                 message = json.loads(line)
@@ -476,7 +483,7 @@ def run_session(attempt, argv, session, *, cwd, builder_seconds, setup_seconds=6
         # copying exception messages, runtime payloads, commands or credentials.
         failure = dict(error_type=type(error).__name__, location=failure_location,
                        stream_bytes=dict(stream_bytes), buffered_stdout_bytes=len(buffer),
-                       stream_limit_bytes=max_stream_bytes)
+                       stream_limit_bytes=max_stream_bytes, message_limit_bytes=max_message_bytes)
         attempt.emit("controller", "runtime.error", failure)
     finally:
         observation_stop = (time.monotonic(), time.time())

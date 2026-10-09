@@ -4806,3 +4806,29 @@ from the ledger projection.
 ```sh
 TMPDIR=/private/tmp uv run --locked python -m unittest discover -s tests -p 'test_evaluation_runtime_ledger.py' -v
 ```
+
+
+### Explicit native message bounds
+
+`run_session(..., max_message_bytes=...)` declares the inbound JSON message
+bound independently of total `max_stream_bytes`. The historical default remains
+1 MiB; outbound requests also retain their 1 MiB bound. The inbound bound must
+be a positive integer no larger than 64 MiB. A smaller total stream bound still
+takes precedence and remains independently enforced. Transport failure
+diagnostics report both numeric bounds without including message contents.
+
+The REQ-007 V5 conversation calibration stopped after about 46 minutes because a
+native message exceeded the default inbound bound, before a builder terminal
+declaration. One natural compaction was observed; the three-compaction target
+was unmet. A subsequent source capture rejected esbuild's hardlinked binaries
+in unignored `node_modules`. That attempt remains incomplete, with its original
+protocol, logs and partial capture retained.
+
+`Attempt(..., max_record_bytes=...)` separately declares the encoded evidence
+record bound, including its envelope. Its historical default remains 1 MiB;
+total `max_event_bytes` is independently enforced, and refused records leave a
+complete prefix with unchanged byte and sequence counters. Message and record
+bounds both need sufficient space for a larger native payload. Larger transport
+bounds must be declared in a new frozen protocol before launch; they do not repair, resume,
+rescore or establish acceptance for the failed attempt. Hardlink rejection in
+source capture remains in force.

@@ -42,6 +42,31 @@ class EvidenceTest(unittest.TestCase):
         events = [json.loads(line) for line in (self.attempt.directory / "events.jsonl").read_text().splitlines()]
         self.assertEqual([e["sequence"] for e in events], list(range(1, len(events) + 1)))
 
+    def test_explicit_record_bound_and_total_limit_preserve_complete_prefix(self):
+        payload = {'output': 'x' * (1024 * 1024 + 100)}
+        before = (self.attempt.sequence, self.attempt.event_bytes)
+        with self.assertRaises(ValueError):
+            self.attempt.emit('runtime', 'message', payload)
+        self.assertEqual((self.attempt.sequence, self.attempt.event_bytes), before)
+        with Attempt(self.root / 'larger', {}, max_record_bytes=2 * 1024 * 1024,
+                     max_event_bytes=2 * 1024 * 1024) as attempt:
+            attempt.emit('runtime', 'message', payload)
+            before = (attempt.sequence, attempt.event_bytes)
+            with self.assertRaises(ValueError):
+                attempt.emit('runtime', 'message', payload)
+            self.assertEqual((attempt.sequence, attempt.event_bytes), before)
+            records = [json.loads(line) for line in
+                       (attempt.directory / 'events.jsonl').read_text().splitlines()]
+            self.assertEqual(len(records), 2)
+            self.assertEqual(records[-1]['payload'], payload)
+
+    def test_invalid_record_bound_creates_no_attempt(self):
+        for index, value in enumerate((True, False, 0, -1, 1.5, None, 64 * 1024 * 1024 + 1)):
+            destination = self.root / ('invalid-' + str(index))
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                Attempt(destination, {}, max_record_bytes=value)
+            self.assertFalse(destination.exists())
+
     def test_failed_command_preserves_stdout_stderr_and_status(self):
         result = self.command("import sys; print('out'); print('err', file=sys.stderr); sys.exit(7)")
         self.assertEqual((result["outcome"], result["exit_code"]), ("failed", 7))
