@@ -8,6 +8,7 @@ import sys
 import time
 
 from .cri_events import linux_peer_identity
+from .linux_proc import LinuxProcView
 from .cri_relay import relay_private_rpc
 
 
@@ -21,16 +22,22 @@ class PrivateCRIClientGuard:
     check(reserve) binds the process's full cgroup, owning supervisor and clocks
     independently. Never authorize a client from UID alone. Callbacks are bounded
     trusted code in an operator-owned guarded process.
+
+    Optional proc_view is a borrowed LinuxProcView opened before changing the
+    mount namespace/root. Its loss refuses the next guarded operation; closing
+    this guard never closes the caller-owned view. PID namespace must stay fixed.
     """
-    def __init__(self, *, peer, check, deadline):
+    def __init__(self, *, peer, check, deadline, proc_view=None):
         if (not sys.platform.startswith('linux') or not isinstance(peer, dict)
                 or set(peer) != _FIELDS or any(type(v) is not int or v < 0 for v in peer.values())
                 or any(peer[k] == 0 for k in ('pid', 'start_ticks', 'mount_inode', 'exe_inode'))
                 or not callable(check) or type(deadline) not in (int, float)
-                or not math.isfinite(deadline)):
+                or not math.isfinite(deadline)
+                or proc_view is not None and type(proc_view) is not LinuxProcView):
             raise ValueError('Private RPC client mapping unavailable')
         self._peer = copy.deepcopy(peer)
         self._check, self._deadline, self._owner = check, deadline, os.getpid()
+        self._proc_view = proc_view
 
     def __call__(self, connection, reserve):
         try:
@@ -40,11 +47,14 @@ class PrivateCRIClientGuard:
                     or time.monotonic()+reserve >= self._deadline or self._check(reserve) is not True):
                 return False
             pid, uid, gid = struct.unpack('3i', connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-            identity = linux_peer_identity(pid)
-            executable = os.stat('/proc/'+str(pid)+'/exe')
+            observe = (linux_peer_identity if self._proc_view is None
+                       else self._proc_view.identity)
+            identity = observe(pid)
+            executable = (os.stat('/proc/'+str(pid)+'/exe') if self._proc_view is None
+                          else self._proc_view.executable(pid))
             observed = dict(uid=uid, gid=gid, **identity,
                             exe_device=executable.st_dev, exe_inode=executable.st_ino)
-            return (observed == self._peer and linux_peer_identity(pid) == identity
+            return (observed == self._peer and observe(pid) == identity
                     and time.monotonic()+reserve < self._deadline and self._check(reserve) is True)
         except Exception:
             return False

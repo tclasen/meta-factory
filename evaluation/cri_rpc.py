@@ -10,6 +10,7 @@ import threading
 import time
 
 from .cri_events import linux_peer_identity
+from .linux_proc import LinuxProcView
 
 
 MAX_CHUNK_BYTES = 65536
@@ -27,6 +28,10 @@ class PrivateCRIRPCConnection:
     invalidate is bounded trusted cleanup for dependent decoders/collections.
     Callbacks and this instance run in a bounded operator-owned process.
 
+    Optional proc_view is a borrowed LinuxProcView opened before changing the
+    mount namespace/root. Its loss refuses the next guarded operation; closing
+    this guard never closes the caller-owned view. PID namespace must stay fixed.
+
     Each IO checks the actual SO_PEERCRED, process start/mount/executable, and
     original endpoint inode before and after IO. An unseen restored path swap
     cannot redirect this held FD; new connections require separate admission.
@@ -34,7 +39,8 @@ class PrivateCRIRPCConnection:
     Raw bytes are private; protocol framing, RPC semantics and intentional
     observation-window completion remain the caller's responsibility.
     """
-    def __init__(self, connection, *, peer, endpoint, check, invalidate, deadline):
+    def __init__(self, connection, *, peer, endpoint, check, invalidate, deadline,
+                 proc_view=None):
         self._connection = connection
         self._owner = os.getpid()
         self._lock = threading.RLock()
@@ -42,6 +48,7 @@ class PrivateCRIRPCConnection:
         self._invalidated = False
         self._received = self._sent = 0
         self._invalidate = invalidate
+        self._proc_view = proc_view
         try:
             if (not sys.platform.startswith('linux')
                     or not isinstance(connection, socket.socket)
@@ -53,6 +60,7 @@ class PrivateCRIRPCConnection:
                     or not isinstance(endpoint, str) or not endpoint.startswith('/')
                     or '\x00' in endpoint or len(os.fsencode(endpoint)) > 107
                     or not callable(check) or not callable(invalidate)
+                    or proc_view is not None and type(proc_view) is not LinuxProcView
                     or type(deadline) not in (int, float) or not math.isfinite(deadline)):
                 raise ValueError()
             self._peer = copy.deepcopy(peer)
@@ -74,14 +82,17 @@ class PrivateCRIRPCConnection:
     def _identity(self):
         credentials = self._connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
         pid, uid, gid = struct.unpack('3i', credentials)
-        observed = dict(uid=uid, gid=gid, **linux_peer_identity(pid))
-        executable = os.stat('/proc/'+str(pid)+'/exe')
+        identity = (linux_peer_identity if self._proc_view is None
+                    else self._proc_view.identity)
+        observed = dict(uid=uid, gid=gid, **identity(pid))
+        executable = (os.stat('/proc/'+str(pid)+'/exe') if self._proc_view is None
+                      else self._proc_view.executable(pid))
         endpoint = os.lstat(self._endpoint)
         if not stat.S_ISSOCK(endpoint.st_mode):
             raise ValueError()
         observed.update(exe_device=executable.st_dev, exe_inode=executable.st_ino,
                         socket_device=endpoint.st_dev, socket_inode=endpoint.st_ino)
-        if observed != self._peer or linux_peer_identity(pid) != {
+        if observed != self._peer or identity(pid) != {
                 k: observed[k] for k in ('pid', 'start_ticks', 'mount_device', 'mount_inode')}:
             raise ValueError()
 
