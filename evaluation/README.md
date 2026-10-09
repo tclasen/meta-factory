@@ -5356,3 +5356,48 @@ This is development setup evidence. It does not amend frozen comparison inputs,
 establish runtime-event authentication or provide complete application history.
 The first proxy attempt after successful import remained incomplete; no
 acceptance was established.
+
+### Native authenticated CRI observation window
+
+An operator-only Python observer now composes the runtime FD and client guards
+with the single-client relay on the original node. It uses host PID and cgroup
+namespaces, its own mount context and a readonly original-node root descriptor.
+The runtime endpoint is reached through that held root while host `/proc`
+remains available for actual kernel peer credentials and process identities.
+
+A separate reference connection observes the runtime before admitting the held
+connection. Runtime PID, start ticks, mount namespace, executable, endpoint
+inode and full node cgroup must match independently observed original values.
+The executable also matches an expected containerd file under the original root.
+The relay rechecks its actual socket before and after every IO operation.
+
+The direct `crictl` client comes from the known original-root executable and has
+an independently tracked child PID, start identity, executable and full operator
+cgroup. The actual accepted client FD must match that mapping; the listener then
+closes without admitting another client. A private explicit CLI configuration
+avoids default configuration lookup while endpoints remain explicit. The SDK
+mount is operator-only; the observer has no network, one CPU and 128 MiB memory.
+
+The strict incremental decoder admits JSON while the guarded source remains
+live. It rejects duplicate fields, nonfinite numbers and incomplete framing.
+A fresh owned sandbox's creation and start events must match its CID and fresh
+UID/name/namespace. The positive 45-second window observed 15 objects: seven
+creation, seven start and one stop, including nine sandbox-ID events and six
+matching container statuses. Both fresh probe events matched; stderr was empty.
+
+On the same helper revision, a wrong expected runtime executable refused
+admission before client creation. A wrong expected client PID refused at the
+accepted-FD guard before probe creation. Both closed the runtime descriptor and
+invalidated dependents. The matching positive baseline passed. Seven local
+cleanup failure controls and eight existing strict-decoder fixtures also passed.
+
+Success is emitted after owned cleanup completes. A failed probe stop, removal,
+descriptor close or relay join cannot produce success or skip remaining cleanup.
+All native attempts retired their owned node, volume, observer, VM and workspace
+and preserved global policy. Raw events and diagnostics were not persisted.
+
+This verifies a controlled observation window. The stream ends before application
+bootstrap; live registration across application births, anchored API/runtime/log
+metadata composition, terminal fences, rotations, other filesystems and all
+writers remain unfinished. `subscription_acknowledged=False` and
+`history_complete=False` remain explicit; no candidate was rescored or accepted.
