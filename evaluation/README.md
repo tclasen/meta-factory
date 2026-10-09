@@ -5536,3 +5536,30 @@ shutdown. Terminal intervals, rotations, all filesystems and all writers remain
 unfinished; subscription acknowledgment, complete-history and acceptance claims
 remain false. No eligible candidate was rescored, and the frozen three-arm
 comparison remains outstanding.
+
+
+### Held runtime identity around metadata admission (REQ-007)
+
+The native metadata source callback now repeats direct observations of the held
+runtime socket's peer credentials, process start/mount/executable, full cgroup
+and canonical endpoint identity before and after API work. It avoids taking the
+runtime connection lock while holding the metadata-buffer lock: runtime
+invalidation closes that buffer and would otherwise create a lock-order cycle.
+Safe snapshot emission also repeats the runtime guard after metadata lookups.
+
+On the same helper and SDK, a native positive fixture passed public membership
+grading with 83 decoded events, 11 API/runtime agreements and 510 held-peer checks.
+Its anchored history observed eight Pods, three deletions and 11 container
+identities without a gap. A second fixture first populated and verified its
+buffer, then deliberately closed only its owned runtime connection from another
+thread during a guarded lookup. The lookup refused, all cached entries were
+released, the descriptor closed, dependents were invalidated and the closer
+thread joined within its bound. No cleanup errors remained. Both fixtures removed
+their owned resources and preserved global policy; 13 private-client controls
+passed.
+
+These checks establish bounded source validation and refusal under concurrent
+connection loss. They do not prove absence of transient restored endpoint swaps
+or admit the separate held kernel log files. File admission, terminal intervals,
+rotations and all-writer coverage remain unfinished; complete-history,
+subscription acknowledgment and acceptance claims remain false.
