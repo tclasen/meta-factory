@@ -5212,3 +5212,39 @@ attribution or complete application history. Short-lived Pod identity capture,
 rotations, other filesystems, overflow, writer closure and collection throughout
 bootstrap and public-origin grading still need integrated verification.
 `history_complete=False` and acceptance remains unset.
+
+### CRI custody through application bootstrap and public grading
+
+A fresh controlled application reference composed the private CRI observer with
+the independently empty Namespace/PodList anchor and bounded bootstrap Pod watch.
+The observer entered the original node's mount/root view, marked its actual log
+filesystem and reported ready with zero observed Namespace log files before the
+unchanged captured bootstrap. The two previously disclosed storage configuration
+changes remained the only application source deltas.
+
+Four committed watch windows observed 60 events, eight Pods, three deletions and
+11 API-declared container identities, with no unresolved identity gap. Bootstrap
+took 90.6 seconds; preparation, bootstrap and watch closure together took 130.3
+seconds within the existing 180-second bound. The pinned observer image pull
+took about five seconds during guarded setup, before that bootstrap timer; its
+separate receipt explicitly includes this overhead in the 900-second grading
+and 1200-second outer budgets. The network-none observer used one CPU, 128 MiB
+and a 900-second bound, with bounded private bytes and held descriptors.
+
+The collector retained 11 CRI files with 28,304 bytes before grading. Every
+retained Pod name/UID, container name and restart index matched the anchored
+bootstrap history, including sources from deleted Pods. A fresh private marker
+was injected into the independently checked current API container through stdin.
+The public-origin `current-user-memberships` recipe passed through the ordinary
+frontend and loopback bridge. Marker scans matched before and after grading and
+after independently verified original-node shutdown. The observer survived,
+finalized 30,996 stable bytes in those 11 files and exited successfully.
+
+Raw streams and the marker were not persisted. The collector, node, volume,
+relay, owned VM and private workspace were removed; global policy was unchanged.
+Sixteen local client controls verified safe-envelope acceptance and refusal
+before persistence. This remains development evidence: the API watch ends before
+grading, declared CIDs lack authenticated runtime creation attribution, and
+rotation, other filesystem and all-writer coverage remain unverified. A ready
+observer with zero observed files is not a runtime/log-history empty proof.
+Every history receipt remains incomplete; no candidate was rescored or accepted.
