@@ -5321,3 +5321,38 @@ held-FD authentication and single-client relay, controlled registration evidence
 private runtime metadata admission and log-file attribution remains unfinished.
 All receipts retain `authenticated_runtime_attribution=False`,
 `subscription_acknowledged=False` and `history_complete=False`.
+
+### Digest-preserving development image cache
+
+Fresh owned development VMs encountered Docker Hub authentication timeouts before
+launching the observer. Directory, socket and authentication diagnostics passed;
+the user and daemon had identical HTTPS proxy settings. One guest authentication
+request succeeded, but a later default/Docker/default client comparison timed out
+for every request. This did not establish a client-specific cause or contention
+from unrelated sandboxes; an idle host remains unnecessary.
+
+A bounded operator fetch on the Mac then constructed private OCI archives for
+the existing pinned K3s and Python images. It verified the unchanged index,
+selected `linux/arm64` manifest, configuration and every selected content digest.
+The Python archive also needed the platform's associated
+[attestation manifest and content](https://docs.docker.com/build/metadata/attestations/attestation-storage/).
+Other platform payloads are omitted. Tokens, signed redirect URLs and proxy
+values were not logged, and registry authorization was not forwarded to CDNs.
+
+Three early drivers stopped on an image-ID assumption, descriptor-field casing
+and missing Python attestation content. The corrected driver loaded both archives
+and resolved their original full-index repository digests. On this engine the
+image ID and target descriptor used the index digest; independently verified
+configuration filesystem-layer digests also matched native inspection. The
+unchanged captured cluster then started and the observer launched successfully.
+
+Host acquisition declares a 600-second total and 30-second request limit. Each
+native import has a separate 90-second bound under the existing 480-second VM
+guard and 600-second outer limit. The archives enter only the owned operator
+project. The test node, observer, volume, VM and workspace were retired, and
+global policy remained unchanged. Private caches remain retained for active work.
+
+This is development setup evidence. It does not amend frozen comparison inputs,
+establish runtime-event authentication or provide complete application history.
+The first proxy attempt after successful import remained incomplete; no
+acceptance was established.
