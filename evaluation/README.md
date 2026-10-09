@@ -5050,3 +5050,35 @@ An empty API PodList does not prove an empty runtime or log filesystem. This
 reference does not arm a continuous watch or collect logs across bootstrap,
 births, rotations or deleted writers. Complete-history inspection, reviewed
 suite coverage and the REQ-007 matched comparison remain unfinished.
+
+### Native anchored Pod watches across bootstrap
+
+The bootstrap Pod watch v2 development reference anchored `PodIdentityHistory`
+to the independently empty PodList before the unchanged bootstrap command.
+Four bounded `PodWatchTransport` windows resumed from the committed opaque
+cursor. Each window verified the original source/guard, pinned running node and
+namespace UID before and after. Inventory reads fenced identity without
+replacing the original cursor. Raw watch events remained in private memory.
+
+The windows observed 65 events, eight Pod identities, three deletions and twelve
+container identities. The tracker reported no identity gaps or pending container
+identities. Its current Pod UID set matched the final independent unfiltered
+inventory exactly. Every final application Pod UID was among the previously
+observed identities, and the public-origin membership recipe passed. Preparation,
+bootstrap and watch closure took 127.39 seconds within the shared 180-second
+limit. The watch thread joined, owned resources were cleaned up and the completed
+VM was removed with evidence preserved. Global network policy was unchanged.
+
+An earlier v1 attempt retained four successful windows but stopped on an
+unsupported assumption that the final watch must contain exactly five active
+Pods; it observed six. That failed attempt remains unchanged. The prospective
+v2 compares the exact fenced inventory and retains additional and historical
+identities. The helper permitting an empty inventory fence passed twenty local
+controls; the existing watch, cursor and history components passed twenty-nine
+fixture tests.
+
+These observations establish bounded API identity tracking during bootstrap.
+Server-side watch arming before bootstrap is not attested, and the watch ends
+before API grading. Runtime/file births, log bytes, rotations and writer closure
+remain unverified. All history summaries retain `history_complete=False`; this
+does not establish privacy acceptance or a REQ-007 matched comparison.
