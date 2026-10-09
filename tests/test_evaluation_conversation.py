@@ -64,6 +64,19 @@ class ConversationTest(unittest.TestCase):
             s.receive(self.completed(status='failed'))
         self.assertEqual(s.continuation_count, 1)
 
+    def test_interrupt_ack_after_final_turn_preserves_timeout_and_duplicate_refusal(self):
+        for status in ('completed','interrupted'):
+            with self.subTest(status=status):
+                session=self.running();session.interrupt()
+                self.assertEqual(session.receive(self.completed(status=status)),[])
+                self.assertEqual(session.receive(dict(id=4,result={})),[])
+                self.assertEqual(session.outcome,'timeout_incomplete')
+                self.assertEqual(session.continuation_count,0)
+                self.assertEqual(session.turn_ids,['u'])
+                with self.assertRaises(ValueError):session.receive(dict(id=4,result={}))
+                conflicting='interrupted' if status=='completed' else 'completed'
+                with self.assertRaises(ValueError):session.receive(self.completed(status=conflicting))
+
     def test_completed_or_blocked_declaration_stops_before_three_compactions(self):
         for status, outcome in [('complete', 'completed'), ('blocked', 'builder_declared_blocked')]:
             s = self.running();first = self.declare(s, status)
@@ -144,6 +157,7 @@ class ConversationTest(unittest.TestCase):
     def transport(self, finish_after, delay=0, builder_seconds=2):
         code = '''import sys,json,time
 n=0
+completed=set()
 def send(m):print(json.dumps(m),flush=True)
 for line in sys.stdin:
  m=json.loads(line);method=m.get('method')
@@ -156,12 +170,18 @@ for line in sys.stdin:
   time.sleep(DELAY)
   if n>=FINISH:
    send({'id':100,'method':'item/tool/call','params':{'threadId':'t','turnId':turn,'callId':'terminal','tool':'finish_workload','arguments':{'status':'complete','reason':'Synthetic finish'}}})
-  else:send({'method':'turn/completed','params':{'threadId':'t','turn':{'id':turn,'items':[],'status':'completed'}}})
+  else:
+   completed.add(turn)
+   send({'method':'turn/completed','params':{'threadId':'t','turn':{'id':turn,'items':[],'status':'completed'}}})
  if m.get('id')==100 and 'result' in m:
+  completed.add(turn)
   send({'method':'turn/completed','params':{'threadId':'t','turn':{'id':turn,'items':[],'status':'completed'}}})
  if method=='turn/interrupt':
   send({'id':m['id'],'result':{}})
-  send({'method':'turn/completed','params':{'threadId':'t','turn':{'id':m['params']['turnId'],'items':[],'status':'interrupted'}}})
+  target=m['params']['turnId']
+  if target not in completed:
+   completed.add(target)
+   send({'method':'turn/completed','params':{'threadId':'t','turn':{'id':target,'items':[],'status':'interrupted'}}})
 '''.replace('DELAY',repr(delay)).replace('FINISH',repr(finish_after))
         with tempfile.TemporaryDirectory() as directory:
             with Attempt(Path(directory)/'attempt',{}) as attempt:

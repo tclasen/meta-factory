@@ -242,7 +242,9 @@ class Conversation(Session):
                 # Dynamic tools require the native experimental capability.
                 # initialize already selected it in Conversation.initial().
                 validate('ThreadStartParams', replies[1]['params'])
-            if self.turn in self.completed_turns:
+            # Only a new turn-start response may introduce a turn identity.
+            # A late interrupt acknowledgement can refer to a now-final turn.
+            if identifier == self.turn_request_id and self.turn in self.completed_turns:
                 raise ValueError('Runtime reused a completed turn identity')
             if self.turn and self.turn not in self.turn_ids:
                 self.turn_ids.append(self.turn)
