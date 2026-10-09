@@ -5020,3 +5020,33 @@ are not a single frozen-method batch or a matched state-arm comparison.
 Complete bootstrap, birth, rotation and deleted-writer history remains unresolved.
 The suite is incomplete and unapproved; these fixtures establish neither a
 privacy pass nor package acceptance.
+
+### Native pre-bootstrap empty namespace boundary
+
+The pre-bootstrap empty v3 development reference established a fresh
+`incident-app` namespace before invoking the captured bootstrap command. A
+bounded private helper checked the pinned running node before and after,
+required the namespace to be absent, created it, and read an unfiltered typed
+PodList with zero items and a nonzero resource version. It then reread the
+namespace to verify its UID. Raw API objects remained in private pipes.
+Twenty-six local controls covered identity changes, preexisting namespaces,
+malformed or paginated lists, command failures, output bounds and deadlines.
+
+Preparation and the unchanged bootstrap took 102.84 seconds within their shared
+180-second limit. The existing `current-user-memberships` recipe passed through
+the public frontend under its 60-second bound. The namespace and node survived
+bootstrap with the same identities. Source verification, healthy five-role
+topology and owned relay, cluster, volume, sandbox and workspace cleanup were
+verified; global network policy remained unchanged. Concurrent owner sandboxes
+were recorded and allowed to continue. This used the same two disclosed
+development configuration changes; the original candidate remains unchanged.
+
+Two earlier attempts remain recorded: an incorrect case-bound assertion stopped
+before VM creation, and a helper transport request exceeding its existing
+15-second cap stopped before namespace creation. The successful attempt uses a
+12-second helper deadline and a 13-second transport deadline.
+
+An empty API PodList does not prove an empty runtime or log filesystem. This
+reference does not arm a continuous watch or collect logs across bootstrap,
+births, rotations or deleted writers. Complete-history inspection, reviewed
+suite coverage and the REQ-007 matched comparison remain unfinished.
