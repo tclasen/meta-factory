@@ -4749,12 +4749,12 @@ Duplicate completions cannot enqueue extra turns; turn identities, cumulative
 usage and late compaction notifications remain bound to the same thread. Results
 record the actual turns, continuation count and terminal status without returning
 the builder's terminal reason. The default `Session` remains single-turn.
-The existing ledger below still requires its separate multi-turn extension before
-using this mode in a new calibrated study. Local protocol and subprocess tests:
+Local protocol and subprocess tests:
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_conversation.py' -v
 uv run --locked python -m unittest discover -s tests -p 'test_evaluation_runtime.py' -v
+uv run --locked python -m unittest discover -s tests -p 'test_evaluation_conversation_ledger.py' -v
 ```
 
 `runtime_ledger.summarize_runtime_events(records, package_ids)` projects one
@@ -4767,6 +4767,16 @@ cumulative usage deltas. Initial observed counters plus subsequent deltas must
 reconcile exactly to the latest snapshot; duplicate counter updates add zero.
 It never sums `total` with `last`, or adds cache/reasoning subcategories on top
 of `totalTokens`. Missing counters remain null, not zero.
+
+For a continuous conversation, pass `conversation=True`. This requires the
+controller's ordered `builder.request` records and binds each native turn to
+its request in the same thread. Completed turns without a workload declaration
+remain live conversation prefixes. The projection records pending requests,
+turn boundaries and sanitized terminal declarations; failed or interrupted
+turns are terminal observations without acceptance. Duplicate completions and
+late telemetry from known turns preserve cumulative usage and native compaction
+counts without double-counting. Unknown turns, conflicting declarations and
+counter resets are refused. The default retains single-turn validation.
 
 Usage intervals retain the previously reported stage, the current reported
 stage and intervening stage markers. These are builder reports with timestamps,
