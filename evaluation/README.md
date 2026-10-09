@@ -4936,3 +4936,33 @@ logged. Both audit references verified the same owned cleanup boundaries.
 These are selected development fixtures against an incomplete, unapproved suite.
 They do not repair or rescore original candidates, establish full-suite coverage,
 replace human coverage/threat-model review, or prove a REQ-007 comparison outcome.
+
+### Native log snapshot controls
+
+The native log v2 development reference verified an unfiltered namespace inventory
+using raw Kubernetes API requests. Display-oriented `kubectl get -o json` can
+produce a generic `List`; this does not satisfy the strict `PodList` and resource
+version requirements. The raw inventory helper passed nineteen local controls;
+the private command adapter passed twenty-six, including bounded projection of
+failure metadata without retaining native API objects or command streams.
+
+The native reference bound seven available current/previous log sources to the
+observed node and application Pods. Fifty real source observations completed
+within the one-second bound; the longest took 0.676 seconds. Through the private
+security broker, the scanner detected a synthetic marker injected into the owned
+API Pod's stdout. An unwritten control returned inconclusive, preserving the
+distinction between inspecting available streams and proving complete history.
+Raw markers and log streams were not retained in evidence files.
+
+The existing `general-log-content-canaries` recipe returned inconclusive because
+independent security inspection was incomplete. Its shared-state suite then
+aborted before the error and export recipes. This is a retained incomplete
+attempt, not a three-recipe result or privacy pass. Source boundaries, stable
+application Pods, and owned relay, cluster, volume, sandbox and workspace cleanup
+were verified; global network policy stayed unchanged.
+
+Fresh deployments are required to observe the remaining recipes independently.
+Available snapshots cannot establish coverage of deleted Pods, rotated streams,
+bootstrap intervals or unobserved writers. Complete-history collection and human
+coverage/threat-model review remain unresolved prerequisites; these controls do
+not establish package acceptance or a REQ-007 comparison outcome.
