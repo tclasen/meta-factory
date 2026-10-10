@@ -6013,3 +6013,22 @@ removed. V40 remains unchanged. Operation tracing identified 27 missing mutation
 checks for the current cookie, chiefly where a former analyst remains a tenant
 member; assignment also needs coverage. AC-008 and the comparison remain
 incomplete, with registry size and complete flags unchanged.
+
+### Current-session writer role lifecycle controls (REQ-007)
+
+Protected suite V42 covers seven write operations through the original cookie:
+creation, editing, assignment, comments, evidence, exports and closure requests.
+All 35 denial cells across reviewer, auditor, administrator, combined
+administrator/auditor and removed-membership states preserve independently
+observed case, collection, search and membership data. Fourteen later positive
+writes prove restored analyst and combined analyst/reviewer permissions, including
+persisted actor identity and evidence bytes.
+
+Two hundred thirty-eight direct, 221 protected-child HTTP and two regression
+controls observed the expected verdicts, including 84 added faulty models.
+Operation tracing confirms all 35 negative and 14 later positive cells. All four
+mapped native groups passed within the unchanged lifecycle case ceiling.
+Identities and selected source checks were preserved; owned resources were
+removed. V41 remains unchanged. Current-user membership projection after updates
+and export-revocation coverage mappings still need work before AC-008 completion.
+Registry size and complete flags remain unchanged; the comparison is incomplete.
