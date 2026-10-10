@@ -6221,3 +6221,32 @@ full public-suite correctness. The 20-second protected receipt case ceiling,
 80-group registry and eight complete flags remain unchanged. Foundation,
 remaining security/documentation/attestation coverage, human content review and
 the common comparison remain incomplete.
+
+### Native application catalog against migration replay (REQ-007)
+
+A fresh reference's supported PostgreSQL catalog matched an independently
+replayed baseline: 11 tables, 78 columns and one selected extension on the same
+server version. The parent created a distinct, initially empty database, replayed
+all five captured migration files in order and collected baseline/live/live/
+baseline catalogs. Repeated source, replay-receipt, database and process bindings
+passed. Raw catalog definitions and private transport streams were not retained.
+
+Fourteen private routing/sanitization controls and the existing guarded schema
+comparison tests passed. Two earlier native attempts remained incomplete before
+comparison. A sanitized diagnostic identified a missing stdin flag on the outer
+Docker exec hop; the corrected route enables stdin on both hops and uses a fixed
+psql stdin file. Lost-payload controls now reject this counterexample. Earlier
+outcomes remain unchanged.
+
+The baseline database was deleted and its absence independently verified.
+Application identities and selected source checks passed afterward. All three
+owned sandboxes and scratch workspaces were removed; global host policy was
+unchanged.
+
+The protected foundation case remained inconclusive because its complete
+independent observation is still unavailable. Catalog equality provides no
+migration history, arbitrary/data migration, extension implementation, privilege
+or atomic-snapshot proof; those verification flags remain false. The 80-group
+registry and eight complete flags remain unchanged. Native storage and the full
+foundation observation, remaining grading coverage, human content review and the
+common comparison remain incomplete.
