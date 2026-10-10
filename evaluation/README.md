@@ -5956,3 +5956,19 @@ development reference, with independent identities and selected source checks
 preserved. The owned sandbox, cluster, volume and scratch workspace were removed.
 V36 remains unchanged. These checks leave AC-008 and the full comparison
 incomplete; registry size and implementation-complete flags remain unchanged.
+
+### Current-session reviewer decision controls (REQ-007)
+
+Protected suite V38 retains the original subject cookie while granting reviewer
+permission, replacing it with auditor permission, removing membership, and
+restoring reviewer permission. Closure and export decisions must immediately
+follow the current roles. Denied approvals and rejections leave case and
+collection snapshots unchanged; permitted rejections match persisted history.
+
+Seventy-two direct and 55 protected-child HTTP controls observed the expected
+verdicts, including 18 new faulty models. All four mapped native membership
+groups also passed, with independent identities and selected source checks
+preserved. The owned sandbox, cluster, volume and scratch workspace were removed.
+V37 remains unchanged. Two synthetic counterexamples demonstrate missing
+post-demotion audit and membership-list read checks. AC-008 and the full comparison
+remain incomplete; the 79-group registry and complete flags remain unchanged.
