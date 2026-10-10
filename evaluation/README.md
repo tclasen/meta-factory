@@ -6123,3 +6123,26 @@ independent log reader and parent-owned audit fault capability.
 The registry and complete flags remain unchanged. Controlled running-publication
 coverage, remaining native capabilities and human content review are still
 needed before final grading and the common three-arm comparison.
+
+### Native audit diagnostic canary failure (REQ-007)
+
+A fresh V44 development fixture exercised the parent-owned audit fault and an
+independent reader bound to the observed PostgreSQL Pod and owned K3s container.
+The diagnostic case failed because an injected canary appeared in that Pod's
+CRI log. The failure remains unchanged; the reference was not repaired or
+rescored. The audit constraint was removed and restoration verified. Selected
+source checks and final Pod continuity checks passed; the owned cluster, volume,
+sandbox and scratch workspace were removed, with global host policy unchanged.
+
+Twenty archive and private subprocess controls observed expected outcomes,
+including encoded canaries, malformed archives, duplicate JSON keys, output
+limits and timeouts. The reader retains bounded metadata and a sanitized verdict,
+without raw log streams or private scanner input. A positive match establishes
+this failure; absence in this single source yields inconclusive, never a pass.
+It does not provide all-source history or whole-runtime attestation.
+
+Other owner sandboxes remained running; declared allocations and concurrent
+activity were recorded. The 80-group registry and eight complete flags remain
+unchanged. This result closes the inventory's missing diagnostic observation,
+while full coverage, substantive human review and the common comparison remain
+incomplete.
