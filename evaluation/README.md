@@ -6278,3 +6278,41 @@ claim. The unchanged protected foundation case remained inconclusive because its
 complete independent observation is unavailable. The 80-group registry and eight
 complete flags remain unchanged. Full foundation, remaining grading coverage,
 human content review and the common comparison remain incomplete.
+
+### Native application network matrix failure (REQ-007)
+
+The unchanged V44 network policy case failed in a fresh native reference:
+“Controlled external egress was reachable.” All 12 allowed Pod/Service routes
+worked, but all 24 routes expected to be denied were reachable. Web, API and
+worker each reached a controlled out-of-namespace canary in three repeated
+attempts. Permitted-path client and listener controls passed before and after
+every route; the failure was not inferred from missing endpoints.
+
+The parent used the actual application Pods and Services with stable namespace,
+process, image, endpoint and policy bindings. The publisher probe ran in the
+exact node network namespace. Three internal DNS checks passed through an
+operator-owned CNAME alias to the original API Service. Two small operator Pods,
+a canary Service, their namespace and that alias were removed with identity and
+absence checks before protected grading. Application policies and iptables
+configuration were unchanged; no candidate repair or historical rescore occurred.
+
+35 collector controls, 14 normalized oracle controls and five protected
+integration controls passed. Four earlier native attempts remain incomplete:
+one rejected the reference web NodePort mapping, two rejected the node-side TCP
+probe, and one collected a full stable matrix but failed auxiliary cleanup
+verification. Corrections bind web NodePort 30080 exactly, use guest Python in
+the node network namespace, verify the web probe against open and closed local
+ports, and check absence using bounded name output. Earlier outcomes are retained.
+
+Independent identities and selected source checks passed after the final case.
+Auxiliary resources, relay, cluster and volume cleanup were verified. All five
+owned sandboxes and scratch workspaces were removed; global host policy was
+unchanged. Bootstrap/grading/outer bounds remained 180/900/1,200 seconds, with a
+600-second collector bound and no idle-host prerequisite.
+
+The observations cover actual application TCP routes, selected internal DNS and
+a controlled external-namespace endpoint; they do not establish arbitrary
+internet isolation or complete runtime history. The 80-group registry and eight
+complete flags remain unchanged. The negative result adds native development
+evidence for AC-029. Full foundation, remaining grading coverage, substantive
+human review and the common comparison remain incomplete.
