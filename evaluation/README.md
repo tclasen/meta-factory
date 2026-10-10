@@ -6146,3 +6146,27 @@ activity were recorded. The 80-group registry and eight complete flags remain
 unchanged. This result closes the inventory's missing diagnostic observation,
 while full coverage, substantive human review and the common comparison remain
 incomplete.
+
+### Native integrated two-tenant API journey (REQ-007)
+
+The existing V44 integrated journey passed in a fresh native fixture. Eight
+independently named single-role actors were seeded alongside the default roster.
+The parent verified all 17 observed user identities and memberships before and
+after the journey, with unchanged values and restored permissions.
+
+Both tenants completed case creation, comments, evidence persistence, closure
+approval, export approval and exact archive verification, with audit events
+correlated to the originating requests. Cross-tenant and reviewer downloads were
+denied. Each requester lost download permission through the same cookie after
+role replacement and regained it after restoration.
+
+All 39 protected HTTP controls observed expected verdicts: one correct model,
+32 faulty models and six inconclusive configurations. Selected source checks,
+relay cleanup and removal of the owned cluster, volume, sandbox and scratch
+workspace passed; global host policy was unchanged. Other owner sandboxes
+remained running. The unchanged case ceiling was 180 seconds, with prospective
+bootstrap/grading/outer bounds of 180/900/1,200 seconds.
+
+This adds native development evidence for AC-034. The registry retains 80 groups
+and eight complete flags. UI checks, full runtime attestation, remaining coverage,
+substantive human review and the common comparison remain incomplete.
