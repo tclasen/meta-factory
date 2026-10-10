@@ -5769,3 +5769,27 @@ were removed, global policy was unchanged and concurrent activity was recorded.
 The immutable profile and public archive caches remain prospective common
 inputs. This is environment preflight, not application acceptance, complete
 comparison-profile freeze or a repair of any consumed calibration.
+
+### Independent native rotation witness (REQ-007)
+
+A separate private diagnostic now arms the existing Linux CRI follower for one
+independently attributed API-container file. Its canonical active path must
+match the held inode. Three earlier attempts refused during initialization;
+their evidence remains intact. The successful version excludes deleted
+historical descriptors from this current-file witness while preserving them in
+the original collector. It does not recover their missing rotation history.
+
+After bootstrap and public membership grading, the same controlled 512 KiB
+stdout write caused a real kubelet cutover. The witness observed one ordered
+rename, writer close and reopen, collected 542,396 bytes across the two
+generations and retained the private marker. Original Node, Namespace, Pod and
+container identity checks remained active. The original joined collector still
+refused the successor at its unordered-generation check: the witness has not
+been integrated into replacement admission.
+
+The client passed 31 bounded pipe, lifetime and diagnostic privacy controls.
+All four diagnostic VMs and host workspaces were removed; descriptors and
+private byte references were released, global policy was unchanged and
+concurrent activity was recorded. The SDK and running calibration inputs were
+unchanged. This verifies one native ordering witness, not all-writer closure,
+complete namespace log history, acceptance or the three-arm comparison.
