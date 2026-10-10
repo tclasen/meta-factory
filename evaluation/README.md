@@ -6250,3 +6250,31 @@ or atomic-snapshot proof; those verification flags remain false. The 80-group
 registry and eight complete flags remain unchanged. Native storage and the full
 foundation observation, remaining grading coverage, human content review and the
 common comparison remain incomplete.
+
+### Native application storage canary (REQ-007)
+
+The existing bounded S3 canary passed against a fresh reference application's
+private storage Service from its independently mapped API Pod. It wrote and read
+a fresh 512-byte object, observed anonymous read and write denial, then deleted
+its object and verified absence. The parent bound the pinned node, namespace,
+Pod/process/image identities, Service endpoint and runtime Secret references.
+Matching peer, Secret and topology observations surrounded the canary; credentials
+stayed in guest memory and private stdin. Raw private streams were not retained.
+
+Twenty-three adapter and subprocess transport controls, plus 14 existing storage
+canary tests, passed. Controls reject changed mappings and peers, malformed
+receipts and transport failures, and preserve an observed canary failure. The
+probe retained its 70-second bound, with a separately bounded 180-second private
+transport for surrounding checks. Bootstrap/grading/outer bounds were
+180/900/1,200 seconds.
+
+Independent fixture identities and selected source checks passed before and
+afterward. Exact object cleanup, relay cleanup, cluster/volume absence and removal
+of the owned sandbox and scratch workspace were verified; global host policy was
+unchanged. Concurrent activity was recorded without an idle-host prerequisite.
+
+This is a scoped object canary, with no whole-bucket privacy or historical access
+claim. The unchanged protected foundation case remained inconclusive because its
+complete independent observation is unavailable. The 80-group registry and eight
+complete flags remain unchanged. Full foundation, remaining grading coverage,
+human content review and the common comparison remain incomplete.
