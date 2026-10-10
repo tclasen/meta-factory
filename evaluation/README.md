@@ -5793,3 +5793,35 @@ private byte references were released, global policy was unchanged and
 concurrent activity was recorded. The SDK and running calibration inputs were
 unchanged. This verifies one native ordering witness, not all-writer closure,
 complete namespace log history, acceptance or the three-arm comparison.
+
+### Ordered native replacement admission and custody (REQ-007)
+
+The private observer now connects the independent rotation witness to the
+existing SDK's replacement admission. The original and replacement held inodes,
+source identity and old byte boundary must match the witnessed order. Retired
+paths are recognized only through that witness's held directory and file
+identities; filenames and timestamps do not establish order.
+
+Two initial integration attempts exceeded the 45-second snapshot bound. Stage
+diagnostics located the stall inside archive lookups before the boundary
+callback. Their evidence is preserved. Repeated prefix checks were issuing
+native API queries inside archive lookups. Bounded witness operations
+now check the original API before and after the operation; internal checks
+require its active owner scope, the original live runtime/Node, valid API watch
+and history, unchanged directory identity and full captured-prefix integrity.
+Scope cannot be reused outside the operation. CPU, memory and time bounds remain
+unchanged. Seven scope controls and 36 client controls passed.
+
+On the same native helper and SDK, the positive fixture admitted one replacement
+for 14 initial sources, producing 15 attributed physical files. Ordered terminal
+custody preserved the original marker across rotation and Node stop. A distinct
+late marker was absent at handoff and present afterward; retained bytes grew
+from 573,769 to 574,962. An incorrect byte boundary and an actual held descriptor
+from another bound entry both refused admission, invalidated collection and
+closed descriptors and private byte references without cleanup errors.
+
+All six integration/control VMs and host workspaces were removed, global policy
+was unchanged and concurrent activity was recorded. The public SDK remains
+unchanged. This covers one observed ordinary rotation and previously admitted
+files; it does not prove all writers closed, missing births, complete bootstrap
+or namespace history, owner-death recovery, acceptance or the three-arm result.
