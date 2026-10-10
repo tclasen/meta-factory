@@ -6055,3 +6055,26 @@ The registry grows prospectively from 79 to 80 groups; prior results and the
 acceptance denominator remain unchanged. Eight complete flags remain unchanged;
 AC-008, suite approval and the comparison remain incomplete. Export revocation
 coverage mappings and native evidence still need review.
+
+### Native export permission revocation checks (REQ-007)
+
+Protected suite V44 maps the existing ready-download and queued-publication
+revocation cases to AC-008 alongside their export criteria. The requester loses
+analyst permission through the original cookie, first retaining reviewer access
+and then losing all membership. Ready archive access must stop immediately and
+return after restoration with unchanged metadata and bytes. Queued jobs must
+fail when either requester or approver permission is removed before processing;
+restoring membership must not revive them.
+
+Nineteen download and 23 publication model controls passed. Both native groups
+then passed in a fresh controlled fixture. The parent bound the exact worker
+Deployment UID and its owned K3s container, observed zero worker Pods during each
+of two faults, and verified restoration of the same UID and original replica
+count. Independent identities and selected source checks were preserved; the
+owned cluster, volume, sandbox and scratch workspace were removed.
+
+This fresh runtime test declared grading/outer bounds of 1,800/2,100 seconds for
+the existing 1,500-second publication case and two worker faults. Earlier bounds
+and outcomes remain unchanged. The registry retains 80 groups and eight complete
+flags. A controlled running-job publication boundary, full coverage and human
+review remain outstanding; AC-008, AC-023 and the comparison remain incomplete.
