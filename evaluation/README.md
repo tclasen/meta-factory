@@ -6196,3 +6196,28 @@ case ceiling, 80-group registry and eight complete flags remain unchanged.
 Credential handling, frontend bundles, network enforcement, full runtime history
 and substantive human review remain outstanding; AC-028 and the comparison are
 incomplete.
+
+### Native disposable test and destroy checks (REQ-007)
+
+The existing V44 disposable operations case passed in a fresh native reference
+fixture. The unchanged documented test command propagated exit code 73 from an
+independently installed failing public checker. Its temporary guest specification
+alias was removed afterward; captured application scripts remained unchanged.
+
+The first documented destroy removed the application cluster container and named
+volume. A separate canary container and volume retained their exact identity,
+creation/start times and marker hash. Other Docker inventory entries remained
+present. A second destroy succeeded with the same absence and preservation
+observations. The canary was then removed by its owner, followed by verified
+cluster/volume absence and removal of the sandbox and scratch workspace. Global
+host policy was unchanged; unrelated owner sandboxes were left running.
+
+Twelve preservation controls and seven protected disposal controls observed
+expected outcomes. Selected source checks passed before and after the operation.
+Initial fixture identities were independently verified; the application was
+intentionally destroyed before protected receipt grading, so this run makes no
+post-destroy API identity claim. It tests known failure propagation, rather than
+full public-suite correctness. The 20-second protected receipt case ceiling,
+80-group registry and eight complete flags remain unchanged. Foundation,
+remaining security/documentation/attestation coverage, human content review and
+the common comparison remain incomplete.
