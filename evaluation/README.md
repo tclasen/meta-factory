@@ -6372,3 +6372,11 @@ A fresh native shell fixture verified stop, retained source capture, exact remov
 post-removal evidence readability and sandbox absence with other host sandboxes
 running. Its scratch directory was removed. This checks lifecycle behavior only,
 without restarting or grading a consumed comparison candidate.
+
+### Completed native three-arm developmental comparison
+
+The [REQ-007 comparison report](reports/req007-three-arm-v2.md) records all three
+original native workflow outcomes against the same frozen specification, with
+builder time, token usage, treatment overhead and independent grading limits.
+It preserves bootstrap failure and grading interruptions, establishes no winner
+or authoritative acceptance, and keeps protected cases and raw evidence local.
