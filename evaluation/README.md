@@ -5972,3 +5972,25 @@ preserved. The owned sandbox, cluster, volume and scratch workspace were removed
 V37 remains unchanged. Two synthetic counterexamples demonstrate missing
 post-demotion audit and membership-list read checks. AC-008 and the full comparison
 remain incomplete; the 79-group registry and complete flags remain unchanged.
+
+### Auditor and administrator session lifecycle controls (REQ-007)
+
+Protected suite V40 exercises the original cookie through auditor and
+administrator grant, demotion, removal and restoration. Administrator controls
+perform real self-role changes and verify persisted membership state. Denied
+audit and membership reads expose no result data; denied management writes
+preserve memberships and business snapshots. Both stale-read counterexamples
+from V38 are now rejected.
+
+The initial V39 native attempt failed an oracle assertion that imposed request
+array order on role sets. Source inspection identified canonical role ordering;
+the disclosed contract requires unique role sets. V40 compares typed, unique sets
+and includes a passing reordered-role control plus malformed/wrong-set controls.
+The V39 failure remains unchanged; its subsequent groups were not executed.
+
+Ninety-one direct, 74 protected-child HTTP and two regression controls passed.
+All four mapped native groups then passed in a fresh V40 fixture. Independent
+identities and selected source checks were preserved; both owned sandboxes and
+scratch workspaces were removed. V38/V39 remain unchanged. Current-session content
+reads still need coverage; AC-008 and the comparison remain incomplete, with the
+79-group registry and implementation-complete flags unchanged.
