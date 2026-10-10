@@ -5825,3 +5825,32 @@ was unchanged and concurrent activity was recorded. The public SDK remains
 unchanged. This covers one observed ordinary rotation and previously admitted
 files; it does not prove all writers closed, missing births, complete bootstrap
 or namespace history, owner-death recovery, acceptance or the three-arm result.
+
+### Fresh browser-profile calibration captured a blocked outcome (REQ-007)
+
+The fresh single-use Conversation calibration passed the cached browser-profile
+launch checks, then ran one unattended `gpt-6-luna`/`medium` builder turn for
+2,564.6 seconds. It ended with a blocked declaration and one runtime-reported
+natural compaction. The target of at least three compactions was not observed;
+no continuation or human rescue was supplied to force that target.
+
+The builder reported that the K3s policy controller failed to apply
+NetworkPolicies and that two intended denied flows succeeded. It also questioned
+whether observed guest memory met the draft performance conditions. These are
+builder reports, not independent application verdicts; resource semantics and
+the reported benchmark measurements remain unverified. The browser environment
+check does not establish that the application passed its security requirements.
+
+The terminal source capture contains 213 files and 340,041 bytes. A separate
+read-only check rehashed the captured tree and checked executable modes. The
+owned builder and inventory VMs were removed, the network monitor was released,
+and global policy was unchanged. Source and immutable evidence remain available
+for independent grading; the consumed run will not be restarted or repaired.
+
+The telemetry ledger reconciled the latest cumulative snapshot: 40,353,306
+reported tokens, including 39,367,424 cached input tokens and 151,821 output
+tokens. Reasoning tokens are included within output; stage attribution remains
+unallocated and monetary cost is unknown. The original duration forecast and
+earlier failures are retained; an early blocked run is not successful delivery
+within that forecast. This calibration is separate from comparison or promotion
+evidence and does not finish REQ-007.
