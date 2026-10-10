@@ -5994,3 +5994,22 @@ identities and selected source checks were preserved; both owned sandboxes and
 scratch workspaces were removed. V38/V39 remain unchanged. Current-session content
 reads still need coverage; AC-008 and the comparison remain incomplete, with the
 79-group registry and implementation-complete flags unchanged.
+
+### Current-session content read controls (REQ-007)
+
+Protected suite V41 exercises nine content read surfaces through the original
+cookie: case listing/search/detail, comments, evidence metadata/bytes, closure
+history, and export listing/detail. Independent known resources establish allowed
+analyst and reviewer reads, including their combined roles. Auditor, administrator
+and their combination must disclose no content; membership removal requires
+404. Denied results and messages exclude private markers, independent snapshots
+remain unchanged, and restored analyst permission must work on the same cookie.
+
+One hundred fifty-four direct, 137 protected-child HTTP and two regression
+controls observed the expected verdicts, including 63 new faulty models. All four
+mapped native groups passed with the unchanged 60-second lifecycle case ceiling.
+Identities and selected source checks were preserved; owned resources were
+removed. V40 remains unchanged. Operation tracing identified 27 missing mutation
+checks for the current cookie, chiefly where a former analyst remains a tenant
+member; assignment also needs coverage. AC-008 and the comparison remain
+incomplete, with registry size and complete flags unchanged.
