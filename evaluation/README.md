@@ -5854,3 +5854,35 @@ unallocated and monetary cost is unknown. The original duration forecast and
 earlier failures are retained; an early blocked run is not successful delivery
 within that forecast. This calibration is separate from comparison or promotion
 evidence and does not finish REQ-007.
+
+### Separate pinned K3s network-policy diagnostic (REQ-007)
+
+A fresh standalone diagnostic reproduced the calibration's reported policy
+problem without using or editing its captured application. On the pinned K3s
+image and the declared 8-CPU/16g grader allocation, three baseline TCP probes
+connected. After installing an ingress-deny policy, traffic still connected
+through a 40-second observation window and all five final probes. Three probes
+also connected after installing an explicit allow rule. Namespace, node, pod and
+container identities and restart counts stayed unchanged. K3s reported
+`iptables-restore` v1.8.11 (`nf_tables`) failures. A second fresh diagnostic with
+`--prefer-bundled-bin` had the same observed result. Neither proves the underlying
+kernel or userspace cause, or independently grades the captured application.
+
+The pinned image includes both firewall backends; its own selector supports an
+explicit `IPTABLES_MODE` input. A third fresh diagnostic with
+`IPTABLES_MODE=legacy` observed legacy v1.8.11 binaries, five blocked final deny
+probes, and three successful explicit-allow
+probes with unchanged identities. No policy-controller errors appeared in the
+last 500 log lines. This validates a prospective setup option for this minimal
+fixture; it does not repair or rescore the consumed calibration. Ancillary K3s
+system images were registry-loaded, so the two pinned input images do not by
+themselves attest every cluster dependency.
+
+Three earlier setup attempts retain their failed evidence: an empty node-list
+startup race, a not-yet-created default service account, and pods that did not
+become ready with registry access denied. Corrected attempts used only four
+calibration registry destinations scoped to their owned VM; global policy was
+preserved. All six owned diagnostic sandboxes were stopped and removed; logs and
+observations were retained and scratch workspaces removed. These are operator
+preflight results, not acceptance, calibration rescue, or comparative evidence. The consumed
+calibration retains its original blocked outcome and captured bytes.
