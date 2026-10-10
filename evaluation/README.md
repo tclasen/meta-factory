@@ -5926,3 +5926,20 @@ stopped every listener. These use synthetic membership state, not a deployed
 application authorization cache or real mutation audit. The registry remains at
 79 groups with eight implementation-complete criteria, partial and unapproved.
 AC-008 and the full comparison remain incomplete.
+
+### Native membership fixture checks (REQ-007)
+
+Two separate native Kubernetes fixture attempts exercised protected suite V36
+against the older development reference. The second passed all four AC-008
+groups: membership revocation, read and write permission matrices, and membership
+audit events. An independent ten-user seed was checked against live identities
+and memberships before and after grading; selected source checks also passed.
+The fixture declared only a PostgreSQL data-directory change and single-copy
+Seaweed growth configuration. The original reference remained unchanged.
+
+Both owned sandboxes and scratch workspaces were removed, and global policy was
+preserved. These selected checks do not establish whole runtime attestation,
+package acceptance, or a comparative winner. AC-008 remains incomplete: the
+revoked old session still needs write-route checks that verify denied requests
+leave business state unchanged. The full 79-group registry remains partial and
+unapproved.
