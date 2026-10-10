@@ -5939,7 +5939,20 @@ Seaweed growth configuration. The original reference remained unchanged.
 
 Both owned sandboxes and scratch workspaces were removed, and global policy was
 preserved. These selected checks do not establish whole runtime attestation,
-package acceptance, or a comparative winner. AC-008 remains incomplete: the
-revoked old session still needs write-route checks that verify denied requests
-leave business state unchanged. The full 79-group registry remains partial and
-unapproved.
+package acceptance, or a comparative winner. This checkpoint exposed missing
+revoked-session write coverage, addressed in V37 below. AC-008 remains incomplete;
+the full 79-group registry remains partial and unapproved.
+
+### Revoked-session mutation controls (REQ-007)
+
+Protected suite V37 adds original-cookie revocation checks for six analyst write
+routes. Each denial must leave the case, related collections and a separate
+creation search unchanged. Fifty-four direct controls and 37 protected-child
+HTTP controls passed; twelve faulty models, including mutation followed by a
+denial response, were rejected. The original subject session was reused.
+
+All four mapped native membership groups then passed against the controlled
+development reference, with independent identities and selected source checks
+preserved. The owned sandbox, cluster, volume and scratch workspace were removed.
+V36 remains unchanged. These checks leave AC-008 and the full comparison
+incomplete; registry size and implementation-complete flags remain unchanged.
