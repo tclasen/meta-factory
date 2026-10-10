@@ -6170,3 +6170,29 @@ bootstrap/grading/outer bounds of 180/900/1,200 seconds.
 This adds native development evidence for AC-034. The registry retains 80 groups
 and eight complete flags. UI checks, full runtime attestation, remaining coverage,
 substantive human review and the common comparison remain incomplete.
+
+### Native live Pod security checks (REQ-007)
+
+The existing V44 Pod security case passed in a fresh native fixture. A parent
+observer used the exact owned, pinned K3s container and verified namespace
+identities around two matching security snapshots. It checked live Pod ownership,
+non-root execution, escalation, capabilities, service-account token automount,
+host mounts and dependency Service exposure. Environment values, Secret
+references and raw Kubernetes documents were excluded from retained observations.
+
+Twenty-two projection/boundary controls, 13 existing oracle controls and a fixed
+diagnostic-reason sanitization control observed expected outcomes. Three earlier
+attempts remained incomplete before grading: a generic observer rejection, a
+fixture-loader schema rejection and an observed resource deletion transition.
+Their outcomes are preserved. The final attempt used the existing bounded
+60-second readiness gate, requiring five ready Pods with no deletion and two
+matching process samples; strict security collection was unchanged. The trusted
+suite callback supplied the parent snapshot path with before/after hash checks.
+
+Independent identities and selected source checks passed. All four owned
+sandboxes and scratch workspaces were removed; global host policy remained
+unchanged and unrelated workloads were left running. The 30-second protected
+case ceiling, 80-group registry and eight complete flags remain unchanged.
+Credential handling, frontend bundles, network enforcement, full runtime history
+and substantive human review remain outstanding; AC-028 and the comparison are
+incomplete.
