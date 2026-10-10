@@ -5745,3 +5745,27 @@ rotation order, admit the replacement generation, prove all writers closed or
 establish complete log history. The SDK remains unchanged. Native ordering
 evidence and those broader coverage gates remain prerequisites; no consumed
 calibration was rescored and the three-arm comparison remains unfinished.
+
+### Default browser discovery and video profile (REQ-007)
+
+A guest-only provisioner now combines the exact five browser archives and
+95 cached Ubuntu packages. Before mutation it checks the Linux arm64 builder
+environment, readonly inputs, archive hashes and Debian package metadata.
+It installs the cached packages without fetching dependencies, verifies their
+installed versions and extracts the pinned browser assets with bounded size
+and archive-path/type checks. The existing builder template is unchanged.
+
+A fresh native preflight placed the assets in the normal user Playwright cache
+and supplied a separate pinned Playwright 1.64.0 module provider and CLI.
+Without a custom browser-path override, executable discovery selected Chromium
+revision 1248 from that cache. Both default headless-shell and Chromium channel
+passed the local form and screenshot checks, then recorded valid WebM files.
+This additionally exercised the cached ffmpeg executable.
+
+The owned sandbox had wildcard network denial; policy checks explicitly denied
+the five tested package/browser distribution origins. Provisioning performed
+no repository update or dependency download. Its VM and temporary host workspace
+were removed, global policy was unchanged and concurrent activity was recorded.
+The immutable profile and public archive caches remain prospective common
+inputs. This is environment preflight, not application acceptance, complete
+comparison-profile freeze or a repair of any consumed calibration.
