@@ -1,7 +1,9 @@
 """Scoped sbx resources and capture after independently verified termination."""
 
 import hashlib
+import json
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 import posixpath
 import re
@@ -150,6 +152,7 @@ class Sandbox:
         self.creation_checked = False
         self.creation_attempted = False
         self.stopped = False
+        self.removed = False
 
     def create_argv(self):
         return sandbox_create_argv(self.project, self.specification, name=self.name,
@@ -187,6 +190,8 @@ class Sandbox:
     def stop(self):
         if not self.creation_attempted:
             raise ValueError("Refusing to stop a resource not created by this adapter")
+        if self.removed:
+            return True
         result = collect(self.attempt, f"{self.role}-stop", ["sbx", "stop", self.name], cwd=self.project, timeout=60)
         listing = collect(self.attempt, f"{self.role}-stopped-check", ["sbx", "ls"], cwd=self.project, timeout=30)
         text = (self.attempt.directory / f"{self.role}-stopped-check/stdout.log").read_text()
@@ -195,6 +200,79 @@ class Sandbox:
             "name": self.name, "stop": result, "verification": listing,
             "remote_termination_verified": self.stopped, "manual_stop": ["sbx", "stop", self.name]})
         return self.stopped
+
+    def remove(self):
+        """Remove an owned stopped resource after the caller preserves evidence.
+
+        The CLI's --force flag permits noninteractive confirmation. Never send
+        it for a running resource, changed mount/creation identity, or an
+        unsuccessful creation whose ownership cannot be established.
+        """
+        if not self.creation_attempted or not self.stopped:
+            raise ValueError('Verified termination is required before removal')
+        if self.removed:
+            return True
+        receipt = {'name': self.name, 'sandbox_removal_verified': False,
+                   'manual_remove_after_verified_stop': ['sbx', 'rm', '--force', self.name]}
+
+        def snapshot(label):
+            result = collect(self.attempt, label, ['sbx', 'ls', '--json'],
+                             cwd=self.attempt.directory, timeout=30)
+            if (result['outcome'] != 'passed' or type(result.get('exit_code')) is not int
+                    or result['exit_code'] != 0):
+                raise ValueError('Sandbox inventory unavailable')
+            data = json.loads((self.attempt.directory / label / 'stdout.log').read_text())
+            rows = data['sandboxes']
+            if not isinstance(rows, list) or any(not isinstance(row, dict)
+                                                or not isinstance(row.get('name'), str) for row in rows):
+                raise ValueError('Invalid sandbox inventory')
+            if len({row['name'] for row in rows}) != len(rows):
+                raise ValueError('Duplicate sandbox inventory identity')
+            return {row['name']: row for row in rows}
+
+        try:
+            before = snapshot(f'{self.role}-removal-before')
+            if self.name not in before:
+                receipt['already_absent'] = True
+                self.removed = True
+            else:
+                owned = before[self.name]
+                created = json.loads((self.attempt.directory / f'{self.role}-create/result.json').read_text())
+                expected_mounts = ([str(self.primary_workspace)] if self.primary_workspace else [])
+                expected_mounts += [str(self.project) + (':ro' if self.project_readonly else ''),
+                                    str(self.specification) + ':ro']
+                def instant(value):
+                    if not isinstance(value, str):
+                        raise ValueError('Missing creation timestamp')
+                    result = datetime.fromisoformat(value.replace('Z', '+00:00'))
+                    if result.tzinfo is None:
+                        raise ValueError('Creation timestamp lacks timezone')
+                    return result
+                if (created['outcome'] != 'passed' or type(created['exit_code']) is not int
+                        or created['exit_code'] != 0 or created['argv'] != self.create_argv()
+                        or owned.get('status') != 'stopped' or owned.get('workspaces') != expected_mounts
+                        or not isinstance(owned.get('id'), str)
+                        or not instant(created['started']) - timedelta(seconds=1)
+                        <= instant(owned['created_at']) <= instant(created['ended']) + timedelta(seconds=1)):
+                    raise ValueError('Stopped resource creation identity unverified')
+                uuid.UUID(owned['id'])
+                receipt['resource_id'] = owned['id']
+                # Recheck immediately before the irreversible native operation.
+                current = snapshot(f'{self.role}-removal-recheck')
+                keys = ('id', 'name', 'status', 'created_at', 'last_used_at', 'workspaces')
+                if self.name not in current or any(current[self.name].get(key) != owned.get(key) for key in keys):
+                    raise ValueError('Sandbox identity or activity changed')
+                result = collect(self.attempt, f'{self.role}-remove',
+                                 ['sbx', 'rm', '--force', self.name], cwd=self.attempt.directory, timeout=60)
+                receipt['removal'] = result
+                after = snapshot(f'{self.role}-removed-check')
+                self.removed = (result['outcome'] == 'passed' and type(result.get('exit_code')) is int
+                                and result['exit_code'] == 0 and self.name not in after)
+        except (ValueError, KeyError, TypeError, OSError) as error:
+            receipt['error_type'] = type(error).__name__
+        receipt['sandbox_removal_verified'] = self.removed
+        atomic_json(self.attempt.directory / f'{self.role}-removal.json', receipt)
+        return self.removed
 
 
 def symlink_record(source, path):

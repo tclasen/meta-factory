@@ -16,7 +16,7 @@ class SandboxTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.project = self.root / "project"
         self.project.mkdir()
 
@@ -285,3 +285,101 @@ class ListingNoticeTest(unittest.TestCase):
                 with self.assertRaises(ValueError):listing_rows(corrupted)
                 with self.assertRaises(ValueError):state_from_listing(corrupted,'missing')
                 self.assertFalse(stopped_from_listing(corrupted,'ours'))
+
+
+class SandboxRemovalTest(unittest.TestCase):
+    def run_removal(self, *, change=None, recheck=None, creation_ok=True,
+                    removal_ok=True, remains=False, inventory_exit=0):
+        import copy
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            project = root/'project'; project.mkdir()
+            spec = root/'spec'; spec.mkdir()
+            control = root/'control'; control.mkdir()
+            with Attempt(control/'logs',{}) as attempt:
+                box = Sandbox(attempt,project,spec,control,port=18080,role='grader')
+                box.creation_attempted = box.stopped = True
+                folder = attempt.directory/'grader-create'; folder.mkdir()
+                (folder/'result.json').write_text(json.dumps(dict(
+                    argv=box.create_argv(),outcome='passed' if creation_ok else 'failed',
+                    exit_code=0 if creation_ok else 1,
+                    started='2026-10-10T00:00:00+00:00',ended='2026-10-10T00:00:02+00:00')))
+                owned = dict(name=box.name,id='12345678-1234-1234-1234-123456789abc',
+                             status='stopped',workspaces=[str(project),str(spec)+':ro'],
+                             created_at='2026-10-10T00:00:01Z',last_used_at='2026-10-10T00:00:03Z')
+                other = dict(name='unrelated',status='running')
+                first = copy.deepcopy(owned)
+                if change:change(first)
+                second = copy.deepcopy(first)
+                if recheck:recheck(second)
+                outputs = [[first,other],[second,other],([owned,other] if remains else [other])]
+                calls = []
+                def command(owner,label,argv,**kwargs):
+                    calls.append(argv)
+                    if argv == ['sbx','ls','--json']:
+                        folder = owner.directory/label; folder.mkdir()
+                        (folder/'stdout.log').write_text(json.dumps({'sandboxes':outputs.pop(0)}))
+                        return dict(outcome='passed',exit_code=inventory_exit)
+                    self.assertEqual(argv,['sbx','rm','--force',box.name])
+                    self.assertTrue(box.stopped)
+                    return dict(outcome='passed' if removal_ok else 'failed',exit_code=0 if removal_ok else 1)
+                with patch('evaluation.sandbox.collect',side_effect=command):
+                    result = box.remove()
+                    if result:
+                        count = len(calls)
+                        self.assertTrue(box.remove())
+                        self.assertTrue(box.stop())
+                        self.assertEqual(len(calls),count)
+                receipt = json.loads((attempt.directory/'grader-removal.json').read_text())
+                self.assertEqual(receipt['sandbox_removal_verified'],result)
+                return result,calls
+
+    def test_exact_stopped_resource_removed_and_unrelated_resource_preserved(self):
+        result,calls = self.run_removal()
+        self.assertTrue(result)
+        self.assertEqual(sum(c[:2]==['sbx','rm'] for c in calls),1)
+        self.assertEqual(sum(c==['sbx','ls','--json'] for c in calls),3)
+
+    def test_unsafe_or_changed_identity_never_sends_removal(self):
+        changes = [lambda r:r.update(status='running'),
+                   lambda r:r.update(status='unknown'),
+                   lambda r:r.update(workspaces=['/unrelated']),
+                   lambda r:r.update(created_at='2026-10-09T00:00:00Z'),
+                   lambda r:r.update(created_at=None),
+                   lambda r:r.update(id='invalid')]
+        for change in changes:
+            with self.subTest(change=change):
+                result,calls = self.run_removal(change=change)
+                self.assertFalse(result)
+                self.assertFalse(any(c[:2]==['sbx','rm'] for c in calls))
+        for change in [lambda r:r.update(id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'),
+                       lambda r:r.update(last_used_at='2026-10-10T00:01:00Z')]:
+            with self.subTest(recheck=change):
+                result,calls = self.run_removal(recheck=change)
+                self.assertFalse(result)
+                self.assertFalse(any(c[:2]==['sbx','rm'] for c in calls))
+        for kwargs in [dict(creation_ok=False),dict(inventory_exit=False)]:
+            with self.subTest(kwargs=kwargs):
+                result,calls = self.run_removal(**kwargs)
+                self.assertFalse(result)
+                self.assertFalse(any(c[:2]==['sbx','rm'] for c in calls))
+
+    def test_refused_removal_or_remaining_resource_never_claims_cleanup(self):
+        for kwargs in [dict(removal_ok=False),dict(remains=True)]:
+            with self.subTest(kwargs=kwargs):
+                result,calls = self.run_removal(**kwargs)
+                self.assertFalse(result)
+                self.assertTrue(any(c[:2]==['sbx','rm'] for c in calls))
+
+    def test_removal_before_verified_stop_is_refused_without_native_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve()
+            project=root/'project';project.mkdir();spec=root/'spec';spec.mkdir();control=root/'control';control.mkdir()
+            with Attempt(control/'logs',{}) as attempt:
+                box=Sandbox(attempt,project,spec,control,port=18080)
+                with patch('evaluation.sandbox.collect') as command:
+                    with self.assertRaises(ValueError):box.remove()
+                    box.creation_attempted=True
+                    with self.assertRaises(ValueError):box.remove()
+                    command.assert_not_called()

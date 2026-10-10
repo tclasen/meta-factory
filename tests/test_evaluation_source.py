@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from evaluation.evidence import Attempt
 from evaluation.sandbox import capture_tree
@@ -59,6 +60,41 @@ class SourceTest(unittest.TestCase):
             'relative_path': 'captured-source',
             'verified_against_capture': True,
         })
+        self.assertTrue(FakeSandbox.instances[-1].removed)
+        self.assertTrue(json.loads((self.root/'logs/inventory-cleanup.json').read_text())['sandbox_removal_verified'])
+
+    def test_capture_precedes_removal_and_survives_failed_removal(self):
+        def command(attempt, label, argv, **kwargs):
+            output = b'app.py\0' if label == 'inventory-selected' else b''
+            folder = attempt.directory / label; folder.mkdir()
+            (folder/'stdout.log').write_bytes(output)
+            return {'outcome': 'passed'}
+        def refuse(box):
+            self.assertTrue(box.stopped)
+            self.assertEqual((self.root/'logs/captured-source/app.py').read_text(), 'source\n')
+            self.assertTrue((self.root/'logs/source-retention.json').exists())
+            return False
+        with Attempt(self.root/'logs',{}) as attempt:
+            with patch.object(FakeSandbox, 'remove', refuse):
+                with self.assertRaisesRegex(RuntimeError, 'removal unverified'):
+                    capture_source(attempt, self.source, self.root/'capture', self.spec,
+                                   port=18080, termination_verified=True,
+                                   sandbox_factory=FakeSandbox, guard_factory=FakeGuard,
+                                   command_runner=command)
+        self.assertFalse(json.loads((self.root/'logs/inventory-cleanup.json').read_text())['sandbox_removal_verified'])
+
+    def test_capture_failure_still_removes_stopped_inventory_resource(self):
+        def command(attempt, label, argv, **kwargs):
+            folder = attempt.directory / label; folder.mkdir()
+            (folder/'stdout.log').write_bytes(b'missing\0' if label == 'inventory-selected' else b'')
+            return {'outcome': 'passed'}
+        with Attempt(self.root/'logs',{}) as attempt:
+            with self.assertRaises(ValueError):
+                capture_source(attempt, self.source, self.root/'capture', self.spec,
+                               port=18080, termination_verified=True,
+                               sandbox_factory=FakeSandbox, guard_factory=FakeGuard,
+                               command_runner=command)
+        self.assertTrue(FakeSandbox.instances[-1].removed)
 
     def test_selected_symlink_parent_cannot_escape(self):
         (self.source / 'escape').symlink_to(self.root, target_is_directory=True)

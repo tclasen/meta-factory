@@ -1,6 +1,7 @@
 """Inventory source inside a readonly sandbox, then capture after verified stop."""
 
 import os
+import sys
 from pathlib import Path
 import tempfile
 
@@ -51,66 +52,79 @@ def capture_source(attempt, source, destination, specification, *, port,
     selection = None
     cleanup = {'remote_termination_verified': False}
     try:
-        if box.create()['outcome'] != 'passed':
-            raise RuntimeError('Source inventory sandbox creation failed')
-        guard = guard_factory(attempt.directory / 'inventory-guard', box.name, max_seconds=240)
-        inventories = {}
-        # ls-files does not run hooks; explicitly disable configured fsmonitor and
-        # isolate system/global config. Repository ignore rules remain deliberate.
-        prefix = ['env', 'GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null',
-                  'GIT_OPTIONAL_LOCKS=0', 'git', '-c', 'core.fsmonitor=false',
-                  '-c', 'core.excludesFile=/dev/null', '-c', 'safe.directory=' + str(source),
-                  'ls-files', '-z']
-        modes = {'selected': ['--cached', '--others', '--exclude-standard'],
-                 'ignored': ['--others', '--ignored', '--exclude-standard'],
-                 'deleted': ['--deleted']}
-        for label, arguments in modes.items():
-            result = command_runner(attempt, 'inventory-' + label, box.exec_argv(prefix + arguments),
-                                    cwd=repository, timeout=60)
-            if result['outcome'] != 'passed':
-                raise RuntimeError('Source inventory command did not complete')
-            inventories[label] = parse_paths((attempt.directory / ('inventory-' + label) / 'stdout.log').read_bytes())
-        selected = inventories['selected'] - inventories['deleted']
-        # Git metadata is evidence and permits normal sandbox-local Git operations
-        # after redeployment. Never run its hooks/configuration on the host.
-        for root, directories, files in os.walk(git, followlinks=False):
-            for name in directories:
-                if (Path(root) / name).is_symlink():
-                    raise ValueError('Symlink in Git metadata')
-            selected.update(str((Path(root) / name).relative_to(source)) for name in files)
-        selection = {'method': 'git-tracked-and-untracked-nonignored-plus-git-metadata',
-                     'selected': sorted(selected), 'ignored': sorted(inventories['ignored']),
-                     'deleted': sorted(inventories['deleted'])}
-        atomic_json(attempt.directory / 'source-selection.json', selection)
+        try:
+            if box.create()['outcome'] != 'passed':
+                raise RuntimeError('Source inventory sandbox creation failed')
+            guard = guard_factory(attempt.directory / 'inventory-guard', box.name, max_seconds=240)
+            inventories = {}
+            # ls-files does not run hooks; explicitly disable configured fsmonitor and
+            # isolate system/global config. Repository ignore rules remain deliberate.
+            prefix = ['env', 'GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null',
+                      'GIT_OPTIONAL_LOCKS=0', 'git', '-c', 'core.fsmonitor=false',
+                      '-c', 'core.excludesFile=/dev/null', '-c', 'safe.directory=' + str(source),
+                      'ls-files', '-z']
+            modes = {'selected': ['--cached', '--others', '--exclude-standard'],
+                     'ignored': ['--others', '--ignored', '--exclude-standard'],
+                     'deleted': ['--deleted']}
+            for label, arguments in modes.items():
+                result = command_runner(attempt, 'inventory-' + label, box.exec_argv(prefix + arguments),
+                                        cwd=repository, timeout=60)
+                if result['outcome'] != 'passed':
+                    raise RuntimeError('Source inventory command did not complete')
+                inventories[label] = parse_paths((attempt.directory / ('inventory-' + label) / 'stdout.log').read_bytes())
+            selected = inventories['selected'] - inventories['deleted']
+            # Git metadata is evidence and permits normal sandbox-local Git operations
+            # after redeployment. Never run its hooks/configuration on the host.
+            for root, directories, files in os.walk(git, followlinks=False):
+                for name in directories:
+                    if (Path(root) / name).is_symlink():
+                        raise ValueError('Symlink in Git metadata')
+                selected.update(str((Path(root) / name).relative_to(source)) for name in files)
+            selection = {'method': 'git-tracked-and-untracked-nonignored-plus-git-metadata',
+                         'selected': sorted(selected), 'ignored': sorted(inventories['ignored']),
+                         'deleted': sorted(inventories['deleted'])}
+            atomic_json(attempt.directory / 'source-selection.json', selection)
+        finally:
+            if guard is not None:
+                try:
+                    cleanup = guard.release()
+                    box.stopped = cleanup.get('remote_termination_verified') is True
+                except Exception as error:
+                    cleanup['error_type'] = type(error).__name__
+            if box.creation_attempted and not box.stopped:
+                try:
+                    cleanup['remote_termination_verified'] = box.stop()
+                except Exception as error:
+                    cleanup.update(remote_termination_verified=False,
+                                   fallback_error_type=type(error).__name__)
+            atomic_json(attempt.directory / 'inventory-cleanup.json', cleanup)
+        if not cleanup.get('remote_termination_verified'):
+            raise RuntimeError('Inventory sandbox termination unverified')
+        inventory = capture_tree(source, destination, termination_verified=True,
+                                 selected_files=selection['selected'])
+        inventory['selection'] = selection
+        atomic_json(attempt.directory / 'source-capture.json', inventory)
+        retained = attempt.directory / 'captured-source'
+        retained_inventory = capture_tree(destination, retained, termination_verified=True)
+        if (retained_inventory['files'] != inventory['files']
+                or retained_inventory['bytes'] != inventory['bytes']):
+            raise RuntimeError('Retained source differs from captured source')
+        atomic_json(attempt.directory / 'source-retention.json', {
+            'relative_path': retained.name,
+            'files': len(retained_inventory['files']),
+            'bytes': retained_inventory['bytes'],
+            'verified_against_capture': True,
+        })
+        return inventory
     finally:
-        if guard is not None:
+        prior_error = sys.exc_info()[0] is not None
+        cleanup['sandbox_removal_verified'] = False
+        if box.creation_attempted and box.stopped:
             try:
-                cleanup = guard.release()
-                box.stopped = cleanup.get('remote_termination_verified') is True
+                cleanup['sandbox_removal_verified'] = box.remove()
             except Exception as error:
-                cleanup['error_type'] = type(error).__name__
-        if box.creation_attempted and not box.stopped:
-            try:
-                cleanup['remote_termination_verified'] = box.stop()
-            except Exception as error:
-                cleanup.update(remote_termination_verified=False,
-                               fallback_error_type=type(error).__name__)
+                cleanup['sandbox_removal_error'] = type(error).__name__
+        cleanup['manual_remove_after_verified_stop'] = ['sbx', 'rm', '--force', box.name]
         atomic_json(attempt.directory / 'inventory-cleanup.json', cleanup)
-    if not cleanup.get('remote_termination_verified'):
-        raise RuntimeError('Inventory sandbox termination unverified')
-    inventory = capture_tree(source, destination, termination_verified=True,
-                             selected_files=selection['selected'])
-    inventory['selection'] = selection
-    atomic_json(attempt.directory / 'source-capture.json', inventory)
-    retained = attempt.directory / 'captured-source'
-    retained_inventory = capture_tree(destination, retained, termination_verified=True)
-    if (retained_inventory['files'] != inventory['files']
-            or retained_inventory['bytes'] != inventory['bytes']):
-        raise RuntimeError('Retained source differs from captured source')
-    atomic_json(attempt.directory / 'source-retention.json', {
-        'relative_path': retained.name,
-        'files': len(retained_inventory['files']),
-        'bytes': retained_inventory['bytes'],
-        'verified_against_capture': True,
-    })
-    return inventory
+        if not prior_error and not cleanup['sandbox_removal_verified']:
+            raise RuntimeError('Source inventory sandbox removal unverified')
