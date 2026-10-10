@@ -5715,3 +5715,33 @@ for prospective common provisioning. This verifies that dependency component
 on a fresh builder; it does not freeze the complete run profile, establish
 application acceptance, or rescore a consumed calibration. Protected grading
 coverage, full log-history evidence and the three-arm comparison remain open.
+
+### Real kubelet rotation refuses unordered file admission (REQ-007)
+
+A fresh controlled fixture now exercises the held-file collector against a
+real kubelet rotation. Its copied cluster script sets the container log threshold
+to 256 KiB, alongside the previously disclosed storage configuration deltas.
+The original candidate and existing observer/client remain unchanged.
+
+After bootstrap and public membership grading, the controller independently
+rechecked the original Node, Namespace, Pod UID, container ID, restart index and
+running state. A private marker was detected in the joined log collection before
+512 KiB of padding was written to that same container's stdout. Within the
+declared 35-second observation bound, the active log changed to a different inode
+on the same device. The original application identity was checked again around
+these observations; no replacement Pod or restart supplied the new file.
+
+The next collector snapshot refused at its explicit check for two inodes sharing
+one container entry without successor order. Cleanup marked the collection
+invalid, closed its descriptors and released metadata and retained byte
+references without cleanup errors. The first outer checker incorrectly expected
+a generic outcome label and reported incomplete; that attempt is preserved.
+A fresh rerun with the exact native refusal label and location checks passed.
+Both owned VMs and host workspaces were removed; global policy was unchanged
+and concurrent activity was recorded.
+
+This verifies refusal of an observed native cutover. It does not authenticate
+rotation order, admit the replacement generation, prove all writers closed or
+establish complete log history. The SDK remains unchanged. Native ordering
+evidence and those broader coverage gates remain prerequisites; no consumed
+calibration was rescored and the three-arm comparison remains unfinished.
