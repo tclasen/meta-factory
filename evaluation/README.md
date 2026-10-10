@@ -6032,3 +6032,26 @@ Identities and selected source checks were preserved; owned resources were
 removed. V41 remains unchanged. Current-user membership projection after updates
 and export-revocation coverage mappings still need work before AC-008 completion.
 Registry size and complete flags remain unchanged; the comparison is incomplete.
+
+### Current-session membership profile lifecycle controls (REQ-007)
+
+Protected suite V43 adds a separate 60-second current-user profile case. One
+cookie spans all 16 role subsets, removal and restoration. Each next profile read
+must preserve the canonical user identity and username, reflect the current role
+set and retain the independently seeded reviewer membership in another tenant.
+Update responses and persisted membership reads also require matching role sets.
+Failed shared-state restoration aborts grading.
+
+Twenty-three direct and 23 protected-child HTTP controls observed their expected
+verdicts; traces confirm all 16 subsets with one login. Nine comparison controls
+preserve values while ignoring membership array order. The first native attempt
+passed all five child groups but failed its final order-sensitive identity check.
+A second attempt was stopped after finding a stale registry-size assertion.
+Their outcomes remain unchanged. A third fresh attempt passed all five groups,
+verified independent identities and selected source checks, and removed its owned
+resources; both earlier attempts also removed their resources.
+
+The registry grows prospectively from 79 to 80 groups; prior results and the
+acceptance denominator remain unchanged. Eight complete flags remain unchanged;
+AC-008, suite approval and the comparison remain incomplete. Export revocation
+coverage mappings and native evidence still need review.
