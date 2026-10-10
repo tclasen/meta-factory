@@ -6078,3 +6078,26 @@ the existing 1,500-second publication case and two worker faults. Earlier bounds
 and outcomes remain unchanged. The registry retains 80 groups and eight complete
 flags. A controlled running-job publication boundary, full coverage and human
 review remain outstanding; AC-008, AC-023 and the comparison remain incomplete.
+
+### Bulk native HTTP validation and remaining-scope audit (REQ-007)
+
+All 38 selected core HTTP groups from V44 passed together in a fresh development
+fixture. They cover current identities, sessions and CSRF, tenant isolation,
+input/resource contracts, permission changes, concurrency limits and races,
+closure/export workflows, and audit metadata. The final independent identity and
+selected source checks passed; owned resources were removed. This run declared
+4,500 seconds for grading against unchanged selected case ceilings totaling
+4,020 seconds. It does not establish full criterion or project acceptance.
+
+The audit also verified the retained real-hour session-expiry pass, measured at
+3,601 seconds. Its original suite/source hashes match; the case, error checker and
+redirect helper are unchanged. The current client only adds an optional request
+timeout whose default matches that run. The prior outcome was neither rescored
+nor repeated. Its completed sandbox was still stopped on the host; that specific
+resource was removed after preserving evidence and verifying unrelated inventory.
+
+The registry and eight complete flags remain unchanged. Remaining work includes
+independent runtime/browser/scale/security/operator capabilities, full coverage
+and human content review before freeze, and the common three-arm comparison with
+complete metrics. Three natural calibration compactions are still unestablished;
+monetary attribution remains unknown. Existing failures retain their outcomes.
