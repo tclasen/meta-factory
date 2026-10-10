@@ -6347,3 +6347,28 @@ fixture-bypass and undocumented-setup accounting, substantive human review and
 the common comparison remain incomplete. The observer trust boundary for
 deliberately malicious grading-VM code is unresolved. These results grant no
 authoritative accepted packages, strict project success or promotion.
+
+### Sandbox removal after evidence retention
+
+`Sandbox.stop()` verifies remote termination and leaves the stopped resource
+available for source capture. Call `Sandbox.remove()` after preserving required
+results. It verifies the original successful creation receipt, current stopped
+state, creation time and exact mounts, then rechecks identity and activity before
+using `sbx rm --force NAME`. The CLI requires that flag for noninteractive
+confirmation; the adapter refuses running, changed or unverified resources.
+Removal succeeds only after a successful command and a verified absent name.
+No other sandbox or shared image is targeted.
+
+Source inventory retains its selected capture and evidence copy before removal,
+and also attempts removal after inventory/capture failure when termination is
+verified. Redeployment saves grading results before removal. Removal failure is
+recorded separately from termination; deployment then reports cleanup incomplete
+and clears acceptance without changing individual case verdicts. Unknown ownership
+or failed stop requires the recorded exact manual cleanup to be resolved, rather
+than a broad prune. This prospective lifecycle correction does not rescore earlier
+experiments. Each inventory command is bounded to 30 seconds and removal to 60.
+
+A fresh native shell fixture verified stop, retained source capture, exact removal,
+post-removal evidence readability and sandbox absence with other host sandboxes
+running. Its scratch directory was removed. This checks lifecycle behavior only,
+without restarting or grading a consumed comparison candidate.

@@ -32,12 +32,17 @@ class FakeSandbox:
         self.project, self.specification = args[1], args[2]
         self.creation_attempted = False
         self.stopped = False
+        self.removed = False
         self.instances.append(self)
     def create(self):
         self.creation_attempted = True
         return {'outcome': 'passed'}
     def exec_argv(self, args): return ['sbx', 'exec', self.name] + args
     def stop(self): self.stopped = True; return True
+    def remove(self):
+        assert self.stopped
+        self.removed = True
+        return True
 
 
 class FakeGuard:
@@ -97,6 +102,23 @@ class DeploymentTest(unittest.TestCase):
                                   fixture_loader=loader)
         self.assertEqual(calls,['construct','start','fixture','close'])
         self.assertTrue(report['cleanup']['remote_termination_verified'])
+
+    def test_removal_failure_keeps_saved_results_and_clears_acceptance(self):
+        import json
+        self.suite.approved = True  # Synthetic acceptance fixture only.
+        observed = []
+        def refuse(box):
+            saved = json.loads((self.root/'logs/deployment-result.json').read_text())
+            observed.append(saved['accepted_packages'])
+            self.assertTrue(box.stopped)
+            return False
+        with Attempt(self.root/'logs',{}) as attempt:
+            with patch.object(FakeSandbox, 'remove', refuse):
+                report = self.run_grade(attempt)
+        self.assertEqual(observed, [['WP-001']])
+        self.assertEqual(report['outcome'], 'cleanup_incomplete')
+        self.assertEqual(report['accepted_packages'], [])
+        self.assertFalse(report['cleanup']['sandbox_removal_verified'])
 
     def test_bridge_cleanup_reserve_excludes_grading_and_revoked_guard(self):
         from evaluation.fixture_lifetime import FixtureLifetime

@@ -38,6 +38,10 @@ class FakeSandbox:
     def exec_argv(self,args):return ['synthetic-sbx',self.name]+args
     def stop(self):
         self.events.append(('stop',self.name));self.stopped=self.stop_verified;return self.stopped
+    def remove(self):
+        if not self.stopped:raise ValueError('Sandbox must be stopped before removal')
+        self.removed=True
+        return True
 
 
 class FakeGuard:

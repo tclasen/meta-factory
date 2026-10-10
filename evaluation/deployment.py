@@ -363,5 +363,17 @@ def grade_capture(attempt, source, inventory, specification, project, suite, tar
                           accepted_packages=[], aborted=True)
         report['cleanup'] = cleanup
         report['manual_stop'] = ['sbx', 'stop', box.name]
+        report['manual_remove_after_verified_stop'] = ['sbx', 'rm', '--force', box.name]
+        # Save grading evidence before the destructive resource cleanup.
+        atomic_json(attempt.directory / 'deployment-result.json', report)
+        cleanup['sandbox_removal_verified'] = False
+        if box.creation_attempted and box.stopped:
+            try:
+                cleanup['sandbox_removal_verified'] = box.remove()
+            except Exception as error:
+                cleanup['sandbox_removal_error'] = type(error).__name__
+        if box.creation_attempted and not cleanup['sandbox_removal_verified']:
+            report.update(outcome='cleanup_incomplete', project_success=False,
+                          accepted_packages=[], aborted=True)
         atomic_json(attempt.directory / 'deployment-result.json', report)
     return report
