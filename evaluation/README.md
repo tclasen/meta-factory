@@ -5909,3 +5909,20 @@ timeout, output bounds and private-output exclusion. Both grading/diagnostic
 sandboxes and scratch workspaces were removed, global policy was preserved, and
 the original capture was reverified unchanged. The protected suite remains
 partial and unapproved; these observations do not complete REQ-007.
+
+### Current-session administrator promotion controls (REQ-007)
+
+Protected suite V36 extends the membership lifecycle oracle to retain the same
+subject session during promotion to administrator. It checks that membership
+listing becomes available while case reads, edits and creation remain denied,
+and that refused edits or creation leave business data unchanged. Membership
+audit and permission-matrix cases now also map to AC-008. The previous V35 suite
+and its captured-run evidence remain unchanged.
+
+Forty-two direct controls and 25 final protected-child HTTP/cookie controls
+observed their expected verdicts. Seven added faulty models were rejected; the
+wire controls verified exactly one subject login across role transitions and
+stopped every listener. These use synthetic membership state, not a deployed
+application authorization cache or real mutation audit. The registry remains at
+79 groups with eight implementation-complete criteria, partial and unapproved.
+AC-008 and the full comparison remain incomplete.
