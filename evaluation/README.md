@@ -5886,3 +5886,26 @@ preserved. All six owned diagnostic sandboxes were stopped and removed; logs and
 observations were retained and scratch workspaces removed. These are operator
 preflight results, not acceptance, calibration rescue, or comparative evidence. The consumed
 calibration retains its original blocked outcome and captured bytes.
+
+### Unchanged calibration capture failed fresh bootstrap (REQ-007)
+
+Independent redeployment of the captured 213-file calibration tree preserved its
+recorded executable modes and ran its original bootstrap without a firewall or
+interpreter override. Bootstrap returned exit status 1 after approximately 100
+seconds, before any acceptance case executed. The full 79-case registry remained
+the denominator; its cases are untested, and no package was accepted.
+
+A separate bootstrap-only diagnostic retained that failed grading observation
+and observed a missing `audit` relation through fixed error categories. Source
+inspection explains a fresh-schema ordering defect: bootstrap revokes privileges
+on that table before its later seed command invokes migrations. The captured
+candidate was not repaired or rescored. This application defect is separate from
+the standalone network-policy backend observation above.
+
+Bootstrap output was privately drained and discarded to protect generated
+credentials; logs preserve byte counts, timing and original exit status. Four
+subprocess controls for each wrapper version verified successful/failed status,
+timeout, output bounds and private-output exclusion. Both grading/diagnostic
+sandboxes and scratch workspaces were removed, global policy was preserved, and
+the original capture was reverified unchanged. The protected suite remains
+partial and unapproved; these observations do not complete REQ-007.
