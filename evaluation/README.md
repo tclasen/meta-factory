@@ -5658,3 +5658,35 @@ source 800 and grading 900. The terminal control has a separately declared
 source proofs, credentials and both markers remain private. Complete-history,
 subscription acknowledgment and acceptance claims remain false; the frozen
 three-arm comparison is still outstanding.
+
+
+### Exact browser assets and native builder preflight (REQ-007)
+
+A prospective browser cache contains Playwright and playwright-core 1.64.0,
+Chromium and headless-shell revision 1248 (Chrome 156.0.8078.4), and ffmpeg
+revision 1013 for Linux arm64. Five public archives total 331,576,545 bytes.
+The fetch verified npm registry integrity, package metadata, the pinned browser
+manifest, archive structure and arm64 executable headers. Browser archive hashes
+bind the fetched content locally; they are not independent vendor signatures.
+HTTPS redirects were restricted to the declared public distribution hosts.
+
+The initial native launch exposed a missing `libglib-2.0.so.0` in the builder
+template. A subsequent isolated preflight installed 95 missing packages using
+the pinned Playwright dependency check and signed Ubuntu 26.04 repositories,
+with access allowed only for that owned sandbox. Package versions were recorded.
+Its native environment was arm64, UID 1000, Node 22.22.1 and npm 9.2.0.
+Both default headless-shell and Chromium channel launches reported the exact
+expected browser version, submitted a form against a local HTTP fixture and
+rendered a valid 10,930-byte PNG. Contexts and browsers closed successfully;
+the smoke itself downloaded nothing.
+
+Failed attempts remain preserved. The first removal required a separate
+ownership-checked recovery using noninteractive `sbx rm --force`; all three
+owned VMs and their temporary host workspaces are now removed. Concurrent host
+activity was recorded and global network policy remained unchanged. These
+checks required no host administrative privilege or owner permission repair.
+
+This verifies native launch and a small interaction fixture, not application
+acceptance or a completed common comparison profile. The OS dependency snapshot
+still needs immutable provisioning for future runs; the public archive cache
+remains an active input. No consumed calibration was repaired or rescored.
