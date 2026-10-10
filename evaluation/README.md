@@ -5612,3 +5612,49 @@ intervals, rotation order, all filesystems and all writers remain unfinished.
 Complete-history, subscription acknowledgment and acceptance claims remain
 false. No eligible candidate was rescored; the frozen three-arm comparison
 remains outstanding.
+
+
+### Terminal custody of previously admitted log files (REQ-007)
+
+A native handoff now retains readonly descriptors for files already accepted by
+the live API/runtime archive. It copies the private source proofs supplied by
+successful admission and validates the file identity and original scope again
+before duplicating descriptors into a separate private follower/retention set.
+The API/runtime window is then framed, the filesystem notification group is
+closed and the owned registration probe is retired while the Node remains live.
+The original SDK's runtime invalidation behavior remains unchanged.
+
+Only a typed stop control naming the original Node can authorize final reads.
+The observer independently requires the original process directory to be absent
+through a held procfs descriptor; a generic identity-check error is insufficient.
+Final reads repeat that absence check and verify the held inode, canonical log
+identity and entire previously captured prefix. Two observations 0.2 seconds
+apart must agree. A reused process ID, changed file identity, overwritten prefix,
+malformed control or expired bound refuses custody.
+
+The stronger native positive fixture prepared 14 attributed files and 37,867
+private bytes. After handoff, the controller rechecked the original application
+Pod UID/container ID and wrote a distinct private marker to its stdout. An
+independent collector confirmed the marker reached its log before shutdown.
+The handoff retention itself proved that marker absent in its prepared bytes
+and present after final reads following independently verified Node shutdown.
+It retained 38,730 bytes with the same 14 files and preserved the earlier marker.
+Public membership grading passed before this terminal control.
+
+On the same native helper and SDK, a wrong-node claim and a claim while the
+original Node remained live both refused without a terminal custody receipt.
+Independent before/after container, PID, process-start and mount observations
+confirmed the latter exercised the same live Node. Both controls closed terminal
+descriptors and released retained byte references without cleanup errors.
+All four native fixtures removed their owned resources and preserved global
+policy; 27 private-client controls passed. Concurrent host activity was recorded.
+
+This closes an observed append/custody gap for previously admitted descriptors.
+It does not continue API/runtime authority after shutdown, admit unseen births
+or successor files, prove all writers closed, or establish full namespace log
+history. Existing bounds remain: readiness 45 seconds, snapshot 45, finish 75,
+source 800 and grading 900. The terminal control has a separately declared
+120-second wait bound. Raw bytes,
+source proofs, credentials and both markers remain private. Complete-history,
+subscription acknowledgment and acceptance claims remain false; the frozen
+three-arm comparison is still outstanding.
