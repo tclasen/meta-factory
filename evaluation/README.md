@@ -5563,3 +5563,52 @@ connection loss. They do not prove absence of transient restored endpoint swaps
 or admit the separate held kernel log files. File admission, terminal intervals,
 rotations and all-writer coverage remain unfinished; complete-history,
 subscription acknowledgment and acceptance claims remain false.
+
+
+### Held kernel files admitted through live runtime metadata (REQ-007)
+
+The native observer now composes the existing private live-collection SDK with
+held filesystem notification descriptors. For each observed application log
+file, admission joins its path, device and inode to the original Node and
+Namespace, independently observed API declarations and an authenticated runtime
+creation record. The retained descriptor and original runtime identity are
+checked again during admission and polling. Unknown metadata stays pending;
+a second inode for the same entry refuses without authenticated rotation order.
+Raw runtime events, log bytes, credentials and the canary remain private.
+
+A synchronous registration-probe command initially failed while filesystem
+notifications accumulated. Fixed diagnostics showed runtime deadlines and then
+busy temporary mounts during sandbox-image setup. Draining notifications while
+that bounded command runs closes unrelated descriptors promptly; the following
+native fixture created and started its probe successfully. This supports queued
+file descriptors as a cause of that setup failure, without proving the behavior
+of every future runtime operation. The explicit client timeout is eight seconds
+within the existing ten-second local control bound. Memory remains 128 MiB;
+readiness uses the separately recorded 45-second diagnostic bound. Earlier
+failed attempts and their original deadlines remain unchanged.
+
+The positive fixture joined 14 files, decoded 95 runtime events, performed 2,326
+held-runtime peer checks and retained 37,230 log bytes in private memory at its
+final observation boundary. It detected the private canary from the original
+application container's stdout before and after public membership grading. The
+anchored API history observed eight Pods, three deletions and 14 identities
+without a gap. Bootstrap took 60.45 seconds and public membership grading passed.
+The final receipt verified closure of joined descriptors and release of metadata
+and retained bytes, closure of the sealed credential descriptor and absence of
+the owned registration probe.
+
+On the same native helper and SDK, a second fixture bound 14 files before
+closing its owned runtime connection during a guarded lookup. The lookup refused;
+the joined collection became invalid, closed its descriptors and released its
+metadata. Explicit release then dropped retained byte references. The runtime
+buffer emptied, its descriptor closed and the loss thread joined within its
+bound. No cleanup errors remained. Both fixtures removed their owned resources
+and preserved global policy; 21 private-client controls passed.
+
+These are bounded functional fixtures with recorded concurrent host activity.
+They close the API/runtime stream before Node shutdown; the separate collector's
+shutdown observation does not extend the joined collection's authority. Terminal
+intervals, rotation order, all filesystems and all writers remain unfinished.
+Complete-history, subscription acknowledgment and acceptance claims remain
+false. No eligible candidate was rescored; the frozen three-arm comparison
+remains outstanding.
