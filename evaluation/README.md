@@ -6101,3 +6101,25 @@ independent runtime/browser/scale/security/operator capabilities, full coverage
 and human content review before freeze, and the common three-arm comparison with
 complete metrics. Three natural calibration compactions are still unestablished;
 monetary attribution remains unknown. Existing failures retain their outcomes.
+
+### Native export decision races and runtime evidence inventory (REQ-007)
+
+The V44 export decision-race case passed in a fresh native fixture. With the
+parent holding the exact worker Deployment UID at zero replicas and observing
+no worker Pods, competing approve/approve, approve/reject and reject/reject calls
+must produce one persisted winner. Losing and repeated decisions cannot change
+request metadata or source cases; successful audit events belong to the winning
+request. The same worker UID and original replica count were restored. Independent
+identities, selected source checks and owned-resource cleanup passed.
+
+The runtime inventory found historical native outcomes for 11 of the 12 runtime
+groups. Those outcomes include failures and inconclusives; function text alone
+cannot establish helper, broker or deployment equivalence for reuse. The retained
+lease-reclaim failure reports more than three durable attempts, and its current
+case function matches the archived function. That failure remains unchanged.
+Audit-failure diagnostics still lack a native result and require both an
+independent log reader and parent-owned audit fault capability.
+
+The registry and complete flags remain unchanged. Controlled running-publication
+coverage, remaining native capabilities and human content review are still
+needed before final grading and the common three-arm comparison.
