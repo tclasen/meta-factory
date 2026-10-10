@@ -5690,3 +5690,28 @@ This verifies native launch and a small interaction fixture, not application
 acceptance or a completed common comparison profile. The OS dependency snapshot
 still needs immutable provisioning for future runs; the public archive cache
 remains an active input. No consumed calibration was repaired or rescored.
+
+### Cached OS dependencies verified in a fresh builder (REQ-007)
+
+The browser dependency component now has a version-bound cache of all 95 missing
+Ubuntu packages, totaling 84,859,000 bytes. Downloading from signed repositories
+used the exact package versions recorded by the earlier passing fixture.
+Each Debian archive's package name, version, architecture, size and SHA-256
+were verified and preserved on the host. The cache is bound to the unchanged
+builder template, rather than assumed compatible with another base image.
+
+APT refused the first local-archive installation with `--no-download`; that
+failed attempt remains unchanged. A separate fresh builder sandbox reverified
+every cached archive, installed the complete set with `dpkg` and confirmed
+the exact installed versions. It performed no repository update or dependency
+download. Scoped wildcard network denial was active; daemon-side policy checks
+explicitly refused Ubuntu, npm and the tested browser distribution origins.
+Both default headless-shell and Chromium channel then passed the same local
+form-submission and PNG checks with the pinned browser version.
+
+Both owned sandboxes and host workspaces were removed, with global policy
+unchanged. The 84.9 MB package cache and browser archives remain active inputs
+for prospective common provisioning. This verifies that dependency component
+on a fresh builder; it does not freeze the complete run profile, establish
+application acceptance, or rescore a consumed calibration. Protected grading
+coverage, full log-history evidence and the three-arm comparison remain open.
