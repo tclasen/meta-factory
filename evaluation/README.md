@@ -6316,3 +6316,34 @@ internet isolation or complete runtime history. The 80-group registry and eight
 complete flags remain unchanged. The negative result adds native development
 evidence for AC-029. Full foundation, remaining grading coverage, substantive
 human review and the common comparison remain incomplete.
+
+
+### Native integration evidence and prospective attestation (REQ-007)
+
+Eight further development components were reviewed independently of the builder.
+They use protected local receipts; holdout cases and raw private streams remain
+outside Git and builder mounts.
+
+| Component | Observed result | Evidence limit |
+| --- | --- | --- |
+| Public check and alternate seed | Documented commands succeeded; ten child controls passed and existing application identities were retained. | Public checks do not establish independent acceptance or full operator documentation. |
+| Restricted migration DDL | All five captured migration files matched a restricted PostgreSQL AST contract; 67 parser/routing controls passed. Replayed and live selected catalogs matched. | No arbitrary data migration, complete history, privilege or atomic-snapshot claim. |
+| Documented worker recovery | The exact documented restart produced a new Ready worker process with unchanged image, while the other four role identities stayed stable; 36 controls passed. | Broader API/database/storage recovery and complete operator instructions remain incomplete. |
+| Integrated image/source mapping | The two-tenant API journey passed with source bytes and modes from a pristine, never-started image probe matching the captured selection; 62 content/transport controls passed. | Selected source and image metadata only; no complete layer or frontend source-consumption claim. |
+| Live API/worker process roots | Eleven selected files per process matched captured bytes and modes; argv, UID/GID, independently pinned executable and CRI/kernel process attribution matched before and after the journey. 43 attribution controls and six process-root fixtures passed. | Controlled reference observations do not establish universal absence of malicious runtime behavior. |
+| Five-role image identities | Web, API, worker, PostgreSQL and storage retained verified root/platform-manifest/configuration links, CRI container identities and workload ownership across the integrated journey; 37 additional controls passed. | Runtime identifiers have different meanings and cannot be compared as interchangeable digests. |
+| Prospective attestation schema | A new protected suite version accepted qualified image/runtime mappings with disclosed role cohosting and rejected contradictory source/container scope. 36 child controls and 12 guarded controller controls passed. | Full independent fixture, storage and setup observations are still required; earlier drafts and grading inputs remain unchanged. |
+| Opaque alternate tenants and storage | Eight opaque post-build user names and two opaque tenant names completed the original integrated API case. All 17 users and four tenants were reverified. On the same deployment, authenticated S3 canary read/write passed, anonymous read/write was denied, and the owned object was deleted. Eight actor-selection controls passed. | Random names test these observed identities; they do not prove universal absence of hardcoding. The storage canary is distinct from application evidence/export traffic. |
+
+The controlled reference retains two explicitly declared deployment configuration
+corrections. It is development evidence, with no repair or rescore of consumed
+calibration candidates. Source, image, process, identity and selected topology
+bindings remained stable where collected. Exact owned sandbox/scratch cleanup and
+global-policy preservation were verified; concurrent resources were recorded
+without requiring an idle host.
+
+The registry still has 80 groups and eight implementation-complete flags. Full
+fixture-bypass and undocumented-setup accounting, substantive human review and
+the common comparison remain incomplete. The observer trust boundary for
+deliberately malicious grading-VM code is unresolved. These results grant no
+authoritative accepted packages, strict project success or promotion.
